@@ -8,6 +8,10 @@ import { BLOCKCHAIN_NAME } from "constants/contractAddress";
 import ConnectButton from './ConnectButton'
 import WalletConnectDialog from './WalletConnectDialog';
 import { injectedConnector } from '../connectors/injectedConnector';
+import {
+  clearInjectedWalletAutoConnectSuppression,
+  suppressInjectedWalletAutoConnect
+} from '../utils/walletConnection';
 import Logo from '../images/logos/verus-eth-bridge.png'
 
 const Header = () => {
@@ -16,6 +20,7 @@ const Header = () => {
 
   const handleClickConnect = () => {
     if (account) {
+      suppressInjectedWalletAutoConnect();
       deactivate();
     } else {
       setWalletDialogOpen(true)
@@ -23,8 +28,14 @@ const Header = () => {
   }
 
   const handleConfirm = async () => {
-    await activate(injectedConnector);
-    setWalletDialogOpen(false);
+    try {
+      await activate(injectedConnector);
+      clearInjectedWalletAutoConnectSuppression();
+    } catch (connectError) {
+      // The connector error is surfaced through the web3-react context.
+    } finally {
+      setWalletDialogOpen(false);
+    }
   }
 
   return (

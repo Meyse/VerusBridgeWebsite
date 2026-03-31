@@ -8,8 +8,9 @@ import {
 
 import ToastProvider from 'components/Toast/ToastProvider';
 
-import Tabs from "./components/TabComponent/Tabs";
+import BridgeHomePage from './pages/BridgeHomePage';
 import Claim from './pages/Claim';
+import NFT from './pages/NFT';
 import Web3ConnectionProvider from './providers/Web3ConnectionProvider';
 import WrappedWeb3ReactProvider from './providers/WrappedWeb3ReactProvider';
 
@@ -24,12 +25,16 @@ const theme = createTheme({
 const router = createBrowserRouter([
   {
     path: "/",
-    element: <Tabs />,
+    element: <BridgeHomePage />,
     errorElement: <div>Not a Valid path</div>
   },
   {
     path: "/claim",
     element: <Claim />
+  },
+  {
+    path: "/nft",
+    element: <NFT />
   }
 ]);
 
