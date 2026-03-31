@@ -19,7 +19,12 @@ import {
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import bitGoUTXO from 'utils/bitUTXO';
-import { getTokenDisplaySymbol } from 'utils/bridgeUi';
+import {
+  buildTokenCurrency,
+  formatCurrencyFiat,
+  getTokenDisplaySymbol,
+  sortSourceCurrencies
+} from 'utils/bridgeUi';
 import { getContract, getMaxAmount } from 'utils/contract';
 import { getDestinationOptions, getTokenOptions } from 'utils/options';
 import {
@@ -35,9 +40,28 @@ const BRIDGE_STATUS_POLL_INTERVAL_MS = 60_000;
 const ESTIMATED_VERUS_BLOCK_TIME_SECONDS = 60;
 const FLAG_DEST_GATEWAY = 128;
 const COINPAPRIKA_ETH_TICKER_URL = 'https://api.coinpaprika.com/v1/tickers/eth-ethereum';
+const COINPAPRIKA_TICKER_ID_BY_SYMBOL = {
+  BAT: 'bat-basic-attention-token',
+  LINK: 'link-chainlink',
+  MKR: 'mkr-maker',
+  PAXG: 'paxg-pax-gold',
+  TBTC: 'btc-bitcoin',
+  VRSC: 'vrsc-verus-coin',
+  WBTC: 'btc-bitcoin',
+  XAUT: 'xaut-tether-gold'
+};
+const STATIC_USD_PRICE_BY_SYMBOL = {
+  CRVUSD: 1,
+  DAI: 1,
+  EURC: 1,
+  SCRVUSD: 1,
+  USDC: 1,
+  USDT: 1
+};
 const { GAS_TRANSACTIONIMPORTFEE, MINIMUM_GAS_PRICE_WEI } = ETH_FEES;
 const verusd = new VerusdRpcInterface(GLOBAL_IADDRESS.VRSC, process.env.REACT_APP_VERUS_RPC_URL);
 const hasGatewayFlag = (value) => Math.floor(Number(value) / FLAG_DEST_GATEWAY) % 2 === 1;
+const BALANCE_SORT_EPSILON = 0.000001;
 
 const toFiniteNumber = (value) => {
   const parsedValue = Number(value);
@@ -86,6 +110,33 @@ const formatBalance = (value) => {
   return Intl.NumberFormat('en-US', {
     maximumFractionDigits: 6
   }).format(parsedValue);
+};
+
+const normalizePriceSymbol = (value) => (value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+
+const compareSourceCurrenciesByWalletValue = (left, right) => {
+  const leftFiat = Number.isFinite(left?.fiatValue) ? left.fiatValue : -1;
+  const rightFiat = Number.isFinite(right?.fiatValue) ? right.fiatValue : -1;
+  const fiatDifference = rightFiat - leftFiat;
+
+  if (Math.abs(fiatDifference) > BALANCE_SORT_EPSILON) {
+    return fiatDifference;
+  }
+
+  const leftBalance = Number.isFinite(left?.balance) ? left.balance : -1;
+  const rightBalance = Number.isFinite(right?.balance) ? right.balance : -1;
+  const balanceDifference = rightBalance - leftBalance;
+
+  if (Math.abs(balanceDifference) > BALANCE_SORT_EPSILON) {
+    return balanceDifference;
+  }
+
+  const nameComparison = (left?.name || '').localeCompare(right?.name || '', undefined, { sensitivity: 'base' });
+  if (nameComparison !== 0) {
+    return nameComparison;
+  }
+
+  return (left?.id || '').localeCompare(right?.id || '', undefined, { sensitivity: 'base' });
 };
 
 const normalizeContractField = (value) => {
@@ -290,11 +341,13 @@ export default function useBridgeController() {
   const [ethUsdPrice, setEthUsdPrice] = useState(null);
   const [gasPrice, setGasPrice] = useState(null);
   const [isTxPending, setIsTxPending] = useState(false);
+  const [isWalletBalancesLoading, setIsWalletBalancesLoading] = useState(false);
   const [poolAvailable, setPoolAvailable] = useState(false);
   const [pubkey, setPubkey] = useState({});
   const [selectedToken, setSelectedToken] = useState(null);
-  const [tokenBalance, setTokenBalance] = useState(null);
   const [tokenOptions, setTokenOptions] = useState([]);
+  const [tokenUsdPrices, setTokenUsdPrices] = useState({});
+  const [walletTokenBalances, setWalletTokenBalances] = useState([]);
   const [notarizationLagBlocks, setNotarizationLagBlocks] = useState(null);
   const [notarizationLagSeconds, setNotarizationLagSeconds] = useState(null);
   const [verusChainHeight, setVerusChainHeight] = useState(null);
@@ -312,6 +365,50 @@ export default function useBridgeController() {
     () => destinationOptions.find((option) => option.value === destination) || null,
     [destination, destinationOptions]
   );
+
+  const effectiveTokenUsdPrices = useMemo(() => ({
+    ...STATIC_USD_PRICE_BY_SYMBOL,
+    ...tokenUsdPrices,
+    ...(Number.isFinite(ethUsdPrice) ? { ETH: ethUsdPrice } : {})
+  }), [ethUsdPrice, tokenUsdPrices]);
+
+  const tokenBalance = useMemo(() => {
+    if (!account || !selectedToken) {
+      return null;
+    }
+
+    const matchingBalance = walletTokenBalances.find((entry) => entry.token.value === selectedToken.value);
+    if (!matchingBalance) {
+      return null;
+    }
+
+    return {
+      raw: matchingBalance.raw,
+      display: matchingBalance.display
+    };
+  }, [account, selectedToken, walletTokenBalances]);
+
+  const sourceCurrencies = useMemo(() => {
+    if (!account) {
+      return sortSourceCurrencies(tokenOptions.map((token) => buildTokenCurrency(token)));
+    }
+
+    return walletTokenBalances
+      .filter((entry) => entry.balance > 0)
+      .map((entry) => {
+        const symbol = getTokenDisplaySymbol(entry.token) || entry.token.name;
+        const fiatPrice = effectiveTokenUsdPrices[normalizePriceSymbol(symbol)];
+        const fiatValue = Number.isFinite(fiatPrice) ? entry.balance * fiatPrice : null;
+
+        return buildTokenCurrency(entry.token, {
+          balance: entry.balance,
+          balanceLabel: `${formatBalance(entry.balance)} ${symbol}`,
+          fiatLabel: Number.isFinite(fiatValue) ? formatCurrencyFiat(fiatValue) : null,
+          fiatValue
+        });
+      })
+      .sort(compareSourceCurrenciesByWalletValue);
+  }, [account, effectiveTokenUsdPrices, tokenOptions, walletTokenBalances]);
 
   useEffect(() => {
     if (!destinationOptions.some((option) => option.value === destination)) {
@@ -372,6 +469,65 @@ export default function useBridgeController() {
       window.clearInterval(intervalId);
     };
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadTokenUsdPrices = async () => {
+      const symbolsToFetch = [...new Set(
+        tokenOptions
+          .map((token) => normalizePriceSymbol(getTokenDisplaySymbol(token)))
+          .filter((symbol) => symbol && symbol !== 'ETH' && !STATIC_USD_PRICE_BY_SYMBOL[symbol] && COINPAPRIKA_TICKER_ID_BY_SYMBOL[symbol])
+      )];
+
+      if (symbolsToFetch.length === 0) {
+        if (!ignore) {
+          setTokenUsdPrices({});
+        }
+        return;
+      }
+
+      const priceResults = await Promise.allSettled(
+        symbolsToFetch.map(async (symbol) => {
+          const response = await fetch(`https://api.coinpaprika.com/v1/tickers/${COINPAPRIKA_TICKER_ID_BY_SYMBOL[symbol]}`);
+          if (!response.ok) {
+            throw new Error(`Unable to fetch ${symbol} price.`);
+          }
+
+          const result = await response.json();
+          return [symbol, result?.quotes?.USD?.price];
+        })
+      );
+
+      if (ignore) {
+        return;
+      }
+
+      setTokenUsdPrices(priceResults.reduce((priceMap, result) => {
+        if (result.status !== 'fulfilled') {
+          return priceMap;
+        }
+
+        const [symbol, price] = result.value;
+        if (Number.isFinite(price)) {
+          return {
+            ...priceMap,
+            [symbol]: price
+          };
+        }
+
+        return priceMap;
+      }, {}));
+    };
+
+    loadTokenUsdPrices();
+    const intervalId = window.setInterval(loadTokenUsdPrices, 60_000);
+
+    return () => {
+      ignore = true;
+      window.clearInterval(intervalId);
+    };
+  }, [tokenOptions]);
 
   useEffect(() => {
     let ignore = false;
@@ -592,25 +748,55 @@ export default function useBridgeController() {
   useEffect(() => {
     let ignore = false;
 
-    const loadBalance = async () => {
-      try {
-        const balance = await fetchSelectedTokenBalance({ account, library, selectedToken });
+    const loadWalletBalances = async () => {
+      if (!account || !library || tokenOptions.length === 0) {
         if (!ignore) {
-          setTokenBalance(balance);
+          setWalletTokenBalances([]);
+          setIsWalletBalancesLoading(false);
         }
-      } catch (error) {
-        if (!ignore) {
-          setTokenBalance(null);
-        }
+        return;
+      }
+
+      setIsWalletBalancesLoading(true);
+
+      const balances = await Promise.all(
+        tokenOptions.map(async (token) => {
+          const tokenLabel = getTokenDisplaySymbol(token) || token.name;
+          const emptyBalance = {
+            token,
+            balance: 0,
+            display: `${formatBalance(0)} ${tokenLabel}`,
+            raw: '0'
+          };
+
+          try {
+            const balance = await fetchSelectedTokenBalance({ account, library, selectedToken: token });
+            const numericBalance = parseFloat(balance?.raw);
+
+            return {
+              token,
+              balance: Number.isFinite(numericBalance) ? numericBalance : 0,
+              display: balance?.display || emptyBalance.display,
+              raw: balance?.raw || '0'
+            };
+          } catch (error) {
+            return emptyBalance;
+          }
+        })
+      );
+
+      if (!ignore) {
+        setWalletTokenBalances(balances);
+        setIsWalletBalancesLoading(false);
       }
     };
 
-    loadBalance();
+    loadWalletBalances();
 
     return () => {
       ignore = true;
     };
-  }, [account, library, selectedToken]);
+  }, [account, library, tokenOptions]);
 
   useEffect(() => {
     let ignore = false;
@@ -881,12 +1067,14 @@ export default function useBridgeController() {
       }
     },
     handleSubmit,
+    isSourceCurrenciesLoading: isWalletBalancesLoading,
     isTxPending,
     isWalletConnected: Boolean(account),
     notarizationLagBlocks,
     notarizationLagSeconds,
     poolAvailable,
     routeLabel: getRouteLabel(destination),
+    sourceCurrencies,
     selectedDestination,
     selectedToken,
     selectDestination: (nextDestination) => setDestination(nextDestination),
@@ -898,7 +1086,7 @@ export default function useBridgeController() {
     setAmount: (nextAmount) => setAmount(nextAmount.replace(',', '.')),
     submitDisabledReason,
     tokenBalance,
-    tokenBalanceLabel: tokenBalance?.display || (account ? 'Select a token to view balance' : 'Connect a wallet to view balance'),
+    tokenBalanceLabel: tokenBalance?.display || (account ? 'Loading wallet balance...' : 'Connect a wallet to view balance'),
     tokenOptions,
     verusChainHeight,
     verusTipHeight

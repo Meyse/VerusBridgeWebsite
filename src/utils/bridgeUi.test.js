@@ -1,7 +1,9 @@
 import {
   buildTokenCurrency,
+  getCurrencyIcon,
   getTokenDisplayName,
-  getTokenDisplaySymbol
+  getTokenDisplaySymbol,
+  sortSourceCurrencies
 } from './bridgeUi';
 
 describe('bridge source token display metadata', () => {
@@ -19,7 +21,10 @@ describe('bridge source token display metadata', () => {
     expect(getTokenDisplaySymbol(token)).toBe('ETH');
     expect(currency.name).toBe('Ethereum');
     expect(currency.symbol).toBe('ETH');
+    expect(currency.icon).toBe('/icons/currencies/eth.svg');
+    expect(currency.address).toBeUndefined();
     expect(currency.searchTerms).toContain('vETH');
+    expect(currency.searchTerms).not.toContain('0x0000000000000000000000000000000000000000');
   });
 
   test('prefers the Ethereum-side bridge symbol for the bridge reserve token', () => {
@@ -84,6 +89,7 @@ describe('bridge source token display metadata', () => {
 
     expect(currency.name).toBe('ChainLink Token');
     expect(currency.symbol).toBe('LINK');
+    expect(currency.icon).toBe('/icons/currencies/link.svg');
     expect(currency.searchTerms).toContain('[ChainLink Token] as vLINK.vETH');
   });
 
@@ -99,6 +105,42 @@ describe('bridge source token display metadata', () => {
 
     expect(currency.name).toBe('USDC');
     expect(currency.symbol).toBe('USDC');
+    expect(currency.icon).toBe('/icons/currencies/usdc.svg');
     expect(currency.searchTerms).toContain('[0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48] as vUSDC.vETH');
+  });
+
+  test('resolves provided symbol icons for additional ERC20 assets', () => {
+    expect(getCurrencyIcon('BAT')).toBe('/icons/currencies/bat.svg');
+    expect(getCurrencyIcon('PAXG')).toBe('/icons/currencies/paxg.svg');
+    expect(getCurrencyIcon('XAUT')).toBe('/icons/currencies/xaut.svg');
+    expect(getCurrencyIcon('WBTC')).toBe('/icons/currencies/wbtc.svg');
+  });
+
+  test('sorts source currencies by popularity first and alphabetically after that', () => {
+    const currencies = [
+      { id: 'vrsc', name: 'VRSC', symbol: 'VRSC' },
+      { id: 'usdt', name: 'Tether USD', symbol: 'USDT' },
+      { id: 'alpha', name: 'Alpha Token', symbol: 'ALPHA' },
+      { id: 'mkr', name: 'Maker', symbol: 'MKR' },
+      { id: 'bat', name: 'BAT', symbol: 'BAT' },
+      { id: 'eth', name: 'Ethereum', symbol: 'ETH' },
+      { id: 'beta', name: 'Beta Token', symbol: 'BETA' },
+      { id: 'dai', name: 'Dai Stablecoin', symbol: 'DAI' },
+      { id: 'usdc', name: 'USDC', symbol: 'USDC' },
+      { id: 'link', name: 'ChainLink Token', symbol: 'LINK' }
+    ];
+
+    expect(sortSourceCurrencies(currencies).map((currency) => currency.symbol)).toEqual([
+      'ETH',
+      'DAI',
+      'MKR',
+      'USDC',
+      'USDT',
+      'LINK',
+      'BAT',
+      'ALPHA',
+      'BETA',
+      'VRSC'
+    ]);
   });
 });

@@ -6,7 +6,8 @@ import {
   buildDestinationCurrency,
   buildTokenCurrency,
   formatCompactAddress,
-  getTokenDisplaySymbol
+  getTokenDisplaySymbol,
+  sortSourceCurrencies
 } from 'utils/bridgeUi';
 
 import styles from '../styles/ReferenceBridge.module.css';
@@ -23,18 +24,6 @@ const RouteIcon = () => (
   <svg fill="none" height="14" viewBox="0 0 24 24" width="14">
     <path
       d="M5 19a2 2 0 100-4 2 2 0 000 4zm14-14a2 2 0 100 4 2 2 0 000-4zm-2 2H9a4 4 0 00-4 4v4"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-    />
-  </svg>
-);
-
-const FuelIcon = () => (
-  <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
-    <path
-      d="M14 5h1a2 2 0 012 2v12H7V7a2 2 0 012-2h1m4 0V3h-4v2m4 0h-4m9 5l-2-2m2 2v5a2 2 0 01-2 2h-1"
       stroke="currentColor"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -69,6 +58,9 @@ const CloseIcon = () => (
 
 const CurrencyModal = ({
   currencies,
+  emptyStateMessage = 'No currencies available yet.',
+  isLoading = false,
+  loadingMessage = 'Loading currencies...',
   isOpen,
   onClose,
   onSelect,
@@ -140,7 +132,7 @@ const CurrencyModal = ({
         <div className={styles.currencyList}>
           {filteredCurrencies.length === 0 ? (
             <div className={styles.emptyState}>
-              No currencies available yet. Enter a valid destination address to unlock receive options.
+              {isLoading ? loadingMessage : emptyStateMessage}
             </div>
           ) : (
             filteredCurrencies.map((currency) => (
@@ -169,6 +161,16 @@ const CurrencyModal = ({
                     </div>
                   </div>
                 </div>
+                {currency.balanceLabel || currency.fiatLabel ? (
+                  <div className={styles.currencyOptionRight}>
+                    <div className={styles.currencyOptionValue}>
+                      {currency.fiatLabel || currency.balanceLabel}
+                    </div>
+                    {currency.fiatLabel && currency.balanceLabel ? (
+                      <div className={styles.currencyOptionBalance}>{currency.balanceLabel}</div>
+                    ) : null}
+                  </div>
+                ) : null}
               </button>
             ))
           )}
@@ -196,8 +198,12 @@ const BridgeCard = ({ controller }) => {
   const [sourceSelectorOpen, setSourceSelectorOpen] = useState(false);
 
   const sourceCurrencies = useMemo(
-    () => controller.tokenOptions.map((token) => buildTokenCurrency(token)),
-    [controller.tokenOptions]
+    () => (
+      Array.isArray(controller.sourceCurrencies)
+        ? controller.sourceCurrencies
+        : sortSourceCurrencies(controller.tokenOptions.map((token) => buildTokenCurrency(token)))
+    ),
+    [controller.sourceCurrencies, controller.tokenOptions]
   );
 
   const destinationCurrencies = useMemo(
@@ -228,6 +234,7 @@ const BridgeCard = ({ controller }) => {
   const isAddressValid = showValidation && !controller.addressError;
   const isAddressInvalid = showValidation && Boolean(controller.addressError);
   const showSelfButton = Boolean(controller.account);
+  const showBalance = controller.isWalletConnected && controller.tokenBalance;
   const isInsufficientBalance = Boolean(controller.amountError) && controller.amountError.includes('not available in your wallet');
   const addressInputClassName = [
     styles.addressInput,
@@ -259,6 +266,22 @@ const BridgeCard = ({ controller }) => {
     selectedDestinationCurrency,
     selectedSourceCurrency
   ]);
+  const showReceiveRates = showPathInfo || Boolean(exchangeRateText);
+  const sendSectionClassName = styles.cardSection;
+  const receiveSectionClassName = [
+    styles.cardSection,
+    styles.cardSectionSecondary,
+    showReceiveRates ? styles.cardSectionWithFooter : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const sendSelectorClassName = styles.selector;
+  const receiveSelectorClassName = [
+    styles.selector,
+    showReceiveRates ? styles.selectorWithFooter : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   const submitState = useMemo(() => {
     if (!controller.isWalletConnected) {
@@ -315,8 +338,8 @@ const BridgeCard = ({ controller }) => {
         ) : null}
 
         <div className={styles.bridgeCardInner}>
-          <div className={styles.cardSection}>
-            <div className={styles.selector}>
+          <div className={sendSectionClassName}>
+            <div className={sendSelectorClassName}>
               <div className={styles.selectorHeader}>
                 <span className={styles.selectorLabel}>You send</span>
               </div>
@@ -334,7 +357,7 @@ const BridgeCard = ({ controller }) => {
                 </div>
 
                 <button
-                  className={styles.selectorButton}
+                  className={`${styles.selectorButton} ${styles.selectorButtonSoft}`}
                   onClick={() => setSourceSelectorOpen(true)}
                   type="button"
                 >
@@ -352,7 +375,7 @@ const BridgeCard = ({ controller }) => {
                 </button>
               </div>
 
-              {controller.isWalletConnected && controller.tokenBalance ? (
+              {showBalance ? (
                 <div className={styles.balanceDisplay}>
                   <div className={styles.balanceText}>
                     <span>{controller.tokenBalanceLabel}</span>
@@ -365,8 +388,8 @@ const BridgeCard = ({ controller }) => {
             </div>
           </div>
 
-          <div className={`${styles.cardSection} ${styles.cardSectionSecondary}`}>
-            <div className={styles.selector}>
+          <div className={receiveSectionClassName}>
+            <div className={receiveSelectorClassName}>
               <div className={styles.selectorHeader}>
                 <span className={styles.selectorLabel}>You receive</span>
               </div>
@@ -401,28 +424,22 @@ const BridgeCard = ({ controller }) => {
                 </button>
               </div>
 
-              <div className={styles.rates}>
-                {showPathInfo ? (
-                  <div className={styles.pathInfo}>
-                    <RouteIcon />
-                    <span>Path: Ethereum → Verus → Ethereum</span>
-                  </div>
-                ) : null}
+              {showReceiveRates ? (
+                <div className={styles.rates}>
+                  {showPathInfo ? (
+                    <div className={styles.pathInfo}>
+                      <RouteIcon />
+                      <span>Path: Ethereum → Verus → Ethereum</span>
+                    </div>
+                  ) : null}
 
-                {(exchangeRateText || controller.feeEstimate) ? (
-                  <div className={styles.rateRow}>
-                    <div className={styles.rateText}>
-                      {exchangeRateText || <span className={styles.rateTextMuted}>{controller.routeLabel}</span>}
+                  {exchangeRateText ? (
+                    <div className={styles.rateRow}>
+                      <div className={styles.rateText}>{exchangeRateText}</div>
                     </div>
-                    <div className={styles.rateFee}>
-                      <span className={styles.rateIcon}>
-                        <FuelIcon />
-                      </span>
-                      <span>{controller.feeEstimate}</span>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -478,7 +495,12 @@ const BridgeCard = ({ controller }) => {
 
       <CurrencyModal
         currencies={sourceCurrencies}
+        emptyStateMessage={controller.isWalletConnected
+          ? 'No matching assets found in this wallet.'
+          : 'No currencies available yet.'}
+        isLoading={controller.isWalletConnected && controller.isSourceCurrenciesLoading}
         isOpen={sourceSelectorOpen}
+        loadingMessage="Loading wallet assets..."
         onClose={() => setSourceSelectorOpen(false)}
         onSelect={controller.selectToken}
         searchTerm={sourceSearch}
@@ -488,6 +510,7 @@ const BridgeCard = ({ controller }) => {
 
       <CurrencyModal
         currencies={destinationCurrencies}
+        emptyStateMessage="No currencies available yet. Enter a valid destination address to unlock receive options."
         isOpen={destinationSelectorOpen}
         onClose={() => setDestinationSelectorOpen(false)}
         onSelect={controller.selectDestination}

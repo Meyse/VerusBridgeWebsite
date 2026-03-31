@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { UnsupportedChainIdError, useWeb3React } from '@web3-react/core';
 import { NoEthereumProviderError, UserRejectedRequestError } from '@web3-react/injected-connector';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getExplorerBaseUrl } from 'config/explorerLinks';
 import { injectedConnector } from 'connectors/injectedConnector';
@@ -13,14 +13,15 @@ import {
 } from 'utils/walletConnection';
 
 import { useToast } from './Toast/ToastProvider';
-import WalletConnectDialog from './WalletConnectDialog';
+import { ReactComponent as MetaMaskIcon } from '../images/icons/metamask-icon.svg';
+import { ReactComponent as WalletIcon } from '../images/icons/wallet-icon.svg';
 import styles from '../styles/ReferenceBridge.module.css';
 
 const NAV_ITEMS = [
-  { label: 'Truly trustless', to: '/#trustless-section' },
-  { label: 'Bridge transactions', to: '/#bridge-interface' },
-  { label: 'FAQ', to: '/#resources' },
-  { label: 'Refunds', to: '/claim' }
+  { label: 'Bridge', to: '/' },
+  { label: 'Info', to: '/#trustless-section' },
+  { label: 'Transactions', to: '/#bridge-interface' },
+  { label: 'Refunds & claims', to: '/claim' }
 ];
 
 const CopyIcon = ({ copied }) => (
@@ -73,13 +74,28 @@ const MenuIcon = () => (
   </svg>
 );
 
+const WALLET_OPTIONS = [
+  {
+    id: 'metamask',
+    title: 'MetaMask',
+    icon: <MetaMaskIcon />
+  },
+  {
+    id: 'browser-wallet',
+    title: 'WalletConnect',
+    icon: <WalletIcon />
+  }
+];
+
 const SiteHeader = () => {
   const [copied, setCopied] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(() => (typeof window !== 'undefined' ? window.scrollY > 0 : false));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const headerRef = useRef(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const { account, activate, deactivate, error } = useWeb3React();
   const { addToast } = useToast();
 
@@ -92,6 +108,50 @@ const SiteHeader = () => {
       addToast({ type: 'error', description: 'Switch MetaMask to Ethereum mainnet or Sepolia.' });
     }
   }, [addToast, error]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 0);
+    };
+
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !headerRef.current) {
+      return undefined;
+    }
+
+    const rootStyle = document.documentElement.style;
+    const updateHeaderHeight = () => {
+      rootStyle.setProperty('--site-header-height', `${headerRef.current?.offsetHeight || 0}px`);
+    };
+
+    updateHeaderHeight();
+
+    let resizeObserver;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(updateHeaderHeight);
+      resizeObserver.observe(headerRef.current);
+    }
+
+    window.addEventListener('resize', updateHeaderHeight);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateHeaderHeight);
+      rootStyle.removeProperty('--site-header-height');
+    };
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -120,7 +180,7 @@ const SiteHeader = () => {
     } catch (connectError) {
       // The connector error is surfaced through the web3-react context.
     } finally {
-      setWalletDialogOpen(false);
+      setShowDropdown(false);
     }
   };
 
@@ -144,10 +204,28 @@ const SiteHeader = () => {
     }
 
     window.open(`${getExplorerBaseUrl()}/address/${account}`, '_blank', 'noopener,noreferrer');
+    setShowDropdown(false);
+  };
+
+  const handleBridgeClick = (event) => {
+    if (location.pathname !== '/' || typeof window === 'undefined') {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (location.hash) {
+      navigate('/');
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
-    <header className={styles.header}>
+    <header
+      className={isScrolled ? `${styles.header} ${styles.headerScrolled}` : styles.header}
+      ref={headerRef}
+    >
       <div className={styles.headerInner}>
         <div className={styles.headerLeft}>
           <Link className={styles.headerTitle} to="/">
@@ -156,7 +234,12 @@ const SiteHeader = () => {
 
           <nav aria-label="Primary" className={styles.headerNav}>
             {NAV_ITEMS.map((item) => (
-              <Link className={styles.headerNavLink} key={item.label} to={item.to}>
+              <Link
+                className={styles.headerNavLink}
+                key={item.label}
+                onClick={item.to === '/' ? handleBridgeClick : undefined}
+                to={item.to}
+              >
                 {item.label}
               </Link>
             ))}
@@ -165,17 +248,39 @@ const SiteHeader = () => {
 
         <div className={styles.walletGroup} ref={dropdownRef}>
           {!account ? (
-            <button
-              className={styles.connectButton}
-              onClick={() => setWalletDialogOpen(true)}
-              type="button"
-            >
-              Connect wallet
-            </button>
+            <>
+              <button
+                aria-expanded={showDropdown}
+                className={styles.connectButton}
+                onClick={() => setShowDropdown((currentValue) => !currentValue)}
+                type="button"
+              >
+                <span>Connect wallet</span>
+              </button>
+
+              {showDropdown ? (
+                <div aria-label="Wallet connection options" className={styles.dropdown}>
+                  <div className={styles.walletOptionList}>
+                    {WALLET_OPTIONS.map((walletOption) => (
+                      <button
+                        className={styles.walletOption}
+                        key={walletOption.id}
+                        onClick={handleConfirmWallet}
+                        type="button"
+                      >
+                        <span className={styles.walletOptionIconWrap}>{walletOption.icon}</span>
+                        <span className={styles.walletOptionTitle}>{walletOption.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </>
           ) : (
             <>
               <button
-                className={styles.connectedButton}
+                aria-expanded={showDropdown}
+                className={showDropdown ? `${styles.connectedButton} ${styles.connectedButtonActive}` : styles.connectedButton}
                 onClick={() => setShowDropdown((currentValue) => !currentValue)}
                 type="button"
               >
@@ -185,7 +290,7 @@ const SiteHeader = () => {
               {showDropdown ? (
                 <div className={styles.dropdown}>
                   <div className={styles.dropdownHeader}>
-                    <div className={styles.dropdownKicker}>Connected with MetaMask</div>
+                    <div className={styles.dropdownKicker}>Connected wallet</div>
                     <div className={styles.dropdownAddressRow}>
                       <div className={styles.dropdownAddress}>{account}</div>
                       <button
@@ -236,7 +341,12 @@ const SiteHeader = () => {
       {mobileMenuOpen ? (
         <div className={styles.mobileNavPanel}>
           {NAV_ITEMS.map((item) => (
-            <Link className={styles.mobileNavLink} key={item.label} to={item.to}>
+            <Link
+              className={styles.mobileNavLink}
+              key={item.label}
+              onClick={item.to === '/' ? handleBridgeClick : undefined}
+              to={item.to}
+            >
               {item.label}
             </Link>
           ))}
@@ -245,12 +355,6 @@ const SiteHeader = () => {
           </Link>
         </div>
       ) : null}
-
-      <WalletConnectDialog
-        isOpen={walletDialogOpen}
-        onClose={() => setWalletDialogOpen(false)}
-        onConfirm={handleConfirmWallet}
-      />
     </header>
   );
 };

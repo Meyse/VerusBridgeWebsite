@@ -5,15 +5,26 @@
 }
 
 .hero {
-  min-height: 100vh;
+  min-height: calc(100vh - var(--site-header-height, 0px));
+  min-height: calc(100dvh - var(--site-header-height, 0px));
   position: relative;
 }
 
 .header {
   width: 100%;
   padding: 12px 0 16px;
-  position: relative;
-  z-index: 20;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(255, 255, 255, 0);
+  border-bottom: 1px solid transparent;
+  transition: background-color 180ms ease, border-color 180ms ease, backdrop-filter 180ms ease;
+}
+
+.headerScrolled {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom-color: rgba(226, 232, 240, 0.96);
 }
 
 .headerInner {
@@ -66,6 +77,8 @@
 }
 
 .connectButton {
+  display: inline-flex;
+  align-items: center;
   border: none;
   background: #3165d4;
   color: #ffffff;
@@ -78,7 +91,7 @@
 }
 
 .connectButton:hover {
-  background: rgba(49, 101, 212, 0.9);
+  background: #3165d4;
 }
 
 .connectedButton {
@@ -100,6 +113,10 @@
   background: #f1f5f9;
 }
 
+.connectedButtonActive {
+  background: #e2e8f0;
+}
+
 .connectedLabel {
   font-weight: 500;
 }
@@ -108,7 +125,8 @@
   position: absolute;
   top: calc(100% + 12px);
   right: 0;
-  width: 288px;
+  width: 296px;
+  max-width: calc(100vw - 24px);
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
   border: 1px solid #e2e8f0;
@@ -160,6 +178,63 @@
 .copyButton:hover {
   color: #334155;
   background: #f1f5f9;
+}
+
+.walletOptionList {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+}
+
+.walletOption {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: #ffffff;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.walletOption:hover {
+  background: #f8fafc;
+  border-color: #dbeafe;
+}
+
+.walletOption:focus-visible {
+  outline: none;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(191, 219, 254, 0.75);
+}
+
+.walletOptionIconWrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #eff6ff, #f8fafc);
+  color: #3165d4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.walletOptionIconWrap svg {
+  width: 24px;
+  height: 24px;
+}
+
+.walletOptionTitle {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
 }
 
 .dropdownActions {
@@ -419,7 +494,8 @@
   border-radius: 24px;
   padding: 8px;
   box-shadow: 0 20px 40px rgba(229, 231, 235, 0.9);
-  border: 1px solid #e5e7eb;
+  border: none;
+  scroll-margin-top: 112px;
 }
 
 .bridgeCardInner {
@@ -427,28 +503,39 @@
 }
 
 .cardSection {
-  min-height: 142px;
+  min-height: 134px;
   margin-bottom: 8px;
   border-radius: 20px;
   background: #ffffff;
   border: 1px solid #e5e7eb;
+  display: flex;
 }
 
 .cardSectionSecondary {
-  min-height: 142px;
+  min-height: 134px;
   border-radius: 20px;
-  background: #f9fafb;
+  background: #f8fafc;
+  border: none;
+}
+
+.cardSectionWithFooter {
+  min-height: 156px;
 }
 
 .selector {
-  padding: 16px;
+  position: relative;
+  width: 100%;
+  min-height: 100%;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 .selectorHeader {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 
 .selectorLabel {
@@ -459,6 +546,16 @@
 .selectorRow {
   display: flex;
   gap: 8px;
+  align-items: center;
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.selectorWithFooter .selectorRow {
+  top: calc(50% - 12px);
 }
 
 .selectorInputWrap {
@@ -485,15 +582,40 @@
 }
 
 .selectorButton {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-radius: 20px;
+  height: 37px;
+  padding: 0 14px;
+  border-radius: 999px;
   border: 1px solid #d1d5db;
   background: #ffffff;
   cursor: pointer;
   flex-shrink: 0;
+}
+
+.selectorButtonSoft {
+  background: #ffffff;
+  border-color: #d7dee8;
+}
+
+.selectorButtonSoft:hover {
+  background: #ffffff;
+  border-color: #cbd5e1;
+}
+
+.selectorButtonSoft .selectorButtonText {
+  color: #334155;
+}
+
+.selectorButtonSoft .selectorIconWrap {
+  background: transparent;
+  box-shadow: none;
+}
+
+.selectorButtonSoft .selectorChevron {
+  opacity: 0.72;
 }
 
 .selectorButtonPrimary {
@@ -503,10 +625,16 @@
 
 .selectorButtonText {
   color: #111827;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .selectorButtonTextPrimary {
   color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .selectorIconWrap {
@@ -528,8 +656,8 @@
 }
 
 .selectorChevron {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
 }
 
@@ -538,16 +666,18 @@
 }
 
 .balanceDisplay {
-  margin-top: 8px;
+  margin-top: 0;
   display: flex;
   justify-content: flex-end;
+  margin-top: auto;
 }
 
 .balanceText {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.1;
   color: #6b7280;
 }
 
@@ -555,9 +685,9 @@
   border: none;
   background: #dbeafe;
   color: #1d4ed8;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 6px;
   cursor: pointer;
   transition: background-color 150ms ease;
@@ -568,7 +698,8 @@
 }
 
 .rates {
-  margin-top: 16px;
+  margin-top: 0;
+  margin-top: auto;
 }
 
 .pathInfo {
@@ -587,7 +718,7 @@
 .rateRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   font-size: 14px;
 }
 
@@ -597,20 +728,6 @@
 
 .rateTextMuted {
   color: #6b7280;
-}
-
-.rateFee {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: #111827;
-  font-weight: 500;
-}
-
-.rateIcon {
-  display: flex;
-  align-items: center;
-  color: #4b5563;
 }
 
 .addressBlock {
@@ -632,34 +749,31 @@
   min-height: 52px;
   padding: 12px 64px 12px 16px;
   border-radius: 12px;
-  border: 1px solid #d1d5db;
+  border: none;
   color: #111827;
-  background: #ffffff;
+  background: #f5f7fb;
   outline: none;
-  transition: border-color 200ms ease, box-shadow 200ms ease, background-color 200ms ease;
+  transition: background-color 200ms ease, box-shadow 200ms ease;
 }
 
 .addressInput:focus {
-  border-color: #bfdbfe;
-  box-shadow: 0 0 0 2px rgba(191, 219, 254, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(203, 213, 225, 0.95), 0 0 0 3px rgba(49, 101, 212, 0.08);
 }
 
 .addressInputValid {
-  border-color: #86efac;
-  background: #f0fdf4;
+  background: #edf9f1;
 }
 
 .addressInputValid:focus {
-  box-shadow: 0 0 0 2px rgba(187, 247, 208, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(203, 213, 225, 0.95), 0 0 0 3px rgba(49, 101, 212, 0.08);
 }
 
 .addressInputInvalid {
-  border-color: #fca5a5;
   background: #fef2f2;
 }
 
 .addressInputInvalid:focus {
-  box-shadow: 0 0 0 2px rgba(254, 202, 202, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(203, 213, 225, 0.95), 0 0 0 3px rgba(49, 101, 212, 0.08);
 }
 
 .selfButton {
@@ -741,16 +855,17 @@
   inset: 0;
   z-index: 50;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   background: rgba(15, 23, 42, 0.38);
   backdrop-filter: blur(12px);
-  padding: 16px;
+  overflow-y: auto;
+  padding: calc(clamp(16px, 6vh, 48px) + 70px) 16px 16px;
 }
 
 .modalCard {
   width: 100%;
-  max-width: 23.5rem;
+  max-width: 400px;
   background: #ffffff;
   border-radius: 22px;
   padding: 14px;
@@ -758,6 +873,7 @@
   border: 1px solid rgba(226, 232, 240, 0.95);
   display: flex;
   flex-direction: column;
+  min-height: min(26rem, 78vh);
   max-height: min(78vh, 36rem);
 }
 
@@ -827,8 +943,10 @@
 
 .currencyList {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 2px;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -866,7 +984,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 100%;
+  flex: 1;
   min-width: 0;
 }
 
@@ -922,24 +1040,35 @@
 }
 
 .currencyOptionRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   text-align: right;
+  margin-left: 12px;
+  flex-shrink: 0;
 }
 
 .currencyOptionValue {
-  font-size: 16px;
+  font-size: 14px;
+  line-height: 1.2;
   color: #111827;
-  font-weight: 500;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .currencyOptionBalance {
-  font-size: 14px;
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.2;
   color: #6b7280;
+  font-variant-numeric: tabular-nums;
 }
 
 .trustSection {
   min-height: 100vh;
   padding: 16px;
   background: #ffffff;
+  scroll-margin-top: 112px;
 }
 
 .trustInner {
@@ -1335,7 +1464,11 @@
 
   .cardSection,
   .cardSectionSecondary {
-    min-height: 142px;
+    min-height: 134px;
+  }
+
+  .cardSectionWithFooter {
+    min-height: 156px;
   }
 
   .comparisonGrid,
@@ -1379,6 +1512,7 @@
 
   .modalOverlay {
     align-items: flex-end;
+    overflow-y: visible;
     padding: 12px;
   }
 
@@ -1386,6 +1520,7 @@
     max-width: none;
     padding: 14px 12px;
     border-radius: 22px 22px 20px 20px;
+    min-height: min(22rem, 80vh);
     max-height: min(80vh, 36rem);
   }
 

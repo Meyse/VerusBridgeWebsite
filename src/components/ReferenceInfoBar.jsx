@@ -1,6 +1,8 @@
 import React from 'react';
 
+import { BLOCKCHAIN_NAME } from 'constants/contractAddress';
 import styles from 'styles/ReferenceBridge.module.css';
+import { getCurrencyIcon } from 'utils/bridgeUi';
 
 const usdFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -102,6 +104,9 @@ const ReferenceInfoBar = ({
     notarizationLagBlocks,
     verusTipHeight
   });
+  const bridgeLabel = BLOCKCHAIN_NAME === 'VRSC' ? 'Verus' : BLOCKCHAIN_NAME;
+  const ethIcon = getCurrencyIcon('ETH');
+  const verusIcon = getCurrencyIcon(BLOCKCHAIN_NAME);
 
   const activityChip = (
     <div
@@ -122,13 +127,13 @@ const ReferenceInfoBar = ({
               <img
                 alt="Ethereum"
                 className={`${styles.currencyIcon} ${styles.roundedIcon}`}
-                src="/icons/currencies/eth.png"
+                src={ethIcon}
               />
               <span className={styles.infoChipArrow}>→</span>
               <img
-                alt="Verus"
+                alt={bridgeLabel}
                 className={styles.currencyIcon}
-                src="/icons/currencies/verus-icon-blue.svg"
+                src={verusIcon}
               />
             </div>
             <span className={styles.infoChipValue}>
@@ -141,19 +146,19 @@ const ReferenceInfoBar = ({
               <img
                 alt="Ethereum"
                 className={`${styles.currencyIcon} ${styles.roundedIcon}`}
-                src="/icons/currencies/eth.png"
+                src={ethIcon}
               />
               <span className={styles.infoChipArrow}>→</span>
               <img
-                alt="Verus"
+                alt={bridgeLabel}
                 className={styles.currencyIcon}
-                src="/icons/currencies/verus-icon-blue.svg"
+                src={verusIcon}
               />
               <span className={styles.infoChipArrow}>→</span>
               <img
                 alt="Ethereum"
                 className={`${styles.currencyIcon} ${styles.roundedIcon}`}
-                src="/icons/currencies/eth.png"
+                src={ethIcon}
               />
             </div>
             <span className={styles.infoChipValue}>

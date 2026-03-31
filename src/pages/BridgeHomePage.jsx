@@ -65,8 +65,9 @@ const BridgeHomePage = () => {
 
   return (
     <div className={styles.page}>
+      <SiteHeader />
+
       <div className={styles.hero}>
-        <SiteHeader />
         <ReferenceInfoBar
           baseBridgeFee={controller.baseBridgeFeeValue}
           bounceBackFee={controller.bounceBackFeeValue}
