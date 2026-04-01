@@ -103,6 +103,7 @@ const BridgeHomePage = () => {
   }, []);
 
   const resources = [...internalResources, ...getExplorerResources()];
+  const isReviewing = Boolean(controller.isReviewing);
 
   return (
     <div className={styles.page}>
@@ -121,37 +122,43 @@ const BridgeHomePage = () => {
 
         <main className={styles.main}>
           <div className={styles.content}>
-            <div className={styles.titleWrap}>
-              <h1 className={styles.title}>Bridge assets securely</h1>
-            </div>
+            {!isReviewing ? (
+              <div className={styles.titleWrap}>
+                <h1 className={styles.title}>Bridge assets securely</h1>
+              </div>
+            ) : null}
 
             <div className={styles.formCenter}>
               <BridgeCard controller={controller} />
-              <p className={styles.supportingText}>
-                Bridge or convert completely trustless into Verus, or convert back into Ethereum. No counterparty risk.
-              </p>
+              {!isReviewing ? (
+                <p className={styles.supportingText}>
+                  Bridge or convert completely trustless into Verus, or convert back into Ethereum. No counterparty risk.
+                </p>
+              ) : null}
             </div>
           </div>
         </main>
 
-        <div className={styles.scrollIndicatorWrap}>
-          <button
-            className={styles.scrollIndicator}
-            onClick={() => scrollToSection('trustless-section')}
-            style={{
-              opacity: scrollIndicatorOpacity,
-              pointerEvents: scrollIndicatorOpacity <= 0.05 ? 'none' : undefined
-            }}
-            tabIndex={scrollIndicatorOpacity <= 0.05 ? -1 : 0}
-            type="button"
-          >
-            <span className={styles.scrollLabel}>Scroll to learn more</span>
-            <ScrollIcon />
-          </button>
-        </div>
+        {!isReviewing ? (
+          <div className={styles.scrollIndicatorWrap}>
+            <button
+              className={styles.scrollIndicator}
+              onClick={() => scrollToSection('trustless-section')}
+              style={{
+                opacity: scrollIndicatorOpacity,
+                pointerEvents: scrollIndicatorOpacity <= 0.05 ? 'none' : undefined
+              }}
+              tabIndex={scrollIndicatorOpacity <= 0.05 ? -1 : 0}
+              type="button"
+            >
+              <span className={styles.scrollLabel}>Scroll to learn more</span>
+              <ScrollIcon />
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      <ReferenceTrustlessSection resources={resources} />
+      {!isReviewing ? <ReferenceTrustlessSection resources={resources} /> : null}
     </div>
   );
 };

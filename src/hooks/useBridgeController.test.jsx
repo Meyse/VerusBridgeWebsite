@@ -1,0 +1,1141 @@
+import React from 'react';
+
+import { utils } from 'ethers';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useWeb3React } from '@web3-react/core';
+
+import { BLOCKCHAIN_NAME, GLOBAL_ADDRESS, GLOBAL_IADDRESS } from 'constants/contractAddress';
+import { useToast } from 'components/Toast/ToastProvider';
+import useContract from 'hooks/useContract';
+import { getContract, getMaxAmount } from 'utils/contract';
+
+const mockVerusd = {
+  estimateConversion: jest.fn(),
+  getBlock: jest.fn(),
+  getCurrency: jest.fn(),
+  getInfo: jest.fn()
+};
+
+jest.mock('@web3-react/core', () => ({
+  useWeb3React: jest.fn()
+}));
+
+jest.mock('components/Toast/ToastProvider', () => ({
+  useToast: jest.fn()
+}));
+
+jest.mock('hooks/useContract', () => jest.fn());
+
+jest.mock('verusd-rpc-ts-client', () => ({
+  VerusdRpcInterface: jest.fn(() => mockVerusd)
+}));
+
+jest.mock('utils/contract', () => ({
+  getContract: jest.fn(),
+  getMaxAmount: jest.fn()
+}));
+
+const useBridgeController = require('./useBridgeController').default;
+
+const ETH_ADDRESS = GLOBAL_ADDRESS.ETH;
+const DAI_ADDRESS = GLOBAL_ADDRESS.DAI;
+const MKR_ADDRESS = GLOBAL_ADDRESS.MKR;
+const BRIDGE_ADDRESS = GLOBAL_ADDRESS.BETH;
+const VRSC_ADDRESS = GLOBAL_ADDRESS.VRSC;
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const LINK_ADDRESS = '0x514910771AF9Ca656af840dff83E8264EcF986CA';
+const EURC_ADDRESS = '0x1AbAAE1F7c830bD89Acc67ec4af516284b1bC33c';
+const SCRVUSD_ADDRESS = '0x1111111111111111111111111111111111111111';
+const USDT_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
+const TBTC_ADDRESS = '0x18084fbA666A33d37592fA2633fD49A74dD93a88';
+const originalFetch = global.fetch;
+
+const liveEthToken = {
+  name: 'vETH',
+  ticker: 'ETH',
+  iaddress: ETH_ADDRESS,
+  erc20ContractAddress: ZERO_ADDRESS,
+  flags: '9'
+};
+
+const daiToken = {
+  name: 'DAI.vETH',
+  ticker: 'DAI',
+  iaddress: DAI_ADDRESS,
+  erc20ContractAddress: '0x6B175474E89094C44Da98b954EedeAC495271d0F',
+  flags: '12'
+};
+
+const eurcToken = {
+  name: 'EURC.vETH',
+  ticker: 'EURC',
+  iaddress: EURC_ADDRESS,
+  erc20ContractAddress: EURC_ADDRESS,
+  flags: '12'
+};
+
+const scrvusdToken = {
+  name: 'scrvUSD.vETH',
+  ticker: 'scrvUSD',
+  iaddress: SCRVUSD_ADDRESS,
+  erc20ContractAddress: SCRVUSD_ADDRESS,
+  flags: '12'
+};
+
+const usdtToken = {
+  name: 'vUSDT.vETH',
+  ticker: 'USDT',
+  iaddress: USDT_ADDRESS,
+  erc20ContractAddress: USDT_ADDRESS,
+  flags: '12'
+};
+
+const tbtcToken = {
+  name: 'tBTC.vETH',
+  ticker: 'tBTC',
+  iaddress: TBTC_ADDRESS,
+  erc20ContractAddress: TBTC_ADDRESS,
+  flags: '12'
+};
+
+const linkToken = {
+  name: 'LINK.vETH',
+  ticker: 'LINK',
+  iaddress: LINK_ADDRESS,
+  erc20ContractAddress: LINK_ADDRESS,
+  flags: '12'
+};
+
+const createCurrencyResult = ({ currencyId = 'market-id', namesById, reserveEntries, supply = 100 }) => ({
+  result: {
+    bestcurrencystate: {
+      reservecurrencies: reserveEntries,
+      supply
+    },
+    currencyid: currencyId,
+    currencynames: namesById
+  }
+});
+
+const createBridgeCurrencyResult = () => createCurrencyResult({
+  currencyId: 'bridge-market-id',
+  namesById: {
+    'bridge-vrsc': 'VRSC',
+    'bridge-dai': 'DAI.vETH',
+    'bridge-mkr': 'MKR.vETH',
+    'bridge-eth': 'vETH'
+  },
+  reserveEntries: [
+    { currencyid: 'bridge-vrsc', priceinreserve: 15, reserves: 1500, weight: 0.25 },
+    { currencyid: 'bridge-dai', priceinreserve: 10, reserves: 250, weight: 0.25 },
+    { currencyid: 'bridge-mkr', priceinreserve: 0.005, reserves: 20, weight: 0.25 },
+    { currencyid: 'bridge-eth', priceinreserve: 0.01, reserves: 25, weight: 0.25 }
+  ],
+  supply: 100
+});
+
+const createFloralisCurrencyResult = () => createCurrencyResult({
+  currencyId: 'floralis-market-id',
+  namesById: {
+    'floralis-dai': 'DAI.vETH',
+    'floralis-usdt': 'vUSDT.vETH',
+    'floralis-eurc': 'EURC.vETH',
+    'floralis-scrvusd': 'scrvUSD.vETH',
+    'floralis-tbtc': 'tBTC.vETH'
+  },
+  reserveEntries: [
+    { currencyid: 'floralis-dai', priceinreserve: 20, reserves: 1000, weight: 0.125 },
+    { currencyid: 'floralis-usdt', priceinreserve: 20.4, reserves: 980, weight: 0.125 },
+    { currencyid: 'floralis-eurc', priceinreserve: 16, reserves: 800, weight: 0.05 },
+    { currencyid: 'floralis-scrvusd', priceinreserve: 18, reserves: 720, weight: 0.05 },
+    { currencyid: 'floralis-tbtc', priceinreserve: 0.0005, reserves: 0.5, weight: 0.2 }
+  ],
+  supply: 100
+});
+
+const createNatiCurrencyResult = () => createCurrencyResult({
+  currencyId: 'nati-market-id',
+  namesById: {
+    'nati-vrsc': 'VRSC',
+    'nati-eth': 'vETH'
+  },
+  reserveEntries: [
+    { currencyid: 'nati-vrsc', priceinreserve: 28.84, reserves: 2884, weight: 0.25 },
+    { currencyid: 'nati-eth', priceinreserve: 0.01, reserves: 10, weight: 0.25 }
+  ],
+  supply: 100
+});
+
+const createLibrary = (overrides = {}) => ({
+  getBalance: jest.fn().mockResolvedValue('0'),
+  getBlock: jest.fn(() => new Promise(() => {})),
+  getBlockNumber: jest.fn(() => new Promise(() => {})),
+  getTransaction: jest.fn(() => new Promise(() => {})),
+  ...overrides
+});
+
+const createDelegatorContract = (overrides = {}) => ({
+  callStatic: {
+    bestForks: jest.fn(() => new Promise(() => {})),
+    bridgeConverterActive: jest.fn().mockResolvedValue(true),
+    getTokenList: jest.fn().mockResolvedValue([liveEthToken, daiToken]),
+    verusToERC20mapping: jest.fn().mockResolvedValue({ flags: '1' }),
+    ...overrides.callStatic
+  }
+});
+
+const createDeferred = () => {
+  let resolve;
+  let reject;
+
+  const promise = new Promise((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return { promise, reject, resolve };
+};
+
+const readJsonTestId = (testId) => JSON.parse(screen.getByTestId(testId).textContent || '{}');
+
+const HookProbe = () => {
+  const controller = useBridgeController();
+
+  return (
+    <div>
+      <div data-testid="catalog-error">{controller.sourceCatalogError || ''}</div>
+      <div data-testid="catalog-loading">{controller.isSourceCatalogLoading ? 'loading' : 'ready'}</div>
+      <div data-testid="selected-flags">{controller.selectedToken?.flags || ''}</div>
+      <div data-testid="selected-value">{controller.selectedToken?.value || ''}</div>
+      <div data-testid="source-count">{controller.sourceCurrencies.length}</div>
+      <div data-testid="source-symbols">{controller.sourceCurrencies.map((currency) => currency.symbol).join(',')}</div>
+      <div data-testid="source-fiat-values">{controller.sourceCurrencies.map((currency) => `${currency.symbol}:${currency.fiatLabel || 'none'}`).join('|')}</div>
+      <div data-testid="token-flags">{controller.tokenOptions.map((token) => `${token.value}:${token.flags || ''}`).join('|')}</div>
+      <div data-testid="amount-fiat">{controller.amountFiatLabel || ''}</div>
+      <div data-testid="receive-fiat">{controller.receiveFiatLabel || ''}</div>
+      <div data-testid="receive-symbol">{controller.receiveCurrency?.symbol || ''}</div>
+      <div data-testid="receive-amount">{controller.receiveAmountDisplay || ''}</div>
+      <div data-testid="receive-quote-state">{controller.receiveQuoteState || ''}</div>
+      <div data-testid="warning-kind">{controller.conversionWarningKind || ''}</div>
+      <div data-testid="warning-gap">{controller.conversionWarningGapPercent || ''}</div>
+      <div data-testid="warning-message">{controller.conversionWarningMessage || ''}</div>
+      <div data-testid="eth-usd-price">{controller.ethUsdPrice || ''}</div>
+      <div data-testid="price-source-map">{JSON.stringify(controller.priceSourceBySymbol || {})}</div>
+      <div data-testid="usd-price-map">{JSON.stringify(controller.usdPriceBySymbol || {})}</div>
+      <div data-testid="has-fresh-receive-quote">{controller.hasFreshReceiveQuote ? 'yes' : 'no'}</div>
+      <div data-testid="submit-disabled-reason">{controller.submitDisabledReason || ''}</div>
+      <div data-testid="is-reviewing">{controller.isReviewing ? 'yes' : 'no'}</div>
+      <div data-testid="review-confirm-label">{controller.reviewConfirmLabel || ''}</div>
+      <div data-testid="can-confirm-review">{controller.canConfirmReview ? 'yes' : 'no'}</div>
+      <div data-testid="review-fees">{(controller.reviewFeeRows || []).map((row) => `${row.label}:${row.value}`).join('|')}</div>
+      <div data-testid="base-fee">{controller.baseBridgeFeeValue ?? ''}</div>
+      <div data-testid="bounceback-fee">{controller.bounceBackFeeValue ?? ''}</div>
+      <button
+        onClick={() => {
+          controller.selectToken(DAI_ADDRESS);
+          controller.selectDestination(BLOCKCHAIN_NAME);
+          controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+          controller.setAmount('2.290298377929176');
+        }}
+        type="button"
+      >
+        Configure Direct DAI
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(DAI_ADDRESS);
+          controller.selectDestination('bridgeETH');
+          controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+          controller.setAmount('2.290298377929176');
+        }}
+        type="button"
+      >
+        Configure Bridge ETH
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(DAI_ADDRESS);
+          controller.selectDestination('swaptoETH');
+          controller.setAddress('0x1111111111111111111111111111111111111111');
+          controller.setAmount('2');
+        }}
+        type="button"
+      >
+        Configure Swap
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(ETH_ADDRESS);
+          controller.selectDestination(BLOCKCHAIN_NAME);
+          controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+          controller.setAmount('1');
+        }}
+        type="button"
+      >
+        Configure ETH Direct
+      </button>
+      <button
+        onClick={() => {
+          controller.setAmount('3');
+        }}
+        type="button"
+      >
+        Change Amount
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(ETH_ADDRESS);
+          controller.selectDestination('bridgeVRSC');
+          controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+          controller.setAmount('1');
+        }}
+        type="button"
+      >
+        Configure ETH Bridge VRSC
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(ETH_ADDRESS);
+          controller.selectDestination('bridgeDAI');
+          controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+          controller.setAmount('1');
+        }}
+        type="button"
+      >
+        Configure ETH Bridge DAI
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(ETH_ADDRESS);
+          controller.selectDestination('bridgeMKR');
+          controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+          controller.setAmount('1');
+        }}
+        type="button"
+      >
+        Configure ETH Bridge MKR
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(EURC_ADDRESS);
+          controller.selectDestination(BLOCKCHAIN_NAME);
+          controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+          controller.setAmount('2');
+        }}
+        type="button"
+      >
+        Configure EURC Direct
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(SCRVUSD_ADDRESS);
+          controller.selectDestination(BLOCKCHAIN_NAME);
+          controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+          controller.setAmount('2');
+        }}
+        type="button"
+      >
+        Configure scrvUSD Direct
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(USDT_ADDRESS);
+          controller.selectDestination(BLOCKCHAIN_NAME);
+          controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+          controller.setAmount('2');
+        }}
+        type="button"
+      >
+        Configure USDT Direct
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(TBTC_ADDRESS);
+          controller.selectDestination(BLOCKCHAIN_NAME);
+          controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+          controller.setAmount('0.1');
+        }}
+        type="button"
+      >
+        Configure tBTC Direct
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(LINK_ADDRESS);
+          controller.selectDestination(BLOCKCHAIN_NAME);
+          controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+          controller.setAmount('2');
+        }}
+        type="button"
+      >
+        Configure LINK Direct
+      </button>
+      <button onClick={() => controller.openReview()} type="button">Open Review</button>
+    </div>
+  );
+};
+
+describe('useBridgeController disconnected source bootstrap', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    global.fetch = jest.fn(() => new Promise(() => {}));
+    useToast.mockReturnValue({ addToast: jest.fn() });
+    getMaxAmount.mockResolvedValue(100);
+    const tokenMetadataByAddress = {
+      [daiToken.erc20ContractAddress.toLowerCase()]: { name: 'Dai Stablecoin', symbol: 'DAI' },
+      [eurcToken.erc20ContractAddress.toLowerCase()]: { name: 'Euro Coin', symbol: 'EURC' },
+      [scrvusdToken.erc20ContractAddress.toLowerCase()]: { name: 'Savings crvUSD', symbol: 'scrvUSD' },
+      [usdtToken.erc20ContractAddress.toLowerCase()]: { name: 'Tether USD', symbol: 'USDT' },
+      [tbtcToken.erc20ContractAddress.toLowerCase()]: { name: 'tBTC', symbol: 'tBTC' },
+      [linkToken.erc20ContractAddress.toLowerCase()]: { name: 'Chainlink', symbol: 'LINK' }
+    };
+    getContract.mockImplementation((address) => ({
+      name: jest.fn().mockResolvedValue(tokenMetadataByAddress[address?.toLowerCase()]?.name || 'Token'),
+      symbol: jest.fn().mockResolvedValue(tokenMetadataByAddress[address?.toLowerCase()]?.symbol || 'TKN')
+    }));
+    mockVerusd.getBlock.mockResolvedValue(null);
+    mockVerusd.getCurrency.mockImplementation((currencyName) => {
+      switch (currencyName) {
+        case 'bridge.veth':
+          return Promise.resolve(createBridgeCurrencyResult());
+        case 'Floralis':
+          return Promise.resolve(createFloralisCurrencyResult());
+        case 'NATI🦉':
+          return Promise.resolve(createNatiCurrencyResult());
+        default:
+          return Promise.resolve({});
+      }
+    });
+    mockVerusd.getInfo.mockResolvedValue({
+      result: {
+        longestchain: 100,
+        tiptime: 1000
+      }
+    });
+    mockVerusd.estimateConversion.mockResolvedValue({});
+  });
+
+  afterAll(() => {
+    global.fetch = originalFetch;
+  });
+
+  test('seeds ETH immediately before async source bootstrap completes', () => {
+    const library = createLibrary();
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        bridgeConverterActive: jest.fn(() => new Promise(() => {})),
+        getTokenList: jest.fn(() => new Promise(() => {}))
+      }
+    });
+
+    mockVerusd.getCurrency.mockImplementation(() => new Promise(() => {}));
+    useWeb3React.mockReturnValue({ account: null, library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    expect(screen.getByTestId('selected-value')).toHaveTextContent(ETH_ADDRESS);
+    expect(screen.getByTestId('source-count')).toHaveTextContent('1');
+    expect(screen.getByTestId('source-symbols')).toHaveTextContent('ETH');
+    expect(screen.getByTestId('catalog-loading')).toHaveTextContent('loading');
+  });
+
+  test('keeps source tokens available when gas estimation fails', async () => {
+    const library = createLibrary({
+      getBlockNumber: jest.fn().mockRejectedValue(new Error('gas rpc down'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    useWeb3React.mockReturnValue({ account: null, library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    expect(screen.getByTestId('selected-value')).toHaveTextContent(ETH_ADDRESS);
+    expect(screen.getByTestId('source-count')).toHaveTextContent('2');
+    expect(screen.getByTestId('source-symbols')).toHaveTextContent('ETH,DAI');
+    expect(screen.getByTestId('catalog-error')).toBeEmptyDOMElement();
+    expect(Number(screen.getByTestId('base-fee').textContent)).toBeCloseTo(0.003, 6);
+    expect(Number(screen.getByTestId('bounceback-fee').textContent)).toBeCloseTo(0.013, 6);
+  });
+
+  test('uses the minimum gateway fee floor in swap fee rows when live gas is unavailable', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1')),
+      getBlockNumber: jest.fn().mockRejectedValue(new Error('gas rpc down'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Swap' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('review-fees').textContent).toContain('Bridge fee:0.0030 ETH');
+    });
+
+    expect(screen.getByTestId('review-fees').textContent).toContain('Network cost:0.010 ETH');
+  });
+
+  test('replaces the seeded ETH token with the live ETH token while preserving selection', async () => {
+    const library = createLibrary();
+    const delegatorContract = createDelegatorContract();
+
+    useWeb3React.mockReturnValue({ account: null, library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('selected-flags')).toHaveTextContent('9');
+    });
+
+    expect(screen.getByTestId('selected-value')).toHaveTextContent(ETH_ADDRESS);
+    expect(screen.getByTestId('token-flags').textContent).toContain(`${ETH_ADDRESS}:9`);
+    expect(screen.getByTestId('token-flags').textContent).toContain(`${DAI_ADDRESS}:12`);
+  });
+
+  test('retries the source catalog once and keeps seeded ETH available after repeated failures', async () => {
+    const bridgeConverterActive = jest.fn().mockRejectedValue(new Error('catalog rpc down'));
+    const library = createLibrary();
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        bridgeConverterActive
+      }
+    });
+
+    useWeb3React.mockReturnValue({ account: null, library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    expect(bridgeConverterActive).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('catalog-error')).toHaveTextContent('Unable to load all currencies right now.');
+    expect(screen.getByTestId('selected-value')).toHaveTextContent(ETH_ADDRESS);
+    expect(screen.getByTestId('source-count')).toHaveTextContent('1');
+    expect(screen.getByTestId('source-symbols')).toHaveTextContent('ETH');
+  });
+
+  test('shows DAI.vETH and a 1:1 eight-decimal receive amount for direct Verus sends', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Direct DAI' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-symbol')).toHaveTextContent('DAI.vETH');
+    });
+
+    expect(screen.getByTestId('receive-amount')).toHaveTextContent('2.29029837');
+  });
+
+  test('derives internal Bridge and Floralis USD prices while keeping DAI, USDT, and USDC pegged', async () => {
+    const library = createLibrary();
+    const delegatorContract = createDelegatorContract();
+
+    useWeb3React.mockReturnValue({ account: null, library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    const usdPriceMap = readJsonTestId('usd-price-map');
+    const priceSourceMap = readJsonTestId('price-source-map');
+
+    expect(usdPriceMap.DAI).toBe(1);
+    expect(usdPriceMap.USDC).toBe(1);
+    expect(usdPriceMap.USDT).toBe(1);
+    expect(usdPriceMap.BRIDGE).toBeCloseTo(10, 6);
+    expect(usdPriceMap.ETH).toBeCloseTo(1000, 6);
+    expect(usdPriceMap.MKR).toBeCloseTo(2000, 6);
+    expect(usdPriceMap.VRSC).toBeCloseTo(0.666666, 5);
+    expect(usdPriceMap.EURC).toBeCloseTo(1.25, 6);
+    expect(usdPriceMap.SCRVUSD).toBeCloseTo(1.111111, 5);
+    expect(usdPriceMap.TBTC).toBeCloseTo(40000, 6);
+    expect(priceSourceMap.DAI).toBe('peg');
+    expect(priceSourceMap.USDT).toBe('peg');
+    expect(priceSourceMap.ETH).toBe('Bridge.vETH');
+    expect(priceSourceMap.MKR).toBe('Bridge.vETH');
+    expect(priceSourceMap.BRIDGE).toBe('Bridge.vETH');
+    expect(priceSourceMap.VRSC).toBe('Bridge.vETH');
+    expect(priceSourceMap.EURC).toBe('Floralis');
+    expect(priceSourceMap.SCRVUSD).toBe('Floralis');
+    expect(priceSourceMap.TBTC).toBe('Floralis');
+    expect(screen.getByTestId('eth-usd-price')).toHaveTextContent('1000');
+  });
+
+  test('uses internal spot pricing for EURC, scrvUSD, and tBTC, keeps USDT pegged, and leaves unsupported assets unpriced', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+    });
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        getTokenList: jest.fn().mockResolvedValue([liveEthToken, daiToken, eurcToken, scrvusdToken, usdtToken, tbtcToken, linkToken])
+      }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure EURC Direct' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('amount-fiat')).toHaveTextContent('$2.50');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure scrvUSD Direct' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('amount-fiat')).toHaveTextContent('$2.22');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure USDT Direct' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('amount-fiat')).toHaveTextContent('$2.00');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure tBTC Direct' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('amount-fiat')).toHaveTextContent('$4,000.00');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure LINK Direct' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('amount-fiat')).toBeEmptyDOMElement();
+    });
+  });
+
+  test('normalizes conversion quote input to Verus eight-decimal precision before requesting a quote', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockResolvedValue({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Bridge ETH' }));
+
+    await waitFor(() => {
+      expect(mockVerusd.estimateConversion).toHaveBeenCalled();
+    });
+
+    expect(mockVerusd.estimateConversion).toHaveBeenLastCalledWith(expect.objectContaining({
+      amount: '2.29029837',
+      convertto: 'i9nwxtKuVYX4MSbeULLiK2ttVi6rUEhh4X',
+      currency: 'iGBs4DWztRNvNEJBt4mqHszLxfKTNHTkhM',
+      via: 'i3f7tSctFkiPpiedY8QR5Tep9p4qDVebDx'
+    }));
+  });
+
+  test('uses the vETH reserve target for both bridgeETH and swaptoETH quotes', async () => {
+    global.fetch = jest.fn((input) => {
+      if (input === './exclude.json') {
+        return Promise.resolve({
+          json: async () => ({ ETH: [] }),
+          ok: true
+        });
+      }
+
+      return new Promise(() => {});
+    });
+
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1')),
+      getBlockNumber: jest.fn().mockResolvedValue(100),
+      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockResolvedValue({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Bridge ETH' }));
+
+    await waitFor(() => {
+      expect(mockVerusd.estimateConversion).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mockVerusd.estimateConversion.mock.calls[0][0].convertto).toBe('i9nwxtKuVYX4MSbeULLiK2ttVi6rUEhh4X');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Swap' }));
+
+    await waitFor(() => {
+      expect(mockVerusd.estimateConversion).toHaveBeenCalledTimes(2);
+    });
+
+    expect(mockVerusd.estimateConversion.mock.calls[1][0].convertto).toBe('i9nwxtKuVYX4MSbeULLiK2ttVi6rUEhh4X');
+  });
+
+  test('preserves tiny conversion quotes with full precision instead of rounding them down', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockResolvedValue({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Bridge ETH' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-quote-state')).toHaveTextContent('ready');
+    });
+
+    expect(screen.getByTestId('receive-amount')).toHaveTextContent('0.00107949');
+  });
+
+  test('does not warn when an ETH to VRSC quote stays within the 3% threshold', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockImplementation((packet) => {
+      if (packet.via === GLOBAL_IADDRESS.BETH && packet.convertto === GLOBAL_IADDRESS.VRSC) {
+        return Promise.resolve({
+          result: { estimatedcurrencyout: 1490 }
+        });
+      }
+
+      if (packet.via === 'nati-market-id' && packet.convertto === GLOBAL_IADDRESS.VRSC) {
+        return Promise.resolve({
+          result: { estimatedcurrencyout: 1495 }
+        });
+      }
+
+      return Promise.resolve({});
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Bridge VRSC' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-quote-state')).toHaveTextContent('ready');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('warning-message')).toBeEmptyDOMElement();
+    });
+
+    expect(screen.getByTestId('warning-kind')).toBeEmptyDOMElement();
+  });
+
+  test('shows a fiat value for VRSC receive quotes using the Bridge spot price', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockImplementation((packet) => {
+      if (packet.via === GLOBAL_IADDRESS.BETH && packet.convertto === GLOBAL_IADDRESS.VRSC) {
+        return Promise.resolve({
+          result: { estimatedcurrencyout: 1400 }
+        });
+      }
+
+      if (packet.via === 'nati-market-id' && packet.convertto === GLOBAL_IADDRESS.VRSC) {
+        return Promise.resolve({
+          result: { estimatedcurrencyout: 1500 }
+        });
+      }
+
+      return Promise.resolve({});
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Bridge VRSC' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-fiat')).toHaveTextContent('$933.33');
+    });
+  });
+
+  test('warns when an ETH to VRSC quote is materially worse than a better available route', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockImplementation((packet) => {
+      if (packet.via === GLOBAL_IADDRESS.BETH && packet.convertto === GLOBAL_IADDRESS.VRSC) {
+        return Promise.resolve({
+          result: { estimatedcurrencyout: 1400 }
+        });
+      }
+
+      if (packet.via === 'nati-market-id' && packet.convertto === GLOBAL_IADDRESS.VRSC) {
+        return Promise.resolve({
+          result: { estimatedcurrencyout: 1500 }
+        });
+      }
+
+      return Promise.resolve({});
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Bridge VRSC' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('warning-kind')).toHaveTextContent('better-venue');
+    });
+
+    expect(screen.getByTestId('warning-gap').textContent).toEqual(expect.stringContaining('7.'));
+    expect(screen.getByTestId('warning-message')).toHaveTextContent('below a better currently available route');
+  });
+
+  test('warns when an ETH to DAI quote falls below the current spot value', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockImplementation((packet) => {
+      if (packet.convertto === GLOBAL_IADDRESS.DAI) {
+        return Promise.resolve({
+          result: { estimatedcurrencyout: 950 }
+        });
+      }
+
+      return Promise.resolve({});
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Bridge DAI' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('warning-kind')).toHaveTextContent('spot-impact');
+    });
+
+    expect(screen.getByTestId('warning-message')).toHaveTextContent('below the current spot value');
+  });
+
+  test('warns when an ETH to MKR quote falls below the current spot value', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockImplementation((packet) => {
+      if (packet.convertto === GLOBAL_IADDRESS.MKR) {
+        return Promise.resolve({
+          result: { estimatedcurrencyout: 0.45 }
+        });
+      }
+
+      return Promise.resolve({});
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Bridge MKR' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('warning-kind')).toHaveTextContent('spot-impact');
+    });
+
+    expect(screen.getByTestId('warning-message')).toHaveTextContent('below the current spot value');
+  });
+
+  test('exposes pending and ready quote states for conversion routes', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract();
+    const deferredEstimate = createDeferred();
+
+    mockVerusd.estimateConversion.mockReturnValue(deferredEstimate.promise);
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Bridge ETH' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-quote-state')).toHaveTextContent('pending');
+    });
+
+    expect(screen.getByTestId('has-fresh-receive-quote')).toHaveTextContent('no');
+    expect(screen.getByTestId('receive-amount')).toHaveTextContent('Estimating...');
+
+    deferredEstimate.resolve({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-quote-state')).toHaveTextContent('ready');
+    });
+
+    expect(screen.getByTestId('has-fresh-receive-quote')).toHaveTextContent('yes');
+  });
+
+  test('marks failed conversion quotes unavailable, keeps the estimate text non-numeric, and blocks review', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockRejectedValue(new Error('quote rpc down'));
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Bridge ETH' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-quote-state')).toHaveTextContent('unavailable');
+    });
+
+    expect(screen.getByTestId('receive-amount')).toHaveTextContent('Estimating...');
+    expect(screen.getByTestId('submit-disabled-reason')).toHaveTextContent('Awaiting receive quote');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    expect(screen.getByTestId('is-reviewing')).toHaveTextContent('no');
+  });
+
+  test('invalidates a prior quote when the amount changes and waits for a fresh quote', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract();
+    const deferredEstimate = createDeferred();
+
+    mockVerusd.estimateConversion
+      .mockResolvedValueOnce({
+        result: { estimatedcurrencyout: 0.00107949 }
+      })
+      .mockReturnValueOnce(deferredEstimate.promise);
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Bridge ETH' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-quote-state')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change Amount' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-quote-state')).toHaveTextContent('pending');
+    });
+
+    expect(screen.getByTestId('has-fresh-receive-quote')).toHaveTextContent('no');
+    expect(screen.getByTestId('receive-amount')).toHaveTextContent('Estimating...');
+  });
+
+  test('blocks ERC20 review confirmation when native ETH is below the bridge fee', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('0.0005'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Direct DAI' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('review-confirm-label')).toHaveTextContent('Not enough ETH');
+    });
+
+    expect(screen.getByTestId('can-confirm-review')).toHaveTextContent('no');
+  });
+
+  test('requires ETH senders to cover the send amount plus the bridge fee', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1.0'))
+    });
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        verusToERC20mapping: jest.fn().mockResolvedValue({ flags: '0' })
+      }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Direct' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('review-confirm-label')).toHaveTextContent('Not enough ETH');
+    });
+
+    expect(screen.getByTestId('can-confirm-review')).toHaveTextContent('no');
+  });
+
+  test('adds the gateway/import fee to review rows for swap routes', async () => {
+    global.fetch = jest.fn((input) => {
+      if (input === './exclude.json') {
+        return Promise.resolve({
+          json: async () => ({ ETH: [] }),
+          ok: true
+        });
+      }
+
+      return new Promise(() => {});
+    });
+
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1')),
+      getBlockNumber: jest.fn().mockResolvedValue(100),
+      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+    });
+    const delegatorContract = createDelegatorContract();
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Swap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('review-fees').textContent).toContain('Network cost:0.012 ETH');
+    });
+  });
+});

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { BLOCKCHAIN_NAME } from 'constants/contractAddress';
 import styles from 'styles/ReferenceBridge.module.css';
@@ -88,6 +88,14 @@ const getNotarizationTooltipText = ({ notarizationHeight, notarizationLagBlocks,
   return lines.join('\n');
 };
 
+const InfoIcon = () => (
+  <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 16 16" width="14">
+    <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M8 7v3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+    <circle cx="8" cy="4.75" fill="currentColor" r="0.75" />
+  </svg>
+);
+
 const ReferenceInfoBar = ({
   baseBridgeFee,
   bounceBackFee,
@@ -99,22 +107,85 @@ const ReferenceInfoBar = ({
   ethToVerusCost,
   verusToEthCost
 }) => {
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
+  const activityChipRef = useRef(null);
+  const popoverIdRef = useRef(`notarization-popover-${Math.random().toString(36).slice(2, 10)}`);
   const notarizationTooltipText = getNotarizationTooltipText({
     notarizationHeight,
     notarizationLagBlocks,
     verusTipHeight
   });
+  const notarizationTooltipLines = notarizationTooltipText ? notarizationTooltipText.split('\n') : [];
   const bridgeLabel = BLOCKCHAIN_NAME === 'VRSC' ? 'Verus' : BLOCKCHAIN_NAME;
   const ethIcon = getCurrencyIcon('ETH');
   const verusIcon = getCurrencyIcon(BLOCKCHAIN_NAME);
 
+  useEffect(() => {
+    if (!isTooltipOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (activityChipRef.current && !activityChipRef.current.contains(event.target)) {
+        setIsTooltipOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsTooltipOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isTooltipOpen]);
+
   const activityChip = (
-    <div
-      className={`${styles.infoChip} ${styles.activityChip}`}
-      data-tooltip={notarizationTooltipText || undefined}
-    >
+    <div className={`${styles.infoChip} ${styles.activityChip}`} ref={activityChipRef}>
       <span className={styles.activityLabel}>Last confirmed bridge notarization:</span>
-      <span className={styles.activityValue}>{formatLagAgo(notarizationLagSeconds)}</span>
+      <div className={styles.activityValueRow}>
+        <span className={styles.activityValue}>{formatLagAgo(notarizationLagSeconds)}</span>
+        {notarizationTooltipLines.length > 0 ? (
+          <button
+            aria-controls={isTooltipOpen ? popoverIdRef.current : undefined}
+            aria-expanded={isTooltipOpen}
+            aria-haspopup="dialog"
+            aria-label="Show bridge notarization details"
+            className={styles.activityInfoButton}
+            onClick={() => setIsTooltipOpen((currentValue) => !currentValue)}
+            type="button"
+          >
+            <InfoIcon />
+          </button>
+        ) : null}
+      </div>
+      {isTooltipOpen && notarizationTooltipLines.length > 0 ? (
+        <div
+          aria-label="Bridge notarization details"
+          className={styles.activityPopover}
+          id={popoverIdRef.current}
+          role="dialog"
+        >
+          {notarizationTooltipLines.map((line, index) => (
+            <div
+              className={
+                index === notarizationTooltipLines.length - 1 && notarizationTooltipLines.length > 1
+                  ? `${styles.activityPopoverLine} ${styles.activityPopoverMetaLine}`
+                  : styles.activityPopoverLine
+              }
+              key={line}
+            >
+              {line}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 

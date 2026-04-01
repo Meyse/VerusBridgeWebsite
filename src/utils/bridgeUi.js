@@ -123,6 +123,14 @@ const knownEthereumMetadata = {
   [GLOBAL_ADDRESS.MKR.toLowerCase()]: { name: 'Maker', symbol: 'MKR' }
 };
 
+const knownVerusMetadata = {
+  [GLOBAL_ADDRESS.BETH.toLowerCase()]: { name: 'Bridge.vETH', symbol: 'Bridge.vETH' },
+  [GLOBAL_ADDRESS.DAI.toLowerCase()]: { name: 'Dai Stablecoin', symbol: 'DAI.vETH' },
+  [GLOBAL_ADDRESS.ETH.toLowerCase()]: { name: 'Ethereum', symbol: 'vETH' },
+  [GLOBAL_ADDRESS.MKR.toLowerCase()]: { name: 'Maker', symbol: 'MKR.vETH' },
+  [GLOBAL_ADDRESS.VRSC.toLowerCase()]: { name: 'Verus', symbol: bridgeBlockName }
+};
+
 const isSameAddress = (left, right) => (
   (left || '').toLowerCase() === (right || '').toLowerCase()
 );
@@ -134,6 +142,11 @@ const normalizeCurrencyAddress = (value) => (value || '').trim().toLowerCase();
 const normalizeCurrencySymbol = (value) => (value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
 
 const getKnownEthereumMetadata = (token) => knownEthereumMetadata[(token?.value || '').toLowerCase()];
+const getKnownVerusMetadata = (token) => (
+  knownVerusMetadata[
+    normalizeCurrencyAddress(token?.value || token?.iaddress || token?.address)
+  ]
+);
 
 const getIconKeyFromAddress = (value) => addressIconAliases[normalizeCurrencyAddress(value)];
 
@@ -151,6 +164,23 @@ const extractMappedTokenName = (tokenName) => {
 
   const extractedName = match[1].trim();
   return extractedName.startsWith('0x') ? '' : extractedName;
+};
+
+const extractMappedVerusSymbol = (tokenName) => {
+  if (!tokenName) {
+    return '';
+  }
+
+  const mappedSymbolMatch = tokenName.match(/\bas\s+(.+)$/i);
+  if (mappedSymbolMatch) {
+    return mappedSymbolMatch[1].trim();
+  }
+
+  if (tokenName === bridgeBlockName || tokenName.endsWith('.vETH') || /^v[A-Za-z0-9]/.test(tokenName)) {
+    return tokenName;
+  }
+
+  return '';
 };
 
 const isEthereumToken = (token) => {
@@ -277,6 +307,32 @@ export const getTokenDisplayName = (token) => {
   return token.ethereumName || extractMappedTokenName(token.name) || getTokenDisplaySymbol(token);
 };
 
+export const getTokenVerusSymbol = (token) => {
+  if (!token) {
+    return '';
+  }
+
+  const knownMetadata = getKnownVerusMetadata(token);
+  if (knownMetadata?.symbol) {
+    return knownMetadata.symbol;
+  }
+
+  return extractMappedVerusSymbol(token.name) || token.name || token.ticker || getTokenDisplaySymbol(token);
+};
+
+export const getTokenVerusName = (token) => {
+  if (!token) {
+    return '';
+  }
+
+  const knownMetadata = getKnownVerusMetadata(token);
+  if (knownMetadata?.name) {
+    return knownMetadata.name;
+  }
+
+  return getTokenDisplayName(token) || extractMappedTokenName(token.name) || extractMappedVerusSymbol(token.name) || token.name || getTokenDisplaySymbol(token);
+};
+
 const getTokenSearchTerms = (token) => uniqueValues([
   getTokenDisplayName(token),
   getTokenDisplaySymbol(token),
@@ -340,51 +396,35 @@ export const sortSourceCurrencies = (currencies) => [...currencies].sort((left, 
 
 export const buildDestinationCurrency = (destinationOption, selectedToken) => {
   const { value } = destinationOption;
+  const verusMetadata = getKnownVerusMetadata({ value: destinationOption.iaddress });
+  const ethereumMetadata = getKnownEthereumMetadata({ value: destinationOption.iaddress });
 
   if (value === BLOCKCHAIN_NAME) {
-    const tokenSymbol = getTokenDisplaySymbol(selectedToken) || bridgeBlockName;
+    const tokenSymbol = getTokenVerusSymbol(selectedToken) || bridgeBlockName;
 
     return {
       id: value,
       symbol: tokenSymbol,
-      name: `${selectedToken?.name || bridgeBlockName} on ${bridgeBlockName}`,
+      name: getTokenVerusName(selectedToken) || bridgeBlockName,
       icon: getCurrencyIcon(selectedToken || tokenSymbol)
     };
   }
 
-  if (value.includes('BRIDGE')) {
+  if (value.startsWith('swapto')) {
     return {
       id: value,
-      symbol: 'BRIDGE',
-      name: 'Bridge.vETH',
-      icon: getCurrencyIcon({ value: destinationOption.iaddress, symbol: 'BRIDGE' })
+      symbol: ethereumMetadata?.symbol || bridgeBlockName,
+      name: ethereumMetadata?.name || bridgeBlockName,
+      icon: getCurrencyIcon({ value: destinationOption.iaddress, symbol: ethereumMetadata?.symbol || bridgeBlockName })
     };
   }
 
-  if (value.includes('DAI')) {
+  if (verusMetadata) {
     return {
       id: value,
-      symbol: 'DAI',
-      name: 'DAI',
-      icon: getCurrencyIcon({ value: destinationOption.iaddress, symbol: 'DAI' })
-    };
-  }
-
-  if (value.includes('ETH')) {
-    return {
-      id: value,
-      symbol: 'ETH',
-      name: 'Ethereum',
-      icon: getCurrencyIcon({ value: destinationOption.iaddress, symbol: 'ETH' })
-    };
-  }
-
-  if (value.includes('MKR')) {
-    return {
-      id: value,
-      symbol: 'MKR',
-      name: 'Maker',
-      icon: getCurrencyIcon({ value: destinationOption.iaddress, symbol: 'MKR' })
+      symbol: verusMetadata.symbol,
+      name: verusMetadata.name,
+      icon: getCurrencyIcon({ value: destinationOption.iaddress, symbol: verusMetadata.symbol })
     };
   }
 

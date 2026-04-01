@@ -378,16 +378,25 @@
 
 .activityChip {
   position: relative;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  cursor: help;
+  align-items: flex-end;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin-left: auto;
+  text-align: right;
 }
 
 .activityLabel {
   font-size: 12px;
   color: #475569;
   font-weight: 500;
+}
+
+.activityValueRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .activityValue {
@@ -397,8 +406,33 @@
   font-variant-numeric: tabular-nums;
 }
 
-.activityChip[data-tooltip]::after {
-  content: attr(data-tooltip);
+.activityInfoButton {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.activityInfoButton:hover {
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+.activityInfoButton:focus-visible {
+  outline: none;
+  color: #0f172a;
+  box-shadow: 0 0 0 3px rgba(191, 219, 254, 0.75);
+}
+
+.activityPopover {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
@@ -412,18 +446,13 @@
   color: #334155;
   font-size: 12px;
   line-height: 1.4;
-  white-space: pre-line;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(4px);
-  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
-  pointer-events: none;
+  text-align: left;
 }
 
-.activityChip[data-tooltip]::before {
-  content: '';
+.activityPopover::before {
+  content: "";
   position: absolute;
-  top: calc(100% + 2px);
+  top: -6px;
   right: 24px;
   z-index: 31;
   width: 12px;
@@ -431,23 +460,15 @@
   background: rgba(255, 255, 255, 0.98);
   border-top: 1px solid #e2e8f0;
   border-left: 1px solid #e2e8f0;
-  transform: rotate(45deg) translateY(4px);
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
-  pointer-events: none;
+  transform: rotate(45deg);
 }
 
-.activityChip[data-tooltip]:hover::after {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
+.activityPopoverLine + .activityPopoverLine {
+  margin-top: 2px;
 }
 
-.activityChip[data-tooltip]:hover::before {
-  opacity: 1;
-  visibility: visible;
-  transform: rotate(45deg) translateY(0);
+.activityPopoverMetaLine {
+  color: #64748b;
 }
 
 .main {
@@ -563,13 +584,6 @@
   min-width: 0;
 }
 
-.amountInlineRow {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  min-width: 0;
-}
-
 .amountInput {
   width: auto;
   flex: 1 1 auto;
@@ -583,15 +597,6 @@
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.amountInlineFiat {
-  flex-shrink: 0;
-  padding-bottom: 3px;
-  font-size: 14px;
-  line-height: 1;
-  color: #6b7280;
-  font-variant-numeric: tabular-nums;
 }
 
 .amountInputDisabled {
@@ -734,7 +739,7 @@
   background: #bfdbfe;
 }
 
-.rates {
+.receiveMeta {
   margin-top: auto;
   display: flex;
   flex-direction: column;
@@ -753,19 +758,15 @@
   border: 1px solid #bfdbfe;
 }
 
-.rateRow {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  font-size: 14px;
+.conversionWarningText {
+  margin: 4px 8px 0;
+  color: #9a3412;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-.rateText {
-  color: #4b5563;
-}
-
-.rateTextMuted {
-  color: #6b7280;
+.conversionWarningLabel {
+  font-weight: 700;
 }
 
 .addressBlock {
@@ -884,6 +885,158 @@
   cursor: not-allowed;
 }
 
+.reviewHeader {
+  width: 100%;
+  max-width: 464px;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 8px;
+  margin-bottom: 8px;
+}
+
+.reviewBackButton {
+  border: none;
+  background: transparent;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.reviewBackButton:hover {
+  color: #0f172a;
+}
+
+.reviewBackButton svg {
+  flex-shrink: 0;
+}
+
+.reviewCardSection {
+  min-height: 132px;
+  height: 132px;
+}
+
+.reviewSelector .selectorHeader {
+  position: relative;
+  z-index: 1;
+}
+
+.reviewSummaryRow {
+  gap: 12px;
+}
+
+.reviewSummaryText {
+  min-width: 0;
+  flex: 1;
+}
+
+.reviewAmountMetaRow {
+  margin-top: auto;
+}
+
+.reviewAmountValue {
+  color: #111827;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.reviewAmountMeta {
+  font-size: 14px;
+  line-height: 1.2;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.reviewCurrencyPill {
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.reviewAddressPanel,
+.reviewDetails {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.reviewSectionLabel {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 10px;
+}
+
+.reviewAddressValue {
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.reviewDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reviewDetailRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.reviewDetailLabel {
+  color: #475569;
+  font-size: 14px;
+}
+
+.reviewDetailValue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.reviewDetailFiat {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.reviewWarning {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+}
+
+.reviewWarningTitle {
+  color: #9a3412;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.reviewWarningCopy {
+  margin-top: 6px;
+  color: #9a3412;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .alert {
   margin-bottom: 12px;
 }
@@ -919,64 +1072,144 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 14px;
 }
 
 .modalTitle {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
   color: #111827;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.025em;
 }
 
 .modalClose {
-  width: 28px;
-  height: 28px;
-  border: 1px solid #e5e7eb;
-  border-radius: 999px;
-  background: #f8fafc;
-  color: #64748b;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: #6b7280;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  margin: -6px -6px -6px 0;
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .modalClose:hover {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
-  color: #0f172a;
+  background: rgba(15, 23, 42, 0.05);
+  color: #111827;
+}
+
+.modalClose:focus-visible {
+  outline: none;
+  background: rgba(15, 23, 42, 0.05);
+  box-shadow: 0 0 0 3px rgba(209, 213, 219, 0.7);
 }
 
 .modalClose svg {
-  width: 12px;
-  height: 12px;
+  width: 20px;
+  height: 20px;
 }
 
-.searchInput {
+.searchInputWrap {
   width: 100%;
-  min-height: 40px;
-  background: #f8fafc;
-  color: #111827;
-  padding: 0 14px;
-  border-radius: 14px;
-  margin-bottom: 8px;
-  border: 1px solid #e2e8f0;
-  outline: none;
-  font-size: 13px;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  margin-bottom: 12px;
+  border-radius: 28px;
+  border: 1px solid #d7dce4;
+  background: linear-gradient(180deg, #fcfcfd 0%, #f7f8fa 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
   transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
 }
 
-.searchInput::placeholder {
-  color: #94a3b8;
+.searchInputWrap:focus-within {
+  border-color: #c5ccd8;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(229, 231, 235, 0.85);
 }
 
-.searchInput:focus {
-  border-color: #93c5fd;
-  box-shadow: 0 0 0 3px rgba(191, 219, 254, 0.8);
-  background: #ffffff;
+.searchIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.searchInputWrap:focus-within .searchIcon {
+  color: #6b7280;
+}
+
+.searchIcon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.searchInput {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 54px;
+  background: transparent;
+  color: #111827;
+  padding: 0;
+  border: none;
+  outline: none;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.searchInput::placeholder {
+  color: #9ca3af;
+}
+
+.modalStatus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.modalStatusInfo {
+  background: #f8fafc;
+  color: #475569;
+}
+
+.modalStatusWarning {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.modalStatusAction {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.modalStatusAction:hover {
+  text-decoration: underline;
+}
+
+.modalStatusAction:focus-visible {
+  outline: none;
+  text-decoration: underline;
 }
 
 .currencyList {
@@ -1099,6 +1332,13 @@
   font-size: 12px;
   line-height: 1.2;
   color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.currencyOptionBalanceOnly {
+  font-size: 13px;
+  line-height: 1.2;
+  color: #475569;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1517,10 +1757,6 @@
 
   .amountInput {
     font-size: 24px;
-  }
-
-  .amountInlineFiat {
-    font-size: 13px;
   }
 
   .headerInner {

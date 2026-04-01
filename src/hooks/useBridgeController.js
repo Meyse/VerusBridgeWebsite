@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useWeb3React } from '@web3-react/core';
 import { utils } from 'ethers';
@@ -32,37 +32,42 @@ import {
   REFUND_ADDRESS_STORAGE_KEY,
   requestRefundAddressData
 } from 'utils/refundAddress';
-import { coinsToSats, validateAddress } from 'utils/rules';
+import { coinsToSats, uint64ToVerusFloat, validateAddress } from 'utils/rules';
 import { getConfigOptions } from 'utils/txConfig';
 
 const maxGas = 1000000;
 const maxGas2 = 100000;
 const BRIDGE_STATUS_POLL_INTERVAL_MS = 60_000;
+const INTERNAL_PRICE_POLL_INTERVAL_MS = 60_000;
 const ESTIMATED_VERUS_BLOCK_TIME_SECONDS = 60;
 const FLAG_DEST_GATEWAY = 128;
-const COINPAPRIKA_ETH_TICKER_URL = 'https://api.coinpaprika.com/v1/tickers/eth-ethereum';
-const COINPAPRIKA_TICKER_ID_BY_SYMBOL = {
-  BAT: 'bat-basic-attention-token',
-  LINK: 'link-chainlink',
-  MKR: 'mkr-maker',
-  PAXG: 'paxg-pax-gold',
-  TBTC: 'btc-bitcoin',
-  VRSC: 'vrsc-verus-coin',
-  WBTC: 'btc-bitcoin',
-  XAUT: 'xaut-tether-gold'
-};
+const FLORALIS_CURRENCY_NAME = 'Floralis';
+const NATI_CURRENCY_NAME = 'NATI🦉';
+const PRICE_WARNING_THRESHOLD_PERCENT = 3;
+const PRICE_SOURCE_BRIDGE = 'Bridge.vETH';
+const PRICE_SOURCE_FLORALIS = 'Floralis';
+const PRICE_SOURCE_PEG = 'peg';
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const STATIC_USD_PRICE_BY_SYMBOL = {
-  CRVUSD: 1,
   DAI: 1,
-  EURC: 1,
-  SCRVUSD: 1,
   USDC: 1,
   USDT: 1
+};
+const BRIDGE_WARNING_DESTINATION_SYMBOL_BY_VALUE = {
+  bridgeDAI: 'DAI',
+  bridgeETH: 'ETH',
+  bridgeMKR: 'MKR',
+  bridgeVRSC: 'VRSC',
+  swaptoDAI: 'DAI',
+  swaptoETH: 'ETH',
+  swaptoMKR: 'MKR',
+  swaptoVRSC: 'VRSC'
 };
 const { GAS_TRANSACTIONIMPORTFEE, MINIMUM_GAS_PRICE_WEI } = ETH_FEES;
 const verusd = new VerusdRpcInterface(GLOBAL_IADDRESS.VRSC, process.env.REACT_APP_VERUS_RPC_URL);
 const hasGatewayFlag = (value) => Math.floor(Number(value) / FLAG_DEST_GATEWAY) % 2 === 1;
 const BALANCE_SORT_EPSILON = 0.000001;
+const ETH_SOURCE_TOKEN_VALUE = GLOBAL_ADDRESS.ETH.toLowerCase();
 
 const toFiniteNumber = (value) => {
   const parsedValue = Number(value);
@@ -89,17 +94,19 @@ const getBlockTime = async (height) => {
   return toFiniteNumber(blockInfo.time);
 };
 
-const toDisplayAmount = (value) => {
+const formatQuotedAmount = (value) => {
   if (!value && value !== 0) {
     return '--';
   }
 
-  const parsedValue = parseFloat(value);
-  if (Number.isNaN(parsedValue)) {
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue)) {
     return '--';
   }
 
-  return parsedValue < 0.001 ? parsedValue.toFixed(8) : parsedValue.toFixed(3);
+  return parsedValue
+    .toFixed(8)
+    .replace(/\.?0+$/, '');
 };
 
 const formatBalance = (value) => {
@@ -118,8 +125,26 @@ const normalizePriceSymbol = (value) => (value || '').replace(/[^a-z0-9]/gi, '')
 const getPriceLookupSymbol = (value) => {
   const normalizedSymbol = normalizePriceSymbol(value);
 
-  if (['BETH', 'BRIDGE', 'VBRID'].includes(normalizedSymbol)) {
+  if (['BETH', 'BRIDGE', 'VBRID', 'BRIDGEVETH'].includes(normalizedSymbol)) {
+    return 'BRIDGE';
+  }
+
+  if (normalizedSymbol === 'VETH') {
     return 'ETH';
+  }
+
+  if (normalizedSymbol.endsWith('VETH')) {
+    const withoutSuffix = normalizedSymbol.slice(0, -4);
+
+    if (withoutSuffix === 'BRIDGE') {
+      return 'BRIDGE';
+    }
+
+    if (withoutSuffix.startsWith('V') && withoutSuffix.length > 1) {
+      return withoutSuffix.slice(1);
+    }
+
+    return withoutSuffix;
   }
 
   return normalizedSymbol;
@@ -138,6 +163,161 @@ const getAmountFiatLabel = (value, symbol, prices) => {
 
   return formatCurrencyFiat(parsedAmount * fiatPrice);
 };
+
+const getCurrencyState = (currencyResult) => (
+  currencyResult?.result?.bestcurrencystate
+  || currencyResult?.result?.lastconfirmedcurrencystate
+  || null
+);
+
+const getCurrencyNameMap = (currencyResult) => (
+  typeof currencyResult?.result?.currencynames === 'object' && currencyResult.result.currencynames !== null
+    ? currencyResult.result.currencynames
+    : {}
+);
+
+const getReserveEntriesBySymbol = (currencyResult) => {
+  const state = getCurrencyState(currencyResult);
+  const currencyNames = getCurrencyNameMap(currencyResult);
+
+  if (!Array.isArray(state?.reservecurrencies)) {
+    return {};
+  }
+
+  return state.reservecurrencies.reduce((reserveMap, reserveEntry) => {
+    const reserveName = currencyNames[reserveEntry.currencyid];
+    const lookupSymbol = getPriceLookupSymbol(reserveName);
+
+    if (!lookupSymbol) {
+      return reserveMap;
+    }
+
+    return {
+      ...reserveMap,
+      [lookupSymbol]: {
+        ...reserveEntry,
+        lookupSymbol,
+        name: reserveName
+      }
+    };
+  }, {});
+};
+
+const calculateReserveDerivedPrice = (reserveMap, symbol) => {
+  if (symbol === 'DAI') {
+    return 1;
+  }
+
+  const daiReserve = reserveMap.DAI;
+  const targetReserve = reserveMap[symbol];
+  const daiPriceInReserve = toFiniteNumber(daiReserve?.priceinreserve);
+  const targetPriceInReserve = toFiniteNumber(targetReserve?.priceinreserve);
+
+  if (!Number.isFinite(daiPriceInReserve) || !Number.isFinite(targetPriceInReserve) || targetPriceInReserve <= 0) {
+    return null;
+  }
+
+  return daiPriceInReserve / targetPriceInReserve;
+};
+
+const calculateFractionalCurrencyPriceInDai = (currencyResult) => {
+  const state = getCurrencyState(currencyResult);
+  const reserveMap = getReserveEntriesBySymbol(currencyResult);
+  const daiReserve = reserveMap.DAI;
+  const daiReserves = toFiniteNumber(daiReserve?.reserves);
+  const daiWeight = toFiniteNumber(daiReserve?.weight);
+  const supply = toFiniteNumber(state?.supply);
+
+  if (!Number.isFinite(daiReserves) || !Number.isFinite(daiWeight) || !Number.isFinite(supply) || daiWeight <= 0 || supply <= 0) {
+    return null;
+  }
+
+  return daiReserves / daiWeight / supply;
+};
+
+const buildBridgeReferencePriceBySymbol = (bridgeCurrencyResult) => {
+  const reserveMap = getReserveEntriesBySymbol(bridgeCurrencyResult);
+
+  return {
+    BRIDGE: calculateFractionalCurrencyPriceInDai(bridgeCurrencyResult),
+    DAI: 1,
+    ETH: calculateReserveDerivedPrice(reserveMap, 'ETH'),
+    MKR: calculateReserveDerivedPrice(reserveMap, 'MKR'),
+    VRSC: calculateReserveDerivedPrice(reserveMap, 'VRSC')
+  };
+};
+
+const buildFloralisReferencePriceBySymbol = (floralisCurrencyResult) => {
+  const reserveMap = getReserveEntriesBySymbol(floralisCurrencyResult);
+
+  return {
+    EURC: calculateReserveDerivedPrice(reserveMap, 'EURC'),
+    SCRVUSD: calculateReserveDerivedPrice(reserveMap, 'SCRVUSD'),
+    TBTC: calculateReserveDerivedPrice(reserveMap, 'TBTC'),
+    USDT: calculateReserveDerivedPrice(reserveMap, 'USDT')
+  };
+};
+
+const buildInternalPricingSnapshot = ({ bridgeCurrencyResult, floralisCurrencyResult }) => {
+  const bridgeReferencePriceBySymbol = buildBridgeReferencePriceBySymbol(bridgeCurrencyResult);
+  const floralisReferencePriceBySymbol = buildFloralisReferencePriceBySymbol(floralisCurrencyResult);
+  const usdPriceBySymbol = {
+    ...STATIC_USD_PRICE_BY_SYMBOL
+  };
+  const priceSourceBySymbol = {
+    DAI: PRICE_SOURCE_PEG,
+    USDC: PRICE_SOURCE_PEG,
+    USDT: PRICE_SOURCE_PEG
+  };
+
+  ['BRIDGE', 'ETH', 'MKR', 'VRSC'].forEach((symbol) => {
+    const usdPrice = bridgeReferencePriceBySymbol[symbol];
+
+    if (Number.isFinite(usdPrice)) {
+      usdPriceBySymbol[symbol] = usdPrice;
+      priceSourceBySymbol[symbol] = PRICE_SOURCE_BRIDGE;
+    }
+  });
+
+  ['EURC', 'SCRVUSD', 'TBTC'].forEach((symbol) => {
+    const usdPrice = floralisReferencePriceBySymbol[symbol];
+
+    if (Number.isFinite(usdPrice)) {
+      usdPriceBySymbol[symbol] = usdPrice;
+      priceSourceBySymbol[symbol] = PRICE_SOURCE_FLORALIS;
+    }
+  });
+
+  return {
+    bridgeReferencePriceBySymbol,
+    floralisReferencePriceBySymbol,
+    lastUpdatedAt: Date.now(),
+    priceSourceBySymbol,
+    usdPriceBySymbol
+  };
+};
+
+const getQuoteWarningDestinationSymbol = (destination) => BRIDGE_WARNING_DESTINATION_SYMBOL_BY_VALUE[destination] || null;
+
+const getSourceWarningSymbol = (selectedToken) => getPriceLookupSymbol(getTokenDisplaySymbol(selectedToken));
+
+const toIAddressFromHexCurrency = (currencyValue) => {
+  if (!currencyValue || !currencyValue.startsWith('0x')) {
+    return null;
+  }
+
+  try {
+    return bitGoUTXO.address.toBase58Check(Buffer.from(currencyValue.slice(2), 'hex'), 102);
+  } catch (error) {
+    return null;
+  }
+};
+
+const createEmptyWarningState = () => ({
+  conversionWarningGapPercent: null,
+  conversionWarningKind: null,
+  conversionWarningMessage: ''
+});
 
 const compareSourceCurrenciesByWalletValue = (left, right) => {
   const leftFiat = Number.isFinite(left?.fiatValue) ? left.fiatValue : -1;
@@ -169,6 +349,65 @@ const normalizeContractField = (value) => {
   return trimmedValue || undefined;
 };
 
+const createSeededEthToken = () => ({
+  label: 'vETH',
+  name: 'vETH',
+  ticker: 'ETH',
+  value: GLOBAL_ADDRESS.ETH,
+  iaddress: GLOBAL_IADDRESS.ETH,
+  erc20address: ZERO_ADDRESS,
+  flags: '0',
+  ethereumName: 'Ethereum',
+  ethereumSymbol: 'ETH'
+});
+
+const getTokenValueKey = (token) => (token?.value || '').toLowerCase();
+
+const mergeTokenChoicesWithSeededEth = (tokenOptions) => {
+  const uniqueTokens = new Map();
+
+  [createSeededEthToken(), ...(tokenOptions || [])].forEach((token) => {
+    const tokenValueKey = getTokenValueKey(token);
+    if (!tokenValueKey) {
+      return;
+    }
+
+    uniqueTokens.set(tokenValueKey, token);
+  });
+
+  return [...uniqueTokens.values()];
+};
+
+const getPreferredSourceToken = (tokenOptions, selectedToken) => {
+  const selectedTokenKey = getTokenValueKey(selectedToken);
+  const matchingSelectedToken = selectedTokenKey
+    ? tokenOptions.find((option) => getTokenValueKey(option) === selectedTokenKey)
+    : null;
+
+  if (matchingSelectedToken) {
+    return matchingSelectedToken;
+  }
+
+  return tokenOptions.find((option) => getTokenValueKey(option) === ETH_SOURCE_TOKEN_VALUE) || tokenOptions[0] || null;
+};
+
+const QUOTE_TARGET_IADDRESS_BY_DESTINATION = {
+  bridgeBRIDGE: GLOBAL_IADDRESS.BETH,
+  bridgeVRSC: GLOBAL_IADDRESS.VRSC,
+  bridgeDAI: GLOBAL_IADDRESS.DAI,
+  bridgeETH: GLOBAL_IADDRESS.ETH,
+  bridgeMKR: GLOBAL_IADDRESS.MKR,
+  swaptoBRIDGE: GLOBAL_IADDRESS.BETH,
+  swaptoVRSC: GLOBAL_IADDRESS.VRSC,
+  swaptoDAI: GLOBAL_IADDRESS.DAI,
+  swaptoETH: GLOBAL_IADDRESS.ETH,
+  swaptoMKR: GLOBAL_IADDRESS.MKR
+};
+
+const isConversionDestination = (destination) => Boolean(QUOTE_TARGET_IADDRESS_BY_DESTINATION[destination]);
+
+const getQuoteTargetIAddress = (destination) => QUOTE_TARGET_IADDRESS_BY_DESTINATION[destination] || null;
+
 const toTokenOption = (token, metadata = {}) => ({
   label: token.name,
   name: token.name,
@@ -180,13 +419,82 @@ const toTokenOption = (token, metadata = {}) => ({
   ...metadata
 });
 
-const getFeeEstimateValue = (destination, gasPrice) => {
-  const baseFee = new web3.utils.BN(web3.utils.toWei(ETH_FEES.ETH, 'ether'));
-  const gatewayFee = destination && destination.startsWith('swapto') && gasPrice?.WEICOST
-    ? new web3.utils.BN(gasPrice.WEICOST)
-    : new web3.utils.BN('0');
+const getBaseBridgeFeeWei = () => new web3.utils.BN(web3.utils.toWei(ETH_FEES.ETH, 'ether'));
 
-  const totalFee = baseFee.add(gatewayFee);
+const getMinimumGatewayFeeWei = () => (
+  new web3.utils.BN(MINIMUM_GAS_PRICE_WEI).mul(new web3.utils.BN(GAS_TRANSACTIONIMPORTFEE))
+);
+
+const hasLiveGasEstimate = (gasPrice) => Boolean(gasPrice?.WEICOST && gasPrice?.SATSCOST);
+
+const getGatewayFeeWei = (destination, gasPrice) => {
+  if (!destination || !destination.startsWith('swapto')) {
+    return new web3.utils.BN('0');
+  }
+
+  return hasLiveGasEstimate(gasPrice)
+    ? new web3.utils.BN(gasPrice.WEICOST)
+    : getMinimumGatewayFeeWei();
+};
+
+const getFeeEstimateWei = (destination, gasPrice) => (
+  getBaseBridgeFeeWei().add(getGatewayFeeWei(destination, gasPrice))
+);
+
+const parseAmountToWei = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return new web3.utils.BN(web3.utils.toWei(value, 'ether'));
+  } catch (error) {
+    return null;
+  }
+};
+
+const formatEthValue = (value) => {
+  const parsedValue = parseFloat(value);
+  if (!Number.isFinite(parsedValue)) {
+    return '--';
+  }
+
+  return `${parsedValue.toFixed(parsedValue < 0.01 ? 4 : 3)} ETH`;
+};
+
+const formatEthFromWei = (value) => {
+  if (value === null || value === undefined) {
+    return '--';
+  }
+
+  try {
+    return formatEthValue(web3.utils.fromWei(value.toString(), 'ether'));
+  } catch (error) {
+    return '--';
+  }
+};
+
+const getRequiredNativeEthWei = ({ amount, destination, gasPrice, selectedToken }) => {
+  if (!selectedToken) {
+    return null;
+  }
+
+  let totalFee = getFeeEstimateWei(destination, gasPrice);
+
+  if (selectedToken.value === GLOBAL_ADDRESS.ETH) {
+    const amountWei = parseAmountToWei(amount);
+    if (amountWei === null) {
+      return null;
+    }
+
+    totalFee = totalFee.add(amountWei);
+  }
+
+  return totalFee;
+};
+
+const getFeeEstimateValue = (destination, gasPrice) => {
+  const totalFee = getFeeEstimateWei(destination, gasPrice);
   const feeAsEth = parseFloat(web3.utils.fromWei(totalFee.toString(), 'ether'));
 
   if (Number.isNaN(feeAsEth)) {
@@ -212,6 +520,10 @@ const getRouteLabel = (destination) => {
 
   return 'Ethereum -> Verus';
 };
+
+const getRouteTimeEstimate = (destination) => (
+  destination && destination.startsWith('swapto') ? '~20-60 min' : '~10-30 min'
+);
 
 const getGasEstimate = async (library) => {
   const latestBlock = await library.getBlockNumber();
@@ -361,17 +673,43 @@ export default function useBridgeController() {
   const [address, setAddress] = useState('');
   const [amountError, setAmountError] = useState('');
   const [addressError, setAddressError] = useState('');
-  const [currentOptionsPrices, setCurrentOptionsPrices] = useState(null);
+  const [receiveQuote, setReceiveQuote] = useState({
+    signature: '',
+    state: 'not-required',
+    value: null
+  });
   const [destination, setDestination] = useState('');
-  const [ethUsdPrice, setEthUsdPrice] = useState(null);
   const [gasPrice, setGasPrice] = useState(null);
+  const [internalPricingSnapshot, setInternalPricingSnapshot] = useState(() => ({
+    bridgeReferencePriceBySymbol: {},
+    floralisReferencePriceBySymbol: {},
+    lastUpdatedAt: null,
+    priceSourceBySymbol: {
+      DAI: PRICE_SOURCE_PEG,
+      USDC: PRICE_SOURCE_PEG,
+      USDT: PRICE_SOURCE_PEG
+    },
+    usdPriceBySymbol: {
+      ...STATIC_USD_PRICE_BY_SYMBOL
+    }
+  }));
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [isSourceCatalogLoading, setIsSourceCatalogLoading] = useState(true);
   const [isTxPending, setIsTxPending] = useState(false);
   const [isWalletBalancesLoading, setIsWalletBalancesLoading] = useState(false);
+  const [natiCurrencyId, setNatiCurrencyId] = useState(null);
+  const [natiComparisonQuote, setNatiComparisonQuote] = useState({
+    signature: '',
+    state: 'not-required',
+    value: null
+  });
   const [poolAvailable, setPoolAvailable] = useState(false);
   const [pubkey, setPubkey] = useState({});
-  const [selectedToken, setSelectedToken] = useState(null);
-  const [tokenOptions, setTokenOptions] = useState([]);
-  const [tokenUsdPrices, setTokenUsdPrices] = useState({});
+  const [reviewSnapshot, setReviewSnapshot] = useState(null);
+  const [selectedToken, setSelectedToken] = useState(() => createSeededEthToken());
+  const [sourceCatalogError, setSourceCatalogError] = useState(null);
+  const [sourceCatalogRetryNonce, setSourceCatalogRetryNonce] = useState(0);
+  const [tokenOptions, setTokenOptions] = useState(() => [createSeededEthToken()]);
   const [walletTokenBalances, setWalletTokenBalances] = useState([]);
   const [notarizationLagBlocks, setNotarizationLagBlocks] = useState(null);
   const [notarizationLagSeconds, setNotarizationLagSeconds] = useState(null);
@@ -391,11 +729,35 @@ export default function useBridgeController() {
     [destination, destinationOptions]
   );
 
-  const effectiveTokenUsdPrices = useMemo(() => ({
-    ...STATIC_USD_PRICE_BY_SYMBOL,
-    ...tokenUsdPrices,
-    ...(Number.isFinite(ethUsdPrice) ? { ETH: ethUsdPrice } : {})
-  }), [ethUsdPrice, tokenUsdPrices]);
+  const receiveCurrency = useMemo(
+    () => (selectedDestination ? buildDestinationCurrency(selectedDestination, selectedToken) : null),
+    [selectedDestination, selectedToken]
+  );
+
+  const effectiveTokenUsdPrices = useMemo(
+    () => internalPricingSnapshot.usdPriceBySymbol,
+    [internalPricingSnapshot.usdPriceBySymbol]
+  );
+  const priceSourceBySymbol = useMemo(
+    () => internalPricingSnapshot.priceSourceBySymbol,
+    [internalPricingSnapshot.priceSourceBySymbol]
+  );
+  const bridgeReferencePriceBySymbol = useMemo(
+    () => internalPricingSnapshot.bridgeReferencePriceBySymbol,
+    [internalPricingSnapshot.bridgeReferencePriceBySymbol]
+  );
+  const ethUsdPrice = useMemo(
+    () => (Number.isFinite(effectiveTokenUsdPrices.ETH) ? effectiveTokenUsdPrices.ETH : null),
+    [effectiveTokenUsdPrices]
+  );
+
+  const editSignature = useMemo(() => [
+    account || '',
+    address || '',
+    amount || '',
+    destination || '',
+    selectedToken?.value || ''
+  ].join('|'), [account, address, amount, destination, selectedToken]);
 
   const tokenBalance = useMemo(() => {
     if (!account || !selectedToken) {
@@ -422,7 +784,7 @@ export default function useBridgeController() {
       .filter((entry) => entry.balance > 0)
       .map((entry) => {
         const symbol = getTokenDisplaySymbol(entry.token) || entry.token.name;
-        const fiatPrice = effectiveTokenUsdPrices[normalizePriceSymbol(symbol)];
+        const fiatPrice = effectiveTokenUsdPrices[getPriceLookupSymbol(symbol)];
         const fiatValue = Number.isFinite(fiatPrice) ? entry.balance * fiatPrice : null;
 
         return buildTokenCurrency(entry.token, {
@@ -440,14 +802,240 @@ export default function useBridgeController() {
     [amount, effectiveTokenUsdPrices, selectedToken]
   );
 
-  const estimatedFiatLabel = useMemo(() => {
-    if (!selectedDestination) {
+  const isDirectVerusReceive = selectedDestination?.value === BLOCKCHAIN_NAME;
+  const requiresReceiveQuote = useMemo(
+    () => isConversionDestination(selectedDestination?.value),
+    [selectedDestination]
+  );
+  const normalizedQuoteAmount = useMemo(() => {
+    if (!amount || parseFloat(amount) <= 0) {
+      return '';
+    }
+
+    return uint64ToVerusFloat(coinsToSats(amount));
+  }, [amount]);
+  const quoteSignature = useMemo(() => (
+    requiresReceiveQuote
+      ? [
+        selectedToken?.value || '',
+        destination || '',
+        normalizedQuoteAmount,
+        poolAvailable ? '1' : '0'
+      ].join('|')
+      : ''
+  ), [destination, normalizedQuoteAmount, poolAvailable, requiresReceiveQuote, selectedToken]);
+  const shouldFetchReceiveQuote = Boolean(
+    requiresReceiveQuote
+    && selectedToken
+    && destination
+    && normalizedQuoteAmount
+  );
+  const warningDestinationSymbol = useMemo(
+    () => getQuoteWarningDestinationSymbol(destination),
+    [destination]
+  );
+  const warningSourceSymbol = useMemo(
+    () => getSourceWarningSymbol(selectedToken),
+    [selectedToken]
+  );
+  const shouldFetchNatiComparison = Boolean(
+    warningDestinationSymbol === 'VRSC'
+    && warningSourceSymbol === 'ETH'
+    && selectedToken
+    && normalizedQuoteAmount
+  );
+  const natiComparisonSignature = useMemo(() => (
+    shouldFetchNatiComparison
+      ? [
+        selectedToken?.value || '',
+        destination || '',
+        normalizedQuoteAmount
+      ].join('|')
+      : ''
+  ), [destination, normalizedQuoteAmount, selectedToken, shouldFetchNatiComparison]);
+  const receiveQuoteState = useMemo(() => {
+    if (!requiresReceiveQuote) {
+      return 'not-required';
+    }
+
+    if (!shouldFetchReceiveQuote) {
+      return 'pending';
+    }
+
+    if (receiveQuote.signature !== quoteSignature) {
+      return 'pending';
+    }
+
+    return receiveQuote.state;
+  }, [quoteSignature, receiveQuote.signature, receiveQuote.state, requiresReceiveQuote, shouldFetchReceiveQuote]);
+  const hasFreshReceiveQuote = useMemo(() => (
+    !requiresReceiveQuote || (
+      shouldFetchReceiveQuote
+      && receiveQuote.signature === quoteSignature
+      && receiveQuote.state === 'ready'
+    )
+  ), [quoteSignature, receiveQuote.signature, receiveQuote.state, requiresReceiveQuote, shouldFetchReceiveQuote]);
+  const reviewReceiveAmountDisplay = reviewSnapshot?.receiveAmountDisplay || '';
+  const reviewReceiveFiatLabel = reviewSnapshot?.receiveFiatLabel || null;
+  const requiresLiveGasEstimate = useMemo(
+    () => Boolean(destination && destination.startsWith('swapto')),
+    [destination]
+  );
+
+  const receiveAmountDisplay = useMemo(() => {
+    if (!amount || parseFloat(amount) <= 0) {
+      return '--';
+    }
+
+    if (isDirectVerusReceive) {
+      return uint64ToVerusFloat(coinsToSats(amount));
+    }
+
+    if (receiveQuoteState !== 'ready') {
+      return 'Estimating...';
+    }
+
+    return formatQuotedAmount(receiveQuote.value);
+  }, [amount, isDirectVerusReceive, receiveQuote.value, receiveQuoteState]);
+
+  const receiveFiatLabel = useMemo(() => {
+    if (!receiveCurrency) {
       return null;
     }
 
-    const destinationCurrency = buildDestinationCurrency(selectedDestination, selectedToken);
-    return getAmountFiatLabel(currentOptionsPrices?.value, destinationCurrency.symbol, effectiveTokenUsdPrices);
-  }, [currentOptionsPrices?.value, effectiveTokenUsdPrices, selectedDestination, selectedToken]);
+    if (!amount || parseFloat(amount) <= 0) {
+      return null;
+    }
+
+    let receiveValue = null;
+
+    if (isDirectVerusReceive) {
+      receiveValue = normalizedQuoteAmount;
+    } else if (receiveQuoteState === 'ready') {
+      receiveValue = receiveQuote.value;
+    }
+
+    return getAmountFiatLabel(receiveValue, receiveCurrency.symbol, effectiveTokenUsdPrices);
+  }, [
+    amount,
+    effectiveTokenUsdPrices,
+    isDirectVerusReceive,
+    normalizedQuoteAmount,
+    receiveCurrency,
+    receiveQuote.value,
+    receiveQuoteState
+  ]);
+  const conversionWarning = useMemo(() => {
+    if (receiveQuoteState !== 'ready' || !requiresReceiveQuote) {
+      return createEmptyWarningState();
+    }
+
+    const parsedAmount = parseFloat(amount);
+    const parsedQuoteOut = parseFloat(receiveQuote.value);
+
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || !Number.isFinite(parsedQuoteOut) || parsedQuoteOut <= 0) {
+      return createEmptyWarningState();
+    }
+
+    if (
+      warningDestinationSymbol === 'VRSC'
+      && warningSourceSymbol === 'ETH'
+      && natiComparisonQuote.signature === natiComparisonSignature
+      && natiComparisonQuote.state === 'ready'
+    ) {
+      const parsedAlternateVenueOut = parseFloat(natiComparisonQuote.value);
+
+      if (Number.isFinite(parsedAlternateVenueOut) && parsedAlternateVenueOut > parsedQuoteOut) {
+        const betterVenueGapPercent = ((parsedAlternateVenueOut - parsedQuoteOut) / parsedQuoteOut) * 100;
+
+        if (betterVenueGapPercent >= PRICE_WARNING_THRESHOLD_PERCENT) {
+          return {
+            conversionWarningGapPercent: betterVenueGapPercent,
+            conversionWarningKind: 'better-venue',
+            conversionWarningMessage: `This quote is ${betterVenueGapPercent.toFixed(1)}% below a better currently available route. You may get a better result by bridging to Verus first, then swapping there.`
+          };
+        }
+      }
+    }
+
+    const sourceReferencePrice = bridgeReferencePriceBySymbol[warningSourceSymbol];
+    const destinationReferencePrice = bridgeReferencePriceBySymbol[warningDestinationSymbol];
+
+    if (!Number.isFinite(sourceReferencePrice) || !Number.isFinite(destinationReferencePrice) || destinationReferencePrice <= 0) {
+      return createEmptyWarningState();
+    }
+
+    const bridgeSpotOutPerIn = sourceReferencePrice / destinationReferencePrice;
+    const quotedOutPerIn = parsedQuoteOut / parsedAmount;
+    const spotImpactGapPercent = ((bridgeSpotOutPerIn - quotedOutPerIn) / bridgeSpotOutPerIn) * 100;
+
+    if (spotImpactGapPercent < PRICE_WARNING_THRESHOLD_PERCENT) {
+      return createEmptyWarningState();
+    }
+
+    return {
+      conversionWarningGapPercent: spotImpactGapPercent,
+      conversionWarningKind: 'spot-impact',
+      conversionWarningMessage: `This quote is ${spotImpactGapPercent.toFixed(1)}% below the current spot value.`
+    };
+  }, [
+    amount,
+    bridgeReferencePriceBySymbol,
+    natiComparisonQuote.signature,
+    natiComparisonQuote.state,
+    natiComparisonQuote.value,
+    natiComparisonSignature,
+    receiveQuote.value,
+    receiveQuoteState,
+    requiresReceiveQuote,
+    warningDestinationSymbol,
+    warningSourceSymbol
+  ]);
+
+  const nativeEthBalanceRaw = useMemo(() => {
+    if (!account) {
+      return '0';
+    }
+
+    const nativeBalanceEntry = walletTokenBalances.find((entry) => entry.token.value === GLOBAL_ADDRESS.ETH);
+    return nativeBalanceEntry?.raw || '0';
+  }, [account, walletTokenBalances]);
+
+  const nativeEthBalance = useMemo(() => {
+    const parsedBalance = parseFloat(nativeEthBalanceRaw);
+    return Number.isFinite(parsedBalance) ? parsedBalance : 0;
+  }, [nativeEthBalanceRaw]);
+
+  const requiredNativeEthWei = useMemo(
+    () => getRequiredNativeEthWei({
+      amount,
+      destination,
+      gasPrice,
+      selectedToken
+    }),
+    [amount, destination, gasPrice, selectedToken]
+  );
+
+  const requiredNativeEth = useMemo(() => {
+    if (!requiredNativeEthWei) {
+      return null;
+    }
+
+    return parseFloat(web3.utils.fromWei(requiredNativeEthWei.toString(), 'ether'));
+  }, [requiredNativeEthWei]);
+
+  const hasEnoughNativeEth = useMemo(() => {
+    if (!requiredNativeEthWei || !account) {
+      return false;
+    }
+
+    const nativeBalanceWei = parseAmountToWei(nativeEthBalanceRaw);
+    if (nativeBalanceWei === null) {
+      return false;
+    }
+
+    return nativeBalanceWei.gte(requiredNativeEthWei);
+  }, [account, nativeEthBalanceRaw, requiredNativeEthWei]);
 
   useEffect(() => {
     if (!destinationOptions.some((option) => option.value === destination)) {
@@ -456,52 +1044,34 @@ export default function useBridgeController() {
   }, [destination, destinationOptions]);
 
   useEffect(() => {
-    if (selectedToken || tokenOptions.length === 0) {
-      return;
-    }
+    const nextSelectedToken = getPreferredSourceToken(tokenOptions, selectedToken);
 
-    const defaultToken = tokenOptions.find((option) => option.value === GLOBAL_ADDRESS.ETH) || tokenOptions[0];
-    if (defaultToken) {
-      setSelectedToken(defaultToken);
-    }
-  }, [selectedToken, tokenOptions]);
-
-  useEffect(() => {
-    if (!selectedToken) {
-      return;
-    }
-
-    const syncedToken = tokenOptions.find((option) => option.value === selectedToken.value);
-    if (syncedToken && syncedToken !== selectedToken) {
-      setSelectedToken(syncedToken);
+    if (nextSelectedToken !== selectedToken) {
+      setSelectedToken(nextSelectedToken);
     }
   }, [selectedToken, tokenOptions]);
 
   useEffect(() => {
     let ignore = false;
 
-    const loadEthUsdPrice = async () => {
-      try {
-        const response = await fetch(COINPAPRIKA_ETH_TICKER_URL);
-        if (!response.ok) {
-          throw new Error('Unable to fetch ETH price.');
-        }
+    const loadInternalPricing = async () => {
+      const [bridgeCurrencyResult, floralisCurrencyResult] = await Promise.allSettled([
+        verusd.getCurrency('bridge.veth'),
+        verusd.getCurrency(FLORALIS_CURRENCY_NAME)
+      ]);
 
-        const result = await response.json();
-        const price = result?.quotes?.USD?.price;
-
-        if (!ignore && Number.isFinite(price)) {
-          setEthUsdPrice(price);
-        }
-      } catch (error) {
-        if (!ignore) {
-          setEthUsdPrice(null);
-        }
+      if (ignore) {
+        return;
       }
+
+      setInternalPricingSnapshot(buildInternalPricingSnapshot({
+        bridgeCurrencyResult: bridgeCurrencyResult.status === 'fulfilled' ? bridgeCurrencyResult.value : null,
+        floralisCurrencyResult: floralisCurrencyResult.status === 'fulfilled' ? floralisCurrencyResult.value : null
+      }));
     };
 
-    loadEthUsdPrice();
-    const intervalId = window.setInterval(loadEthUsdPrice, 60_000);
+    loadInternalPricing();
+    const intervalId = window.setInterval(loadInternalPricing, INTERNAL_PRICE_POLL_INTERVAL_MS);
 
     return () => {
       ignore = true;
@@ -512,101 +1082,122 @@ export default function useBridgeController() {
   useEffect(() => {
     let ignore = false;
 
-    const loadTokenUsdPrices = async () => {
-      const symbolsToFetch = [...new Set(
-        tokenOptions
-          .map((token) => normalizePriceSymbol(getTokenDisplaySymbol(token)))
-          .filter((symbol) => symbol && symbol !== 'ETH' && !STATIC_USD_PRICE_BY_SYMBOL[symbol] && COINPAPRIKA_TICKER_ID_BY_SYMBOL[symbol])
-      )];
+    const loadNatiCurrencyId = async () => {
+      if (!shouldFetchNatiComparison || natiCurrencyId) {
+        return;
+      }
 
-      if (symbolsToFetch.length === 0) {
+      try {
+        const natiCurrencyResult = await verusd.getCurrency(NATI_CURRENCY_NAME);
+        const nextNatiCurrencyId = natiCurrencyResult?.result?.currencyid || null;
+
         if (!ignore) {
-          setTokenUsdPrices({});
+          setNatiCurrencyId(nextNatiCurrencyId);
         }
-        return;
+      } catch (error) {
+        if (!ignore) {
+          setNatiCurrencyId(null);
+        }
       }
-
-      const priceResults = await Promise.allSettled(
-        symbolsToFetch.map(async (symbol) => {
-          const response = await fetch(`https://api.coinpaprika.com/v1/tickers/${COINPAPRIKA_TICKER_ID_BY_SYMBOL[symbol]}`);
-          if (!response.ok) {
-            throw new Error(`Unable to fetch ${symbol} price.`);
-          }
-
-          const result = await response.json();
-          return [symbol, result?.quotes?.USD?.price];
-        })
-      );
-
-      if (ignore) {
-        return;
-      }
-
-      setTokenUsdPrices(priceResults.reduce((priceMap, result) => {
-        if (result.status !== 'fulfilled') {
-          return priceMap;
-        }
-
-        const [symbol, price] = result.value;
-        if (Number.isFinite(price)) {
-          return {
-            ...priceMap,
-            [symbol]: price
-          };
-        }
-
-        return priceMap;
-      }, {}));
     };
 
-    loadTokenUsdPrices();
-    const intervalId = window.setInterval(loadTokenUsdPrices, 60_000);
+    loadNatiCurrencyId();
 
     return () => {
       ignore = true;
-      window.clearInterval(intervalId);
     };
-  }, [tokenOptions]);
+  }, [natiCurrencyId, shouldFetchNatiComparison]);
 
   useEffect(() => {
     let ignore = false;
 
-    const loadBridgeFormState = async () => {
-      if (!delegatorContract || !library) {
+    const loadGasPrice = async () => {
+      if (!library) {
         return;
       }
 
       try {
         const currentGasPrice = await getGasEstimate(library);
-        const isPoolAvailable = await delegatorContract.callStatic.bridgeConverterActive();
-        const tokens = await getTokenChoices(delegatorContract, isPoolAvailable);
-
         if (!ignore) {
           setGasPrice(currentGasPrice);
-          setPoolAvailable(isPoolAvailable);
-          setTokenOptions(tokens);
         }
-
-        enrichTokenChoices(library, tokens)
-          .then((enrichedTokens) => {
-            if (!ignore) {
-              setTokenOptions(enrichedTokens);
-            }
-          })
-          .catch(() => {});
       } catch (error) {
         if (!ignore) {
-          setTokenOptions([]);
+          setGasPrice(null);
         }
       }
     };
 
-    loadBridgeFormState();
+    loadGasPrice();
 
     return () => {
       ignore = true;
     };
-  }, [delegatorContract, library]);
+  }, [library]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadSourceCatalog = async () => {
+      if (!delegatorContract || !library) {
+        return;
+      }
+
+      setIsSourceCatalogLoading(true);
+      setSourceCatalogError(null);
+
+      const loadSourceTokens = async () => {
+        const isPoolAvailable = await delegatorContract.callStatic.bridgeConverterActive();
+        const tokens = mergeTokenChoicesWithSeededEth(await getTokenChoices(delegatorContract, isPoolAvailable));
+
+        if (ignore) {
+          return false;
+        }
+
+        setPoolAvailable(isPoolAvailable);
+        setTokenOptions(tokens);
+
+        try {
+          const enrichedTokens = mergeTokenChoicesWithSeededEth(await enrichTokenChoices(library, tokens));
+          if (!ignore) {
+            setTokenOptions(enrichedTokens);
+          }
+        } catch (error) {
+          // Keep the base token list if metadata enrichment fails.
+        }
+
+        return true;
+      };
+
+      const handleSourceCatalogSuccess = (loaded) => {
+        if (!loaded || ignore) {
+          return;
+        }
+
+        setIsSourceCatalogLoading(false);
+        setSourceCatalogError(null);
+      };
+
+      try {
+        handleSourceCatalogSuccess(await loadSourceTokens());
+      } catch (error) {
+        try {
+          handleSourceCatalogSuccess(await loadSourceTokens());
+        } catch (finalError) {
+          if (!ignore) {
+            setIsSourceCatalogLoading(false);
+            setSourceCatalogError('Unable to load all currencies right now.');
+          }
+        }
+      }
+    };
+
+    loadSourceCatalog();
+
+    return () => {
+      ignore = true;
+    };
+  }, [delegatorContract, library, sourceCatalogRetryNonce]);
 
   useEffect(() => {
     let ignore = false;
@@ -672,50 +1263,84 @@ export default function useBridgeController() {
     let ignore = false;
 
     const loadEstimate = async () => {
-      if (!selectedToken || !destination || !amount || amount === '0') {
-        setCurrentOptionsPrices(null);
+      if (!requiresReceiveQuote) {
+        setReceiveQuote({
+          signature: '',
+          state: 'not-required',
+          value: null
+        });
         return;
       }
 
-      try {
-        const currencies = {
-          [BLOCKCHAIN_NAME]: bitGoUTXO.address.toBase58Check(Buffer.from(GLOBAL_ADDRESS.VRSC.slice(2), 'hex'), 102),
-          bridgeBRIDGE: bitGoUTXO.address.toBase58Check(Buffer.from(GLOBAL_ADDRESS.BETH.slice(2), 'hex'), 102),
-          bridgeVRSC: bitGoUTXO.address.toBase58Check(Buffer.from(GLOBAL_ADDRESS.VRSC.slice(2), 'hex'), 102),
-          bridgeETH: bitGoUTXO.address.toBase58Check(Buffer.from(GLOBAL_ADDRESS.ETH.slice(2), 'hex'), 102),
-          bridgeDAI: bitGoUTXO.address.toBase58Check(Buffer.from(GLOBAL_ADDRESS.DAI.slice(2), 'hex'), 102),
-          bridgeMKR: bitGoUTXO.address.toBase58Check(Buffer.from(GLOBAL_ADDRESS.MKR.slice(2), 'hex'), 102)
-        };
+      if (!shouldFetchReceiveQuote) {
+        setReceiveQuote({
+          signature: quoteSignature,
+          state: 'pending',
+          value: null
+        });
+        return;
+      }
 
+      const convertTo = getQuoteTargetIAddress(destination);
+      if (!convertTo) {
+        setReceiveQuote({
+          signature: quoteSignature,
+          state: 'unavailable',
+          value: null
+        });
+        return;
+      }
+
+      setReceiveQuote({
+        signature: quoteSignature,
+        state: 'pending',
+        value: null
+      });
+
+      try {
         const fromIaddress = bitGoUTXO.address.toBase58Check(Buffer.from(selectedToken.value.slice(2), 'hex'), 102);
-        const convertTo = poolAvailable ? currencies[destination] : currencies.bridgeBRIDGE;
-        const conversionPacket = { currency: fromIaddress, convertto: convertTo, amount };
+        const conversionPacket = {
+          currency: fromIaddress,
+          convertto: convertTo,
+          amount: normalizedQuoteAmount
+        };
 
         if (convertTo !== GLOBAL_IADDRESS.BETH && fromIaddress !== GLOBAL_IADDRESS.BETH && poolAvailable) {
           conversionPacket.via = GLOBAL_IADDRESS.BETH;
         }
 
         if (!Object.values(GLOBAL_ADDRESS).includes(selectedToken.value)) {
-          setCurrentOptionsPrices(null);
+          setReceiveQuote({
+            signature: quoteSignature,
+            state: 'unavailable',
+            value: null
+          });
           return;
         }
 
         const estimation = await verusd.estimateConversion(conversionPacket);
-        if (estimation?.result?.estimatedcurrencyout > 0 && destination !== BLOCKCHAIN_NAME) {
-          const currency = await verusd.getCurrency(convertTo);
-
+        if (estimation?.result?.estimatedcurrencyout > 0) {
           if (!ignore) {
-            setCurrentOptionsPrices({
-              value: `${estimation.result.estimatedcurrencyout}`,
-              destination: currency.result.fullyqualifiedname
+            setReceiveQuote({
+              signature: quoteSignature,
+              state: 'ready',
+              value: `${estimation.result.estimatedcurrencyout}`
             });
           }
         } else if (!ignore) {
-          setCurrentOptionsPrices(null);
+          setReceiveQuote({
+            signature: quoteSignature,
+            state: 'unavailable',
+            value: null
+          });
         }
       } catch (error) {
         if (!ignore) {
-          setCurrentOptionsPrices(null);
+          setReceiveQuote({
+            signature: quoteSignature,
+            state: 'unavailable',
+            value: null
+          });
         }
       }
     };
@@ -725,7 +1350,88 @@ export default function useBridgeController() {
     return () => {
       ignore = true;
     };
-  }, [amount, destination, poolAvailable, selectedToken]);
+  }, [destination, normalizedQuoteAmount, poolAvailable, quoteSignature, requiresReceiveQuote, selectedToken, shouldFetchReceiveQuote]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadNatiComparisonQuote = async () => {
+      if (!shouldFetchNatiComparison) {
+        setNatiComparisonQuote({
+          signature: '',
+          state: 'not-required',
+          value: null
+        });
+        return;
+      }
+
+      if (!natiCurrencyId) {
+        setNatiComparisonQuote({
+          signature: natiComparisonSignature,
+          state: 'pending',
+          value: null
+        });
+        return;
+      }
+
+      const fromIaddress = toIAddressFromHexCurrency(selectedToken?.value);
+      if (!fromIaddress) {
+        setNatiComparisonQuote({
+          signature: natiComparisonSignature,
+          state: 'unavailable',
+          value: null
+        });
+        return;
+      }
+
+      setNatiComparisonQuote({
+        signature: natiComparisonSignature,
+        state: 'pending',
+        value: null
+      });
+
+      try {
+        const estimation = await verusd.estimateConversion({
+          amount: normalizedQuoteAmount,
+          convertto: GLOBAL_IADDRESS.VRSC,
+          currency: fromIaddress,
+          via: natiCurrencyId
+        });
+
+        if (ignore) {
+          return;
+        }
+
+        if (estimation?.result?.estimatedcurrencyout > 0) {
+          setNatiComparisonQuote({
+            signature: natiComparisonSignature,
+            state: 'ready',
+            value: `${estimation.result.estimatedcurrencyout}`
+          });
+        } else {
+          setNatiComparisonQuote({
+            signature: natiComparisonSignature,
+            state: 'unavailable',
+            value: null
+          });
+        }
+      } catch (error) {
+        if (!ignore) {
+          setNatiComparisonQuote({
+            signature: natiComparisonSignature,
+            state: 'unavailable',
+            value: null
+          });
+        }
+      }
+    };
+
+    loadNatiComparisonQuote();
+
+    return () => {
+      ignore = true;
+    };
+  }, [natiComparisonSignature, natiCurrencyId, normalizedQuoteAmount, selectedToken, shouldFetchNatiComparison]);
 
   useEffect(() => {
     let ignore = false;
@@ -876,6 +1582,32 @@ export default function useBridgeController() {
     };
   }, [account]);
 
+  const reviewRouteLabel = useMemo(() => getRouteLabel(destination), [destination]);
+  const reviewTimeEstimate = useMemo(() => getRouteTimeEstimate(destination), [destination]);
+
+  const reviewFeeRows = useMemo(() => {
+    const networkCostWei = getGatewayFeeWei(destination, gasPrice);
+    const networkCostEth = parseFloat(web3.utils.fromWei(networkCostWei.toString(), 'ether'));
+    const bridgeFeeEth = parseFloat(ETH_FEES.ETH);
+
+    return [
+      {
+        id: 'bridge-fee',
+        label: 'Bridge fee',
+        value: formatEthValue(bridgeFeeEth),
+        fiatLabel: getAmountFiatLabel(bridgeFeeEth, 'ETH', effectiveTokenUsdPrices)
+      },
+      {
+        id: 'network-cost',
+        label: 'Network cost',
+        value: formatEthFromWei(networkCostWei),
+        fiatLabel: Number.isFinite(networkCostEth)
+          ? getAmountFiatLabel(networkCostEth, 'ETH', effectiveTokenUsdPrices)
+          : null
+      }
+    ];
+  }, [destination, effectiveTokenUsdPrices, gasPrice]);
+
   const authoriseOneTokenAmount = async (tokenToAuthorise, amountToAuthorise) => {
     const tokenLabel = getTokenDisplaySymbol(tokenToAuthorise) || tokenToAuthorise.name;
 
@@ -954,6 +1686,22 @@ export default function useBridgeController() {
 
     if (validAmount !== true) {
       setAmountError(validAmount);
+      return;
+    }
+
+    if (requiresLiveGasEstimate && !hasLiveGasEstimate(gasPrice)) {
+      addToast({
+        type: 'error',
+        description: 'Ethereum network cost is still loading. Try again in a moment.'
+      });
+      return;
+    }
+
+    if (!hasEnoughNativeEth) {
+      addToast({
+        type: 'error',
+        description: 'Not enough ETH to cover bridge fees.'
+      });
       return;
     }
 
@@ -1078,8 +1826,141 @@ export default function useBridgeController() {
       return 'Fix amount';
     }
 
+    if (requiresReceiveQuote && !hasFreshReceiveQuote) {
+      return 'Awaiting receive quote';
+    }
+
+    if (requiresLiveGasEstimate && !hasLiveGasEstimate(gasPrice)) {
+      return 'Awaiting network fee estimate';
+    }
+
     return '';
-  }, [account, addressError, amount, amountError, destination, selectedToken]);
+  }, [
+    account,
+    addressError,
+    amount,
+    amountError,
+    destination,
+    gasPrice,
+    hasFreshReceiveQuote,
+    requiresLiveGasEstimate,
+    requiresReceiveQuote,
+    selectedToken
+  ]);
+
+  const closeReview = useCallback(() => {
+    setIsReviewing(false);
+    setReviewSnapshot(null);
+  }, []);
+
+  useEffect(() => {
+    if (!isReviewing) {
+      return;
+    }
+
+    if (submitDisabledReason || reviewSnapshot?.editSignature !== editSignature) {
+      closeReview();
+    }
+  }, [closeReview, editSignature, isReviewing, reviewSnapshot, submitDisabledReason]);
+
+  const openReview = useCallback(async () => {
+    if (!account) {
+      setAlert({
+        severity: 'info',
+        message: 'Connect a wallet from the header before bridging assets.'
+      });
+      return;
+    }
+
+    if (!selectedToken || !destination) {
+      setAlert({
+        severity: 'warning',
+        message: 'Select the asset you want to send and the asset you want to receive.'
+      });
+      return;
+    }
+
+    const validDestination = await validateAddress(address);
+    if (validDestination !== true) {
+      setAddressError(validDestination);
+      return;
+    }
+
+    const validAmount = await validateBridgeAmount({
+      account,
+      amount,
+      delegatorContract,
+      library,
+      selectedToken
+    });
+
+    if (validAmount !== true) {
+      setAmountError(validAmount);
+      return;
+    }
+
+    if (requiresReceiveQuote && !hasFreshReceiveQuote) {
+      return;
+    }
+
+    if (requiresLiveGasEstimate && !hasLiveGasEstimate(gasPrice)) {
+      setAlert({
+        severity: 'info',
+        message: 'Estimating the Ethereum network cost for this bounceback route. Try again in a moment.'
+      });
+      return;
+    }
+
+    setAlert(null);
+    setReviewSnapshot({
+      editSignature,
+      receiveAmountDisplay,
+      receiveFiatLabel
+    });
+    setIsReviewing(true);
+  }, [
+    account,
+    address,
+    amount,
+    delegatorContract,
+    destination,
+    editSignature,
+    gasPrice,
+    hasFreshReceiveQuote,
+    library,
+    receiveAmountDisplay,
+    receiveFiatLabel,
+    requiresLiveGasEstimate,
+    requiresReceiveQuote,
+    selectedToken
+  ]);
+
+  const canConfirmReview = Boolean(
+    isReviewing
+    && !submitDisabledReason
+    && hasEnoughNativeEth
+    && !isTxPending
+  );
+
+  const reviewConfirmLabel = useMemo(() => {
+    if (isTxPending) {
+      return 'Submitting...';
+    }
+
+    return hasEnoughNativeEth ? 'Confirm' : 'Not enough ETH';
+  }, [hasEnoughNativeEth, isTxPending]);
+
+  const reviewWarningMessage = useMemo(() => {
+    if (!isReviewing || hasEnoughNativeEth) {
+      return '';
+    }
+
+    return 'Not enough ETH to cover bridge fees.';
+  }, [hasEnoughNativeEth, isReviewing]);
+
+  const retrySourceCatalog = useCallback(() => {
+    setSourceCatalogRetryNonce((currentValue) => currentValue + 1);
+  }, []);
 
   return {
     account,
@@ -1094,12 +1975,16 @@ export default function useBridgeController() {
     bounceBackFeeDisplay: formatFeeEstimate('swaptoETH', gasPrice),
     bounceBackFeeValue: getFeeEstimateValue('swaptoETH', gasPrice),
     canSubmit: !submitDisabledReason && !isTxPending,
-    currentOptionsPrices,
+    canConfirmReview,
+    closeReview,
+    conversionWarningGapPercent: conversionWarning.conversionWarningGapPercent,
+    conversionWarningKind: conversionWarning.conversionWarningKind,
+    conversionWarningMessage: conversionWarning.conversionWarningMessage,
     destination,
     destinationOptions,
-    estimatedDisplayValue: toDisplayAmount(currentOptionsPrices?.value),
-    estimatedFiatLabel,
-    estimatedOutputLabel: currentOptionsPrices?.destination || selectedDestination?.label || 'Select what you want to receive',
+    estimatedDisplayValue: receiveAmountDisplay,
+    estimatedFiatLabel: receiveFiatLabel,
+    estimatedOutputLabel: receiveCurrency?.name || 'Select what you want to receive',
     ethUsdPrice,
     feeEstimate: formatFeeEstimate(destination, gasPrice),
     handleMaxAmount: () => {
@@ -1108,14 +1993,35 @@ export default function useBridgeController() {
       }
     },
     handleSubmit,
+    hasEnoughNativeEth,
+    isReviewing,
+    isSourceCatalogLoading,
     isSourceCurrenciesLoading: isWalletBalancesLoading,
     isTxPending,
     isWalletConnected: Boolean(account),
+    nativeEthBalance,
     notarizationLagBlocks,
     notarizationLagSeconds,
+    openReview,
     poolAvailable,
+    hasFreshReceiveQuote,
+    receiveAmountDisplay,
+    receiveCurrency,
+    receiveFiatLabel,
+    receiveQuoteState,
+    requiredNativeEth,
+    requiresReceiveQuote,
+    reviewReceiveAmountDisplay,
+    reviewReceiveFiatLabel,
     routeLabel: getRouteLabel(destination),
+    reviewConfirmLabel,
+    reviewFeeRows,
+    reviewRouteLabel,
+    reviewTimeEstimate,
+    reviewWarningMessage,
     sourceCurrencies,
+    priceSourceBySymbol,
+    pricingLastUpdatedAt: internalPricingSnapshot.lastUpdatedAt,
     selectedDestination,
     selectedToken,
     selectDestination: (nextDestination) => setDestination(nextDestination),
@@ -1123,12 +2029,15 @@ export default function useBridgeController() {
       const nextToken = tokenOptions.find((option) => option.value === value) || null;
       setSelectedToken(nextToken);
     },
+    retrySourceCatalog,
     setAddress: (nextAddress) => setAddress(nextAddress),
     setAmount: (nextAmount) => setAmount(nextAmount.replace(',', '.')),
+    sourceCatalogError,
     submitDisabledReason,
     tokenBalance,
     tokenBalanceLabel: tokenBalance?.display || (account ? 'Loading wallet balance...' : 'Connect a wallet to view balance'),
     tokenOptions,
+    usdPriceBySymbol: effectiveTokenUsdPrices,
     verusChainHeight,
     verusTipHeight
   };

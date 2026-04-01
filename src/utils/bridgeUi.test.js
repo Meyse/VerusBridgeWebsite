@@ -1,10 +1,13 @@
 import {
+  buildDestinationCurrency,
   buildTokenCurrency,
   getCurrencyIcon,
   getTokenDisplayName,
   getTokenDisplaySymbol,
+  getTokenVerusSymbol,
   sortSourceCurrencies
 } from './bridgeUi';
+import { GLOBAL_ADDRESS } from 'constants/contractAddress';
 
 describe('bridge source token display metadata', () => {
   test('shows Ethereum-facing labels for ETH while keeping legacy aliases searchable', () => {
@@ -58,6 +61,75 @@ describe('bridge source token display metadata', () => {
     expect(currency.name).toBe('Dai Stablecoin');
     expect(currency.symbol).toBe('DAI');
     expect(currency.searchTerms).toContain('DAI.vETH');
+  });
+
+  test('prefers canonical Verus naming for mapped reserve tokens', () => {
+    expect(getTokenVerusSymbol({
+      name: 'DAI.vETH',
+      ticker: 'DAI',
+      value: '0x8b72F1c2D326d376aDd46698E385Cf624f0CA1dA'
+    })).toBe('DAI.vETH');
+  });
+
+  test('uses canonical Verus symbols for direct receive destinations', () => {
+    const destinationCurrency = buildDestinationCurrency(
+      { value: 'VRSC', iaddress: '0x8b72F1c2D326d376aDd46698E385Cf624f0CA1dA' },
+      {
+        name: 'DAI.vETH',
+        ticker: 'DAI',
+        value: '0x8b72F1c2D326d376aDd46698E385Cf624f0CA1dA'
+      }
+    );
+
+    expect(destinationCurrency.symbol).toBe('DAI.vETH');
+    expect(destinationCurrency.name).toBe('Dai Stablecoin');
+  });
+
+  test('uses human-readable names for mapped direct receive destinations', () => {
+    const destinationCurrency = buildDestinationCurrency(
+      { value: 'VRSC', iaddress: '0x4444444444444444444444444444444444444444' },
+      {
+        name: 'vUSDC.vETH',
+        ticker: 'USDC',
+        ethereumName: 'USD Coin',
+        ethereumSymbol: 'USDC',
+        value: '0x4444444444444444444444444444444444444444',
+        erc20address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+      }
+    );
+
+    expect(destinationCurrency.symbol).toBe('vUSDC.vETH');
+    expect(destinationCurrency.name).toBe('USD Coin');
+  });
+
+  test('uses human-readable names for canonical destination currencies', () => {
+    expect(buildDestinationCurrency(
+      { value: 'bridgeVRSC', iaddress: GLOBAL_ADDRESS.VRSC }
+    )).toMatchObject({
+      name: 'Verus',
+      symbol: 'VRSC'
+    });
+
+    expect(buildDestinationCurrency(
+      { value: 'bridgeETH', iaddress: GLOBAL_ADDRESS.ETH }
+    )).toMatchObject({
+      name: 'Ethereum',
+      symbol: 'vETH'
+    });
+
+    expect(buildDestinationCurrency(
+      { value: 'bridgeMKR', iaddress: GLOBAL_ADDRESS.MKR }
+    )).toMatchObject({
+      name: 'Maker',
+      symbol: 'MKR.vETH'
+    });
+
+    expect(buildDestinationCurrency(
+      { value: 'bridgeBRIDGE', iaddress: GLOBAL_ADDRESS.BETH }
+    )).toMatchObject({
+      name: 'Bridge.vETH',
+      symbol: 'Bridge.vETH'
+    });
   });
 
   test('still prefers contract-derived names for non-canonical ERC20 tokens', () => {

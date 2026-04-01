@@ -56,6 +56,39 @@ const CloseIcon = () => (
   </svg>
 );
 
+const EditIcon = () => (
+  <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 20 20" width="14">
+    <path
+      d="M4 13.75V16h2.25l8.46-8.46-2.25-2.25L4 13.75zm9.79-9.21l2.25 2.25 1-1a1 1 0 000-1.41l-.84-.84a1 1 0 00-1.41 0l-1 1z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+const ModalCloseIcon = () => (
+  <svg aria-hidden="true" fill="none" height="20" viewBox="0 0 20 20" width="20">
+    <path
+      d="M4.5 4.5l11 11m0-11l-11 11"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.9"
+    />
+  </svg>
+);
+
+const SearchIcon = () => (
+  <svg aria-hidden="true" fill="none" height="22" viewBox="0 0 24 24" width="22">
+    <path
+      d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    />
+  </svg>
+);
+
 const CurrencyModal = ({
   currencies,
   emptyStateMessage = 'No currencies available yet.',
@@ -64,16 +97,23 @@ const CurrencyModal = ({
   isOpen,
   onClose,
   onSelect,
+  onStatusAction,
   searchTerm,
   setSearchTerm,
+  statusActionLabel,
+  statusMessage,
+  statusTone = 'info',
   title
 }) => {
   const modalCardRef = useRef(null);
+  const searchInputRef = useRef(null);
 
   useEffect(() => {
     if (!isOpen) {
       return undefined;
     }
+
+    searchInputRef.current?.focus();
 
     const handlePointerDown = (event) => {
       if (modalCardRef.current && !modalCardRef.current.contains(event.target)) {
@@ -81,11 +121,19 @@ const CurrencyModal = ({
       }
     };
 
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
     document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('touchstart', handlePointerDown);
 
     return () => {
       document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('touchstart', handlePointerDown);
     };
   }, [isOpen, onClose]);
@@ -117,17 +165,44 @@ const CurrencyModal = ({
             onClick={onClose}
             type="button"
           >
-            <CloseIcon />
+            <ModalCloseIcon />
           </button>
         </div>
 
-        <input
-          className={styles.searchInput}
-          onChange={(event) => setSearchTerm(event.target.value)}
-          placeholder="Search by name or paste address"
-          type="text"
-          value={searchTerm}
-        />
+        <div className={styles.searchInputWrap}>
+          <span className={styles.searchIcon}>
+            <SearchIcon />
+          </span>
+          <input
+            aria-label="Search currencies"
+            autoComplete="off"
+            className={styles.searchInput}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search by name or paste address"
+            ref={searchInputRef}
+            spellCheck={false}
+            type="text"
+            value={searchTerm}
+          />
+        </div>
+
+        {statusMessage ? (
+          <div
+            className={`${styles.modalStatus} ${statusTone === 'warning' ? styles.modalStatusWarning : styles.modalStatusInfo}`}
+            role={statusTone === 'warning' ? 'alert' : 'status'}
+          >
+            <span>{statusMessage}</span>
+            {statusActionLabel && onStatusAction ? (
+              <button
+                className={styles.modalStatusAction}
+                onClick={onStatusAction}
+                type="button"
+              >
+                {statusActionLabel}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className={styles.currencyList}>
           {filteredCurrencies.length === 0 ? (
@@ -163,11 +238,13 @@ const CurrencyModal = ({
                 </div>
                 {currency.balanceLabel || currency.fiatLabel ? (
                   <div className={styles.currencyOptionRight}>
-                    <div className={styles.currencyOptionValue}>
-                      {currency.fiatLabel || currency.balanceLabel}
-                    </div>
-                    {currency.fiatLabel && currency.balanceLabel ? (
-                      <div className={styles.currencyOptionBalance}>{currency.balanceLabel}</div>
+                    {currency.fiatLabel ? (
+                      <div className={styles.currencyOptionValue}>{currency.fiatLabel}</div>
+                    ) : null}
+                    {currency.balanceLabel ? (
+                      <div className={currency.fiatLabel ? styles.currencyOptionBalance : styles.currencyOptionBalanceOnly}>
+                        {currency.balanceLabel}
+                      </div>
                     ) : null}
                   </div>
                 ) : null}
@@ -187,6 +264,30 @@ const formatAddressForInput = (address, isFocused) => {
 
   const shouldCompactHexAddress = !isFocused && address.startsWith('0x') && address.length === 42;
   return shouldCompactHexAddress ? formatCompactAddress(address) : address;
+};
+
+const StaticCurrencyPill = ({ currency }) => {
+  if (!currency) {
+    return null;
+  }
+
+  return (
+    <div className={`${styles.selectorButton} ${styles.selectorButtonWithIcon} ${styles.reviewCurrencyPill}`}>
+      <div className={styles.selectorIconWrap}>
+        <img alt={currency.symbol} className={styles.selectorIcon} src={currency.icon} />
+      </div>
+      <span className={styles.selectorButtonText}>{currency.symbol}</span>
+    </div>
+  );
+};
+
+const formatReviewEthAmount = (value) => {
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue)) {
+    return '--';
+  }
+
+  return `${parsedValue.toFixed(parsedValue < 0.01 ? 4 : 3)} ETH`;
 };
 
 const BridgeCard = ({ controller }) => {
@@ -217,18 +318,34 @@ const BridgeCard = ({ controller }) => {
   );
 
   const selectedDestinationCurrency = useMemo(
-    () => (controller.selectedDestination ? buildDestinationCurrency(controller.selectedDestination, controller.selectedToken) : null),
-    [controller.selectedDestination, controller.selectedToken]
+    () => controller.receiveCurrency || (
+      controller.selectedDestination ? buildDestinationCurrency(controller.selectedDestination, controller.selectedToken) : null
+    ),
+    [controller.receiveCurrency, controller.selectedDestination, controller.selectedToken]
   );
 
   useEffect(() => {
     setDisplayAddress(formatAddressForInput(controller.address, isAddressFocused));
   }, [controller.address, isAddressFocused]);
 
+  useEffect(() => {
+    if (!controller.isReviewing) {
+      return;
+    }
+
+    setSourceSelectorOpen(false);
+    setDestinationSelectorOpen(false);
+  }, [controller.isReviewing]);
+
+  const receiveAmountDisplay = controller.receiveAmountDisplay ?? controller.estimatedDisplayValue;
+  const receiveFiatLabel = controller.receiveFiatLabel ?? controller.estimatedFiatLabel;
+  const reviewReceiveAmountDisplay = controller.reviewReceiveAmountDisplay || receiveAmountDisplay;
+  const reviewReceiveFiatLabel = controller.reviewReceiveFiatLabel ?? receiveFiatLabel;
+  const conversionWarningMessage = controller.conversionWarningMessage || '';
   const amountNumber = parseFloat(controller.amount);
-  const estimatedAmountNumber = parseFloat(controller.estimatedDisplayValue);
   const hasPositiveAmount = !Number.isNaN(amountNumber) && amountNumber > 0;
-  const hasEstimatedAmount = !Number.isNaN(estimatedAmountNumber) && estimatedAmountNumber > 0;
+  const isAwaitingReceiveQuote = Boolean(controller.requiresReceiveQuote && !controller.hasFreshReceiveQuote);
+  const shouldShowReceiveAmount = hasPositiveAmount && Boolean(receiveAmountDisplay) && receiveAmountDisplay !== '--';
   const showPathInfo = controller.routeLabel === 'Ethereum -> Verus -> Ethereum';
   const showValidation = controller.address.length > 2;
   const isAddressValid = showValidation && !controller.addressError;
@@ -252,37 +369,43 @@ const BridgeCard = ({ controller }) => {
     .filter(Boolean)
     .join(' ');
 
-  const exchangeRateText = useMemo(() => {
-    if (!selectedSourceCurrency || !selectedDestinationCurrency || !hasPositiveAmount || !hasEstimatedAmount) {
-      return '';
-    }
-
-    const rate = estimatedAmountNumber / amountNumber;
-    return `1 ${selectedSourceCurrency.symbol} = ${rate.toFixed(2)} ${selectedDestinationCurrency.symbol}`;
-  }, [
-    amountNumber,
-    estimatedAmountNumber,
-    hasEstimatedAmount,
-    hasPositiveAmount,
-    selectedDestinationCurrency,
-    selectedSourceCurrency
-  ]);
-  const showReceiveMeta = showPathInfo || Boolean(exchangeRateText);
+  const showReceiveMeta = Boolean(receiveFiatLabel) || showPathInfo;
+  const isReviewing = Boolean(controller.isReviewing);
   const sendSectionClassName = styles.cardSection;
   const receiveSectionClassName = [
     styles.cardSection,
     styles.cardSectionSecondary,
-    showReceiveMeta ? styles.cardSectionWithFooter : ''
+    showPathInfo ? styles.cardSectionWithFooter : ''
   ]
     .filter(Boolean)
     .join(' ');
   const sendSelectorClassName = styles.selector;
   const receiveSelectorClassName = [
     styles.selector,
-    showReceiveMeta ? styles.selectorWithFooter : ''
+    showPathInfo ? styles.selectorWithFooter : ''
   ]
     .filter(Boolean)
     .join(' ');
+  const reviewSendSectionClassName = [styles.cardSection, styles.reviewCardSection]
+    .filter(Boolean)
+    .join(' ');
+  const reviewReceiveSectionClassName = [
+    styles.cardSection,
+    styles.cardSectionSecondary,
+    styles.reviewCardSection
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const sourceModalStatusMessage = !controller.isWalletConnected
+    ? controller.sourceCatalogError || (controller.isSourceCatalogLoading ? 'Loading all currencies...' : '')
+    : '';
+  const sourceModalStatusTone = controller.sourceCatalogError ? 'warning' : 'info';
+  const sourceModalStatusActionLabel = controller.sourceCatalogError ? 'Retry' : '';
+  const reviewNativeEthText = formatReviewEthAmount(controller.nativeEthBalance);
+  const reviewRequiredEthText = formatReviewEthAmount(controller.requiredNativeEth);
+  const reviewWarningCopy = controller.reviewWarningMessage
+    ? `Need ${reviewRequiredEthText}. Wallet balance: ${reviewNativeEthText}.`
+    : '';
 
   const submitState = useMemo(() => {
     if (!controller.isWalletConnected) {
@@ -308,27 +431,61 @@ const BridgeCard = ({ controller }) => {
       };
     }
 
+    if (isAwaitingReceiveQuote) {
+      return {
+        disabled: true,
+        label: 'Estimating...'
+      };
+    }
+
     return {
       disabled: !controller.canSubmit || controller.isTxPending,
-      label: controller.isTxPending ? 'Submitting...' : 'Confirm conversion'
+      label: controller.isTxPending ? 'Submitting...' : 'Review'
     };
   }, [
     controller.canSubmit,
+    controller.hasFreshReceiveQuote,
     controller.isTxPending,
     controller.isWalletConnected,
+    controller.requiresReceiveQuote,
     controller.selectedDestination,
     controller.selectedToken,
     hasPositiveAmount,
+    isAwaitingReceiveQuote,
     isInsufficientBalance
   ]);
 
   return (
     <>
+      {isReviewing ? (
+        <div className={styles.reviewHeader}>
+          <button
+            className={styles.reviewBackButton}
+            onClick={controller.closeReview}
+            type="button"
+          >
+            <EditIcon />
+            <span>Edit details</span>
+          </button>
+        </div>
+      ) : null}
+
       <form
         className={styles.bridgeCard}
         id="bridge-interface"
         onSubmit={(event) => {
           event.preventDefault();
+
+          if (isReviewing) {
+            controller.handleSubmit();
+            return;
+          }
+
+          if (controller.openReview) {
+            controller.openReview();
+            return;
+          }
+
           controller.handleSubmit();
         }}
       >
@@ -338,200 +495,316 @@ const BridgeCard = ({ controller }) => {
           </div>
         ) : null}
 
-        <div className={styles.bridgeCardInner}>
-          <div className={sendSectionClassName}>
-            <div className={sendSelectorClassName}>
-              <div className={styles.selectorHeader}>
-                <span className={styles.selectorLabel}>You send</span>
-              </div>
-
-              <div className={styles.selectorRow}>
-                <div className={styles.selectorInputWrap}>
-                  <input
-                    className={styles.amountInput}
-                    inputMode="decimal"
-                    onChange={(event) => controller.setAmount(event.target.value)}
-                    placeholder="0.00"
-                    type="text"
-                    value={controller.amount}
-                  />
-                </div>
-
-                <button
-                  className={`${styles.selectorButton} ${styles.selectorButtonSoft} ${selectedSourceCurrency ? styles.selectorButtonWithIcon : ''}`}
-                  onClick={() => setSourceSelectorOpen(true)}
-                  type="button"
-                >
-                  {selectedSourceCurrency ? (
-                    <>
-                      <div className={styles.selectorIconWrap}>
-                        <img alt={selectedSourceCurrency.symbol} className={styles.selectorIcon} src={selectedSourceCurrency.icon} />
-                      </div>
-                      <span className={styles.selectorButtonText}>{selectedSourceCurrency.symbol}</span>
-                    </>
-                  ) : (
-                    <span className={styles.selectorButtonText}>Select currency</span>
-                  )}
-                  <ChevronIcon />
-                </button>
-              </div>
-
-              {showSendMeta ? (
-                <div className={styles.selectorMeta}>
-                  {controller.amountFiatLabel ? (
-                    <div className={styles.fiatValue}>{controller.amountFiatLabel}</div>
-                  ) : null}
-
-                  {showBalance ? (
-                    <div className={styles.balanceDisplay}>
-                      <div className={styles.balanceText}>
-                        <span>{controller.tokenBalanceLabel}</span>
-                        <button className={styles.maxButton} onClick={controller.handleMaxAmount} type="button">
-                          Max
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className={receiveSectionClassName}>
-            <div className={receiveSelectorClassName}>
-              <div className={styles.selectorHeader}>
-                <span className={styles.selectorLabel}>You receive</span>
-              </div>
-
-              <div className={styles.selectorRow}>
-                <div className={styles.selectorInputWrap}>
-                  <div className={styles.amountInlineRow}>
-                    <input
-                      className={`${styles.amountInput} ${styles.amountInputDisabled}`}
-                      disabled
-                      placeholder="0.00"
-                      type="text"
-                      value={hasEstimatedAmount ? controller.estimatedDisplayValue : ''}
-                    />
-                    {controller.estimatedFiatLabel ? (
-                      <div className={styles.amountInlineFiat}>{controller.estimatedFiatLabel}</div>
-                    ) : null}
+        {isReviewing ? (
+          <>
+            <div className={styles.bridgeCardInner}>
+              <div className={reviewSendSectionClassName}>
+                <div className={`${styles.selector} ${styles.reviewSelector}`}>
+                  <div className={styles.selectorHeader}>
+                    <span className={styles.selectorLabel}>You send</span>
                   </div>
-                </div>
 
-                <button
-                  className={`${styles.selectorButton} ${selectedDestinationCurrency ? styles.selectorButtonWithIcon : styles.selectorButtonPrimary}`}
-                  onClick={() => setDestinationSelectorOpen(true)}
-                  type="button"
-                >
-                  {selectedDestinationCurrency ? (
-                    <>
-                      <div className={styles.selectorIconWrap}>
-                        <img alt={selectedDestinationCurrency.symbol} className={styles.selectorIcon} src={selectedDestinationCurrency.icon} />
+                  <div className={`${styles.selectorRow} ${styles.reviewSummaryRow}`}>
+                    <div className={styles.selectorInputWrap}>
+                      <div className={styles.reviewSummaryText}>
+                        <div className={styles.reviewAmountValue}>{controller.amount || '--'}</div>
                       </div>
-                      <span className={styles.selectorButtonText}>{selectedDestinationCurrency.symbol}</span>
-                    </>
-                  ) : (
-                    <span className={styles.selectorButtonTextPrimary}>Select currency</span>
-                  )}
-                  <ChevronIcon primary={!selectedDestinationCurrency} />
-                </button>
-              </div>
-
-              {showReceiveMeta ? (
-                <div className={styles.rates}>
-                  {showPathInfo ? (
-                    <div className={styles.pathInfo}>
-                      <RouteIcon />
-                      <span>Path: Ethereum → Verus → Ethereum</span>
                     </div>
-                  ) : null}
 
-                  {exchangeRateText ? (
-                    <div className={styles.rateRow}>
-                      <div className={styles.rateText}>{exchangeRateText}</div>
+                    <StaticCurrencyPill currency={selectedSourceCurrency} />
+                  </div>
+
+                  {controller.amountFiatLabel ? (
+                    <div className={styles.reviewAmountMetaRow}>
+                      <div className={styles.reviewAmountMeta}>{controller.amountFiatLabel}</div>
                     </div>
                   ) : null}
                 </div>
-              ) : null}
+              </div>
+
+              <div className={reviewReceiveSectionClassName}>
+                <div className={`${styles.selector} ${styles.reviewSelector}`}>
+                  <div className={styles.selectorHeader}>
+                    <span className={styles.selectorLabel}>You receive</span>
+                  </div>
+
+                  <div className={`${styles.selectorRow} ${styles.reviewSummaryRow}`}>
+                    <div className={styles.selectorInputWrap}>
+                      <div className={styles.reviewSummaryText}>
+                        <div className={styles.reviewAmountValue}>{reviewReceiveAmountDisplay || '--'}</div>
+                      </div>
+                    </div>
+
+                    <StaticCurrencyPill currency={selectedDestinationCurrency} />
+                  </div>
+
+                  {reviewReceiveFiatLabel ? (
+                    <div className={styles.reviewAmountMetaRow}>
+                      <div className={styles.reviewAmountMeta}>{reviewReceiveFiatLabel}</div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div className={styles.addressBlock}>
-          <div className={styles.addressHint}>Enter a Verus address (R-address or i-address) or Ethereum address</div>
-          <div className={styles.addressWrapper}>
-            <input
-              className={addressInputClassName}
-              onBlur={() => {
-                setIsAddressFocused(false);
-                setDisplayAddress(formatAddressForInput(controller.address, false));
-              }}
-              onChange={(event) => {
-                setDisplayAddress(event.target.value);
-                controller.setAddress(event.target.value);
-              }}
-              onFocus={() => {
-                setIsAddressFocused(true);
-                setDisplayAddress(controller.address);
-              }}
-              placeholder="Enter receiving address"
-              type="text"
-              value={displayAddress}
-            />
-
-            {showSelfButton ? (
-              <button
-                className={styles.selfButton}
-                onClick={() => controller.setAddress(controller.account)}
-                type="button"
-              >
-                self
-              </button>
-            ) : null}
-
-            {showValidation ? (
-              <div className={validationIconClassName}>
-                {isAddressValid ? <CheckIcon /> : <CloseIcon />}
+            {conversionWarningMessage ? (
+              <div className={styles.conversionWarningText} role="alert">
+                <span className={styles.conversionWarningLabel}>High slippage warning:</span>
+                {' '}
+                <span>{conversionWarningMessage}</span>
               </div>
             ) : null}
-          </div>
-        </div>
 
-        <button
-          className={`${styles.submitButton} ${submitState.disabled ? styles.submitButtonDisabled : ''}`}
-          disabled={submitState.disabled}
-          type="submit"
-        >
-          {submitState.label}
-        </button>
+            <div className={styles.reviewAddressPanel}>
+              <div className={styles.reviewSectionLabel}>Destination address</div>
+              <div className={styles.reviewAddressValue}>{controller.address}</div>
+            </div>
+
+            <div className={styles.reviewDetails}>
+              <div className={styles.reviewDetailRow}>
+                <span className={styles.reviewDetailLabel}>Route</span>
+                <span className={styles.reviewDetailValue}>{controller.reviewRouteLabel}</span>
+              </div>
+
+              <div className={styles.reviewDetailRow}>
+                <span className={styles.reviewDetailLabel}>Estimated time</span>
+                <span className={styles.reviewDetailValue}>{controller.reviewTimeEstimate}</span>
+              </div>
+
+              {controller.reviewFeeRows?.map((row) => (
+                <div className={styles.reviewDetailRow} key={row.id}>
+                  <span className={styles.reviewDetailLabel}>{row.label}</span>
+                  <span className={styles.reviewDetailValue}>
+                    {row.fiatLabel ? <span className={styles.reviewDetailFiat}>{row.fiatLabel}</span> : null}
+                    {row.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {controller.reviewWarningMessage ? (
+              <div className={styles.reviewWarning} role="alert">
+                <div className={styles.reviewWarningTitle}>{controller.reviewWarningMessage}</div>
+                <div className={styles.reviewWarningCopy}>{reviewWarningCopy}</div>
+              </div>
+            ) : null}
+
+            <button
+              className={`${styles.submitButton} ${!controller.canConfirmReview ? styles.submitButtonDisabled : ''}`}
+              disabled={!controller.canConfirmReview}
+              type="submit"
+            >
+              {controller.reviewConfirmLabel || 'Confirm'}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className={styles.bridgeCardInner}>
+              <div className={sendSectionClassName}>
+                <div className={sendSelectorClassName}>
+                  <div className={styles.selectorHeader}>
+                    <span className={styles.selectorLabel}>You send</span>
+                  </div>
+
+                  <div className={styles.selectorRow}>
+                    <div className={styles.selectorInputWrap}>
+                      <input
+                        className={styles.amountInput}
+                        inputMode="decimal"
+                        onChange={(event) => controller.setAmount(event.target.value)}
+                        placeholder="0.00"
+                        type="text"
+                        value={controller.amount}
+                      />
+                    </div>
+
+                    <button
+                      className={`${styles.selectorButton} ${styles.selectorButtonSoft} ${selectedSourceCurrency ? styles.selectorButtonWithIcon : ''}`}
+                      onClick={() => setSourceSelectorOpen(true)}
+                      type="button"
+                    >
+                      {selectedSourceCurrency ? (
+                        <>
+                          <div className={styles.selectorIconWrap}>
+                            <img alt={selectedSourceCurrency.symbol} className={styles.selectorIcon} src={selectedSourceCurrency.icon} />
+                          </div>
+                          <span className={styles.selectorButtonText}>{selectedSourceCurrency.symbol}</span>
+                        </>
+                      ) : (
+                        <span className={styles.selectorButtonText}>Select currency</span>
+                      )}
+                      <ChevronIcon />
+                    </button>
+                  </div>
+
+                  {showSendMeta ? (
+                    <div className={styles.selectorMeta}>
+                      {controller.amountFiatLabel ? (
+                        <div className={styles.fiatValue}>{controller.amountFiatLabel}</div>
+                      ) : null}
+
+                      {showBalance ? (
+                        <div className={styles.balanceDisplay}>
+                          <div className={styles.balanceText}>
+                            <span>{controller.tokenBalanceLabel}</span>
+                            <button className={styles.maxButton} onClick={controller.handleMaxAmount} type="button">
+                              Max
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className={receiveSectionClassName}>
+                <div className={receiveSelectorClassName}>
+                  <div className={styles.selectorHeader}>
+                    <span className={styles.selectorLabel}>You receive</span>
+                  </div>
+
+                  <div className={styles.selectorRow}>
+                    <div className={styles.selectorInputWrap}>
+                      <input
+                        className={`${styles.amountInput} ${styles.amountInputDisabled}`}
+                        disabled
+                        placeholder="0.00"
+                        type="text"
+                        value={shouldShowReceiveAmount ? receiveAmountDisplay : ''}
+                      />
+                    </div>
+
+                    <button
+                      className={`${styles.selectorButton} ${selectedDestinationCurrency ? styles.selectorButtonWithIcon : styles.selectorButtonPrimary}`}
+                      onClick={() => setDestinationSelectorOpen(true)}
+                      type="button"
+                    >
+                      {selectedDestinationCurrency ? (
+                        <>
+                          <div className={styles.selectorIconWrap}>
+                            <img alt={selectedDestinationCurrency.symbol} className={styles.selectorIcon} src={selectedDestinationCurrency.icon} />
+                          </div>
+                          <span className={styles.selectorButtonText}>{selectedDestinationCurrency.symbol}</span>
+                        </>
+                      ) : (
+                        <span className={styles.selectorButtonTextPrimary}>Select currency</span>
+                      )}
+                      <ChevronIcon primary={!selectedDestinationCurrency} />
+                    </button>
+                  </div>
+
+                  {showReceiveMeta ? (
+                    <div className={styles.receiveMeta}>
+                      {receiveFiatLabel ? (
+                        <div className={styles.fiatValue}>{receiveFiatLabel}</div>
+                      ) : null}
+
+                      {showPathInfo ? (
+                        <div className={styles.pathInfo}>
+                          <RouteIcon />
+                          <span>Path: Ethereum → Verus → Ethereum</span>
+                        </div>
+                      ) : null}
+
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            {conversionWarningMessage ? (
+              <div className={styles.conversionWarningText} role="alert">
+                <span className={styles.conversionWarningLabel}>High slippage warning:</span>
+                {' '}
+                <span>{conversionWarningMessage}</span>
+              </div>
+            ) : null}
+
+            <div className={styles.addressBlock}>
+              <div className={styles.addressHint}>Enter a Verus address (R-address or i-address) or Ethereum address</div>
+              <div className={styles.addressWrapper}>
+                <input
+                  className={addressInputClassName}
+                  onBlur={() => {
+                    setIsAddressFocused(false);
+                    setDisplayAddress(formatAddressForInput(controller.address, false));
+                  }}
+                  onChange={(event) => {
+                    setDisplayAddress(event.target.value);
+                    controller.setAddress(event.target.value);
+                  }}
+                  onFocus={() => {
+                    setIsAddressFocused(true);
+                    setDisplayAddress(controller.address);
+                  }}
+                  placeholder="Enter receiving address"
+                  type="text"
+                  value={displayAddress}
+                />
+
+                {showSelfButton ? (
+                  <button
+                    className={styles.selfButton}
+                    onClick={() => controller.setAddress(controller.account)}
+                    type="button"
+                  >
+                    self
+                  </button>
+                ) : null}
+
+                {showValidation ? (
+                  <div className={validationIconClassName}>
+                    {isAddressValid ? <CheckIcon /> : <CloseIcon />}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <button
+              className={`${styles.submitButton} ${submitState.disabled ? styles.submitButtonDisabled : ''}`}
+              disabled={submitState.disabled}
+              type="submit"
+            >
+              {submitState.label}
+            </button>
+          </>
+        )}
       </form>
 
-      <CurrencyModal
-        currencies={sourceCurrencies}
-        emptyStateMessage={controller.isWalletConnected
-          ? 'No matching assets found in this wallet.'
-          : 'No currencies available yet.'}
-        isLoading={controller.isWalletConnected && controller.isSourceCurrenciesLoading}
-        isOpen={sourceSelectorOpen}
-        loadingMessage="Loading wallet assets..."
-        onClose={() => setSourceSelectorOpen(false)}
-        onSelect={controller.selectToken}
-        searchTerm={sourceSearch}
-        setSearchTerm={setSourceSearch}
-        title="Select a currency"
-      />
+      {!isReviewing ? (
+        <>
+          <CurrencyModal
+            currencies={sourceCurrencies}
+            emptyStateMessage={controller.isWalletConnected
+              ? 'No matching assets found in this wallet.'
+              : 'No currencies available yet.'}
+            isLoading={controller.isWalletConnected && controller.isSourceCurrenciesLoading}
+            isOpen={sourceSelectorOpen}
+            loadingMessage="Loading wallet assets..."
+            onClose={() => setSourceSelectorOpen(false)}
+            onSelect={controller.selectToken}
+            onStatusAction={controller.retrySourceCatalog}
+            searchTerm={sourceSearch}
+            setSearchTerm={setSourceSearch}
+            statusActionLabel={sourceModalStatusActionLabel}
+            statusMessage={sourceModalStatusMessage}
+            statusTone={sourceModalStatusTone}
+            title="Select a currency"
+          />
 
-      <CurrencyModal
-        currencies={destinationCurrencies}
-        emptyStateMessage="No currencies available yet. Enter a valid destination address to unlock receive options."
-        isOpen={destinationSelectorOpen}
-        onClose={() => setDestinationSelectorOpen(false)}
-        onSelect={controller.selectDestination}
-        searchTerm={destinationSearch}
-        setSearchTerm={setDestinationSearch}
-        title="Select a currency"
-      />
+          <CurrencyModal
+            currencies={destinationCurrencies}
+            emptyStateMessage="No currencies available yet. Enter a valid destination address to unlock receive options."
+            isOpen={destinationSelectorOpen}
+            onClose={() => setDestinationSelectorOpen(false)}
+            onSelect={controller.selectDestination}
+            searchTerm={destinationSearch}
+            setSearchTerm={setDestinationSearch}
+            title="Select a currency"
+          />
+        </>
+      ) : null}
     </>
   );
 };
