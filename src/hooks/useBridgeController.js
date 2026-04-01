@@ -20,6 +20,7 @@ import {
 import useContract from 'hooks/useContract';
 import bitGoUTXO from 'utils/bitUTXO';
 import {
+  buildDestinationCurrency,
   buildTokenCurrency,
   formatCurrencyFiat,
   getTokenDisplaySymbol,
@@ -113,6 +114,30 @@ const formatBalance = (value) => {
 };
 
 const normalizePriceSymbol = (value) => (value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+
+const getPriceLookupSymbol = (value) => {
+  const normalizedSymbol = normalizePriceSymbol(value);
+
+  if (['BETH', 'BRIDGE', 'VBRID'].includes(normalizedSymbol)) {
+    return 'ETH';
+  }
+
+  return normalizedSymbol;
+};
+
+const getAmountFiatLabel = (value, symbol, prices) => {
+  const parsedAmount = parseFloat(value);
+  if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || !symbol) {
+    return null;
+  }
+
+  const fiatPrice = prices[getPriceLookupSymbol(symbol)];
+  if (!Number.isFinite(fiatPrice)) {
+    return null;
+  }
+
+  return formatCurrencyFiat(parsedAmount * fiatPrice);
+};
 
 const compareSourceCurrenciesByWalletValue = (left, right) => {
   const leftFiat = Number.isFinite(left?.fiatValue) ? left.fiatValue : -1;
@@ -409,6 +434,20 @@ export default function useBridgeController() {
       })
       .sort(compareSourceCurrenciesByWalletValue);
   }, [account, effectiveTokenUsdPrices, tokenOptions, walletTokenBalances]);
+
+  const amountFiatLabel = useMemo(
+    () => getAmountFiatLabel(amount, getTokenDisplaySymbol(selectedToken), effectiveTokenUsdPrices),
+    [amount, effectiveTokenUsdPrices, selectedToken]
+  );
+
+  const estimatedFiatLabel = useMemo(() => {
+    if (!selectedDestination) {
+      return null;
+    }
+
+    const destinationCurrency = buildDestinationCurrency(selectedDestination, selectedToken);
+    return getAmountFiatLabel(currentOptionsPrices?.value, destinationCurrency.symbol, effectiveTokenUsdPrices);
+  }, [currentOptionsPrices?.value, effectiveTokenUsdPrices, selectedDestination, selectedToken]);
 
   useEffect(() => {
     if (!destinationOptions.some((option) => option.value === destination)) {
@@ -1048,6 +1087,7 @@ export default function useBridgeController() {
     addressError,
     alert,
     amount,
+    amountFiatLabel,
     amountError,
     baseBridgeFeeValue: getFeeEstimateValue('', gasPrice),
     baseBridgeFeeDisplay: formatFeeEstimate('', gasPrice),
@@ -1058,6 +1098,7 @@ export default function useBridgeController() {
     destination,
     destinationOptions,
     estimatedDisplayValue: toDisplayAmount(currentOptionsPrices?.value),
+    estimatedFiatLabel,
     estimatedOutputLabel: currentOptionsPrices?.destination || selectedDestination?.label || 'Select what you want to receive',
     ethUsdPrice,
     feeEstimate: formatFeeEstimate(destination, gasPrice),

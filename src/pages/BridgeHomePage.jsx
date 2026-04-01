@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { useLocation } from 'react-router-dom';
 
@@ -38,6 +38,16 @@ const ScrollIcon = () => (
   </svg>
 );
 
+const SCROLL_INDICATOR_FADE_DISTANCE = 220;
+
+const getScrollIndicatorOpacity = () => {
+  if (typeof window === 'undefined') {
+    return 1;
+  }
+
+  return Math.max(0, 1 - window.scrollY / SCROLL_INDICATOR_FADE_DISTANCE);
+};
+
 const scrollToSection = (sectionId) => {
   const targetNode = document.getElementById(sectionId);
   if (!targetNode) {
@@ -52,6 +62,7 @@ const scrollToSection = (sectionId) => {
 const BridgeHomePage = () => {
   const controller = useBridgeController();
   const location = useLocation();
+  const [scrollIndicatorOpacity, setScrollIndicatorOpacity] = useState(getScrollIndicatorOpacity);
 
   useEffect(() => {
     if (!location.hash) {
@@ -60,6 +71,36 @@ const BridgeHomePage = () => {
 
     scrollToSection(location.hash.replace('#', ''));
   }, [location.hash]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    let frameId = null;
+
+    const handleScroll = () => {
+      if (frameId !== null) {
+        return;
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        setScrollIndicatorOpacity(getScrollIndicatorOpacity());
+        frameId = null;
+      });
+    };
+
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
 
   const resources = [...internalResources, ...getExplorerResources()];
 
@@ -97,6 +138,11 @@ const BridgeHomePage = () => {
           <button
             className={styles.scrollIndicator}
             onClick={() => scrollToSection('trustless-section')}
+            style={{
+              opacity: scrollIndicatorOpacity,
+              pointerEvents: scrollIndicatorOpacity <= 0.05 ? 'none' : undefined
+            }}
+            tabIndex={scrollIndicatorOpacity <= 0.05 ? -1 : 0}
             type="button"
           >
             <span className={styles.scrollLabel}>Scroll to learn more</span>

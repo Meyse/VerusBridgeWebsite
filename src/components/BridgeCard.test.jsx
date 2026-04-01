@@ -16,6 +16,7 @@ const createController = (overrides = {}) => ({
   alert: null,
   handleSubmit: jest.fn(),
   amount: '',
+  amountFiatLabel: null,
   amountError: '',
   setAmount: jest.fn(),
   isWalletConnected: false,
@@ -23,6 +24,7 @@ const createController = (overrides = {}) => ({
   tokenBalanceLabel: '',
   handleMaxAmount: jest.fn(),
   estimatedDisplayValue: '',
+  estimatedFiatLabel: null,
   routeLabel: '',
   feeEstimate: '',
   address: '',
@@ -43,10 +45,11 @@ const createController = (overrides = {}) => ({
 });
 
 describe('BridgeCard currency selectors', () => {
-  test('keeps the send section at the standard height when the balance row is visible', () => {
+  test('shows the send fiat in the lower meta row alongside the balance row', () => {
     const { container } = render(
       <BridgeCard
         controller={createController({
+          amountFiatLabel: '$42.10',
           isWalletConnected: true,
           tokenBalance: '0.000022',
           tokenBalanceLabel: '0.000022 ETH'
@@ -54,8 +57,50 @@ describe('BridgeCard currency selectors', () => {
       />
     );
 
+    expect(screen.getByText('$42.10')).toBeInTheDocument();
     expect(screen.getByText('0.000022 ETH')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /max/i })).toBeInTheDocument();
+    expect(container.getElementsByClassName(styles.fiatValue)).toHaveLength(1);
+    expect(container.getElementsByClassName(styles.amountInlineFiat)).toHaveLength(0);
+    expect(container.getElementsByClassName(styles.cardSectionWithFooter)).toHaveLength(0);
+    expect(container.getElementsByClassName(styles.selectorWithFooter)).toHaveLength(0);
+  });
+
+  test('shows the receive fiat inline while keeping the routing footer below', () => {
+    const { container } = render(
+      <BridgeCard
+        controller={createController({
+          amount: '1',
+          amountFiatLabel: '$1.00',
+          estimatedDisplayValue: '0.998',
+          estimatedFiatLabel: '$0.99',
+          routeLabel: 'Ethereum -> Verus -> Ethereum',
+          selectedDestination: { value: 'swaptoETH' }
+        })}
+      />
+    );
+
+    expect(screen.getByText('$0.99')).toBeInTheDocument();
+    expect(screen.getByText(/path: ethereum/i)).toBeInTheDocument();
+    expect(container.getElementsByClassName(styles.cardSectionWithFooter)).toHaveLength(1);
+    expect(container.getElementsByClassName(styles.selectorWithFooter)).toHaveLength(1);
+  });
+
+  test('keeps the receive section at standard height when only the inline fiat value is present', () => {
+    const { container } = render(
+      <BridgeCard
+        controller={createController({
+          amount: '1',
+          estimatedDisplayValue: '0.998',
+          estimatedFiatLabel: '$0.99',
+          selectedToken: null,
+          selectedDestination: { value: 'bridgeDAI' }
+        })}
+      />
+    );
+
+    expect(screen.getByText('$0.99')).toBeInTheDocument();
+    expect(container.getElementsByClassName(styles.amountInlineFiat)).toHaveLength(1);
     expect(container.getElementsByClassName(styles.cardSectionWithFooter)).toHaveLength(0);
     expect(container.getElementsByClassName(styles.selectorWithFooter)).toHaveLength(0);
   });

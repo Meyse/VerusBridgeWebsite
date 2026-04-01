@@ -236,6 +236,7 @@ const BridgeCard = ({ controller }) => {
   const showSelfButton = Boolean(controller.account);
   const showBalance = controller.isWalletConnected && controller.tokenBalance;
   const isInsufficientBalance = Boolean(controller.amountError) && controller.amountError.includes('not available in your wallet');
+  const showSendMeta = Boolean(controller.amountFiatLabel) || showBalance;
   const addressInputClassName = [
     styles.addressInput,
     isAddressValid ? styles.addressInputValid : '',
@@ -266,19 +267,19 @@ const BridgeCard = ({ controller }) => {
     selectedDestinationCurrency,
     selectedSourceCurrency
   ]);
-  const showReceiveRates = showPathInfo || Boolean(exchangeRateText);
+  const showReceiveMeta = showPathInfo || Boolean(exchangeRateText);
   const sendSectionClassName = styles.cardSection;
   const receiveSectionClassName = [
     styles.cardSection,
     styles.cardSectionSecondary,
-    showReceiveRates ? styles.cardSectionWithFooter : ''
+    showReceiveMeta ? styles.cardSectionWithFooter : ''
   ]
     .filter(Boolean)
     .join(' ');
   const sendSelectorClassName = styles.selector;
   const receiveSelectorClassName = [
     styles.selector,
-    showReceiveRates ? styles.selectorWithFooter : ''
+    showReceiveMeta ? styles.selectorWithFooter : ''
   ]
     .filter(Boolean)
     .join(' ');
@@ -357,7 +358,7 @@ const BridgeCard = ({ controller }) => {
                 </div>
 
                 <button
-                  className={`${styles.selectorButton} ${styles.selectorButtonSoft}`}
+                  className={`${styles.selectorButton} ${styles.selectorButtonSoft} ${selectedSourceCurrency ? styles.selectorButtonWithIcon : ''}`}
                   onClick={() => setSourceSelectorOpen(true)}
                   type="button"
                 >
@@ -375,14 +376,22 @@ const BridgeCard = ({ controller }) => {
                 </button>
               </div>
 
-              {showBalance ? (
-                <div className={styles.balanceDisplay}>
-                  <div className={styles.balanceText}>
-                    <span>{controller.tokenBalanceLabel}</span>
-                    <button className={styles.maxButton} onClick={controller.handleMaxAmount} type="button">
-                      Max
-                    </button>
-                  </div>
+              {showSendMeta ? (
+                <div className={styles.selectorMeta}>
+                  {controller.amountFiatLabel ? (
+                    <div className={styles.fiatValue}>{controller.amountFiatLabel}</div>
+                  ) : null}
+
+                  {showBalance ? (
+                    <div className={styles.balanceDisplay}>
+                      <div className={styles.balanceText}>
+                        <span>{controller.tokenBalanceLabel}</span>
+                        <button className={styles.maxButton} onClick={controller.handleMaxAmount} type="button">
+                          Max
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -396,17 +405,22 @@ const BridgeCard = ({ controller }) => {
 
               <div className={styles.selectorRow}>
                 <div className={styles.selectorInputWrap}>
-                  <input
-                    className={`${styles.amountInput} ${styles.amountInputDisabled}`}
-                    disabled
-                    placeholder="0.00"
-                    type="text"
-                    value={hasEstimatedAmount ? controller.estimatedDisplayValue : ''}
-                  />
+                  <div className={styles.amountInlineRow}>
+                    <input
+                      className={`${styles.amountInput} ${styles.amountInputDisabled}`}
+                      disabled
+                      placeholder="0.00"
+                      type="text"
+                      value={hasEstimatedAmount ? controller.estimatedDisplayValue : ''}
+                    />
+                    {controller.estimatedFiatLabel ? (
+                      <div className={styles.amountInlineFiat}>{controller.estimatedFiatLabel}</div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <button
-                  className={`${styles.selectorButton} ${selectedDestinationCurrency ? '' : styles.selectorButtonPrimary}`}
+                  className={`${styles.selectorButton} ${selectedDestinationCurrency ? styles.selectorButtonWithIcon : styles.selectorButtonPrimary}`}
                   onClick={() => setDestinationSelectorOpen(true)}
                   type="button"
                 >
@@ -424,7 +438,7 @@ const BridgeCard = ({ controller }) => {
                 </button>
               </div>
 
-              {showReceiveRates ? (
+              {showReceiveMeta ? (
                 <div className={styles.rates}>
                   {showPathInfo ? (
                     <div className={styles.pathInfo}>
