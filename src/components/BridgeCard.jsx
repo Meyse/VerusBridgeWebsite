@@ -20,14 +20,14 @@ const ChevronIcon = ({ primary = false }) => (
   />
 );
 
-const RouteIcon = () => (
-  <svg fill="none" height="14" viewBox="0 0 24 24" width="14">
+const RouteArrowIcon = () => (
+  <svg aria-hidden="true" fill="none" height="12" viewBox="0 0 20 12" width="20">
     <path
-      d="M5 19a2 2 0 100-4 2 2 0 000 4zm14-14a2 2 0 100 4 2 2 0 000-4zm-2 2H9a4 4 0 00-4 4v4"
+      d="M1.5 6h14m0 0-4-4m4 4-4 4"
       stroke="currentColor"
       strokeLinecap="round"
       strokeLinejoin="round"
-      strokeWidth="2"
+      strokeWidth="1.75"
     />
   </svg>
 );
@@ -62,6 +62,14 @@ const EditIcon = () => (
       d="M4 13.75V16h2.25l8.46-8.46-2.25-2.25L4 13.75zm9.79-9.21l2.25 2.25 1-1a1 1 0 000-1.41l-.84-.84a1 1 0 00-1.41 0l-1 1z"
       fill="currentColor"
     />
+  </svg>
+);
+
+const InfoIcon = () => (
+  <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 16 16" width="14">
+    <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M8 7v3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+    <circle cx="8" cy="4.75" fill="currentColor" r="0.75" />
   </svg>
 );
 
@@ -281,13 +289,51 @@ const StaticCurrencyPill = ({ currency }) => {
   );
 };
 
-const formatReviewEthAmount = (value) => {
-  const parsedValue = Number(value);
-  if (!Number.isFinite(parsedValue)) {
-    return '--';
+const RECEIVE_ESTIMATE_TOOLTIP_LINES = [
+  'This amount is estimated and not guaranteed.',
+  'Bridging and conversion settle over time, so the final value can shift before completion.'
+];
+
+const REVIEW_TIME_TOOLTIP_LINES = [
+  'More activity on the bridge can help transfers complete faster.',
+  'Because the bridge protocol settles in a decentralized way, completion can still take a while.'
+];
+
+const splitRouteLabel = (routeLabel) => String(routeLabel || '')
+  .split(/\s*(?:->|→)\s*/)
+  .filter(Boolean);
+
+const ReviewRouteValue = ({ routeLabel }) => {
+  const segments = splitRouteLabel(routeLabel);
+
+  if (segments.length < 2) {
+    return routeLabel || '--';
   }
 
-  return `${parsedValue.toFixed(parsedValue < 0.01 ? 4 : 3)} ETH`;
+  let routePrefix = '';
+  const keyedSegments = segments.map((segment) => {
+    routePrefix = routePrefix ? `${routePrefix}>${segment}` : segment;
+
+    return {
+      key: routePrefix,
+      label: segment
+    };
+  });
+
+  return (
+    <span aria-label={routeLabel} className={styles.reviewRouteValue}>
+      {keyedSegments.map((segment, index) => (
+        <React.Fragment key={segment.key}>
+          <span className={styles.reviewRouteSegment}>{segment.label}</span>
+          {index < keyedSegments.length - 1 ? (
+            <span className={styles.reviewRouteArrow}>
+              <RouteArrowIcon />
+            </span>
+          ) : null}
+        </React.Fragment>
+      ))}
+    </span>
+  );
 };
 
 const BridgeCard = ({ controller }) => {
@@ -295,8 +341,14 @@ const BridgeCard = ({ controller }) => {
   const [destinationSelectorOpen, setDestinationSelectorOpen] = useState(false);
   const [displayAddress, setDisplayAddress] = useState(() => formatAddressForInput(controller.address, false));
   const [isAddressFocused, setIsAddressFocused] = useState(false);
+  const [isReceiveEstimateInfoOpen, setIsReceiveEstimateInfoOpen] = useState(false);
+  const [isReviewTimeInfoOpen, setIsReviewTimeInfoOpen] = useState(false);
   const [sourceSearch, setSourceSearch] = useState('');
   const [sourceSelectorOpen, setSourceSelectorOpen] = useState(false);
+  const receiveEstimateInfoRef = useRef(null);
+  const receiveEstimatePopoverIdRef = useRef(`receive-estimate-popover-${Math.random().toString(36).slice(2, 10)}`);
+  const reviewTimeInfoRef = useRef(null);
+  const reviewTimePopoverIdRef = useRef(`review-time-popover-${Math.random().toString(36).slice(2, 10)}`);
 
   const sourceCurrencies = useMemo(
     () => (
@@ -337,6 +389,55 @@ const BridgeCard = ({ controller }) => {
     setDestinationSelectorOpen(false);
   }, [controller.isReviewing]);
 
+  useEffect(() => {
+    if (controller.requiresReceiveQuote) {
+      return;
+    }
+
+    setIsReceiveEstimateInfoOpen(false);
+  }, [controller.requiresReceiveQuote]);
+
+  useEffect(() => {
+    if (controller.isReviewing) {
+      return;
+    }
+
+    setIsReviewTimeInfoOpen(false);
+  }, [controller.isReviewing]);
+
+  useEffect(() => {
+    if (!isReceiveEstimateInfoOpen && !isReviewTimeInfoOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (receiveEstimateInfoRef.current && !receiveEstimateInfoRef.current.contains(event.target)) {
+        setIsReceiveEstimateInfoOpen(false);
+      }
+
+      if (reviewTimeInfoRef.current && !reviewTimeInfoRef.current.contains(event.target)) {
+        setIsReviewTimeInfoOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsReceiveEstimateInfoOpen(false);
+        setIsReviewTimeInfoOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('touchstart', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [isReceiveEstimateInfoOpen, isReviewTimeInfoOpen]);
+
   const receiveAmountDisplay = controller.receiveAmountDisplay ?? controller.estimatedDisplayValue;
   const receiveFiatLabel = controller.receiveFiatLabel ?? controller.estimatedFiatLabel;
   const reviewReceiveAmountDisplay = controller.reviewReceiveAmountDisplay || receiveAmountDisplay;
@@ -344,16 +445,18 @@ const BridgeCard = ({ controller }) => {
   const conversionWarningMessage = controller.conversionWarningMessage || '';
   const amountNumber = parseFloat(controller.amount);
   const hasPositiveAmount = !Number.isNaN(amountNumber) && amountNumber > 0;
+  const isConversionReceiveEstimate = Boolean(controller.requiresReceiveQuote);
   const isAwaitingReceiveQuote = Boolean(controller.requiresReceiveQuote && !controller.hasFreshReceiveQuote);
   const shouldShowReceiveAmount = hasPositiveAmount && Boolean(receiveAmountDisplay) && receiveAmountDisplay !== '--';
-  const showPathInfo = controller.routeLabel === 'Ethereum -> Verus -> Ethereum';
   const showValidation = controller.address.length > 2;
   const isAddressValid = showValidation && !controller.addressError;
   const isAddressInvalid = showValidation && Boolean(controller.addressError);
-  const showSelfButton = Boolean(controller.account);
+  const showSelfButton = Boolean(controller.account && controller.allowsEthereumDestination !== false);
   const showBalance = controller.isWalletConnected && controller.tokenBalance;
   const isInsufficientBalance = Boolean(controller.amountError) && controller.amountError.includes('not available in your wallet');
   const showSendMeta = Boolean(controller.amountFiatLabel) || showBalance;
+  const addressHint = controller.addressHint || 'Enter a Verus address (R-address or i-address) or Ethereum address';
+  const addressPlaceholder = controller.addressPlaceholder || 'Enter receiving address';
   const addressInputClassName = [
     styles.addressInput,
     isAddressValid ? styles.addressInputValid : '',
@@ -369,23 +472,17 @@ const BridgeCard = ({ controller }) => {
     .filter(Boolean)
     .join(' ');
 
-  const showReceiveMeta = Boolean(receiveFiatLabel) || showPathInfo;
+  const showReceiveMeta = Boolean(receiveFiatLabel);
   const isReviewing = Boolean(controller.isReviewing);
   const sendSectionClassName = styles.cardSection;
   const receiveSectionClassName = [
     styles.cardSection,
-    styles.cardSectionSecondary,
-    showPathInfo ? styles.cardSectionWithFooter : ''
+    styles.cardSectionSecondary
   ]
     .filter(Boolean)
     .join(' ');
   const sendSelectorClassName = styles.selector;
-  const receiveSelectorClassName = [
-    styles.selector,
-    showPathInfo ? styles.selectorWithFooter : ''
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const receiveSelectorClassName = styles.selector;
   const reviewSendSectionClassName = [styles.cardSection, styles.reviewCardSection]
     .filter(Boolean)
     .join(' ');
@@ -401,11 +498,84 @@ const BridgeCard = ({ controller }) => {
     : '';
   const sourceModalStatusTone = controller.sourceCatalogError ? 'warning' : 'info';
   const sourceModalStatusActionLabel = controller.sourceCatalogError ? 'Retry' : '';
-  const reviewNativeEthText = formatReviewEthAmount(controller.nativeEthBalance);
-  const reviewRequiredEthText = formatReviewEthAmount(controller.requiredNativeEth);
-  const reviewWarningCopy = controller.reviewWarningMessage
-    ? `Need ${reviewRequiredEthText}. Wallet balance: ${reviewNativeEthText}.`
-    : '';
+  const formatReceiveAmount = (value) => {
+    if (!isConversionReceiveEstimate || !value || value === '--' || /estimating/i.test(value)) {
+      return value;
+    }
+
+    return value.startsWith('~') ? value : `~${value}`;
+  };
+  const liveReceiveAmountDisplay = formatReceiveAmount(receiveAmountDisplay);
+  const reviewReceiveAmountText = formatReceiveAmount(reviewReceiveAmountDisplay);
+  const receiveLabel = isConversionReceiveEstimate ? 'You receive (estimated)' : 'You receive';
+  const receiveLabelHeader = (
+    <div className={styles.selectorLabelRow}>
+      <span className={styles.selectorLabel}>{receiveLabel}</span>
+      {isConversionReceiveEstimate ? (
+        <span className={styles.selectorLabelInfo} ref={receiveEstimateInfoRef}>
+          <button
+            aria-controls={isReceiveEstimateInfoOpen ? receiveEstimatePopoverIdRef.current : undefined}
+            aria-expanded={isReceiveEstimateInfoOpen}
+            aria-haspopup="dialog"
+            aria-label="Show estimated receive details"
+            className={styles.activityInfoButton}
+            onClick={() => setIsReceiveEstimateInfoOpen((currentValue) => !currentValue)}
+            type="button"
+          >
+            <InfoIcon />
+          </button>
+
+          {isReceiveEstimateInfoOpen ? (
+            <div
+              aria-label="Estimated receive details"
+              className={`${styles.activityPopover} ${styles.selectorLabelPopover}`}
+              id={receiveEstimatePopoverIdRef.current}
+              role="dialog"
+            >
+              {RECEIVE_ESTIMATE_TOOLTIP_LINES.map((line) => (
+                <div className={styles.activityPopoverLine} key={line}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </span>
+      ) : null}
+    </div>
+  );
+  const reviewTimeLabel = (
+    <span className={styles.reviewDetailLabelRow}>
+      <span className={styles.reviewDetailLabel}>Estimated time</span>
+      <span className={styles.reviewDetailLabelInfo} ref={reviewTimeInfoRef}>
+        <button
+          aria-controls={isReviewTimeInfoOpen ? reviewTimePopoverIdRef.current : undefined}
+          aria-expanded={isReviewTimeInfoOpen}
+          aria-haspopup="dialog"
+          aria-label="Show estimated time details"
+          className={styles.activityInfoButton}
+          onClick={() => setIsReviewTimeInfoOpen((currentValue) => !currentValue)}
+          type="button"
+        >
+          <InfoIcon />
+        </button>
+
+        {isReviewTimeInfoOpen ? (
+          <div
+            aria-label="Estimated time details"
+            className={`${styles.activityPopover} ${styles.reviewDetailPopover}`}
+            id={reviewTimePopoverIdRef.current}
+            role="dialog"
+          >
+            {REVIEW_TIME_TOOLTIP_LINES.map((line) => (
+              <div className={styles.activityPopoverLine} key={line}>
+                {line}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </span>
+    </span>
+  );
 
   const submitState = useMemo(() => {
     if (!controller.isWalletConnected) {
@@ -525,13 +695,13 @@ const BridgeCard = ({ controller }) => {
               <div className={reviewReceiveSectionClassName}>
                 <div className={`${styles.selector} ${styles.reviewSelector}`}>
                   <div className={styles.selectorHeader}>
-                    <span className={styles.selectorLabel}>You receive</span>
+                    {receiveLabelHeader}
                   </div>
 
                   <div className={`${styles.selectorRow} ${styles.reviewSummaryRow}`}>
                     <div className={styles.selectorInputWrap}>
                       <div className={styles.reviewSummaryText}>
-                        <div className={styles.reviewAmountValue}>{reviewReceiveAmountDisplay || '--'}</div>
+                        <div className={styles.reviewAmountValue}>{reviewReceiveAmountText || '--'}</div>
                       </div>
                     </div>
 
@@ -563,11 +733,13 @@ const BridgeCard = ({ controller }) => {
             <div className={styles.reviewDetails}>
               <div className={styles.reviewDetailRow}>
                 <span className={styles.reviewDetailLabel}>Route</span>
-                <span className={styles.reviewDetailValue}>{controller.reviewRouteLabel}</span>
+                <span className={styles.reviewDetailValue}>
+                  <ReviewRouteValue routeLabel={controller.reviewRouteLabel} />
+                </span>
               </div>
 
               <div className={styles.reviewDetailRow}>
-                <span className={styles.reviewDetailLabel}>Estimated time</span>
+                {reviewTimeLabel}
                 <span className={styles.reviewDetailValue}>{controller.reviewTimeEstimate}</span>
               </div>
 
@@ -581,13 +753,6 @@ const BridgeCard = ({ controller }) => {
                 </div>
               ))}
             </div>
-
-            {controller.reviewWarningMessage ? (
-              <div className={styles.reviewWarning} role="alert">
-                <div className={styles.reviewWarningTitle}>{controller.reviewWarningMessage}</div>
-                <div className={styles.reviewWarningCopy}>{reviewWarningCopy}</div>
-              </div>
-            ) : null}
 
             <button
               className={`${styles.submitButton} ${!controller.canConfirmReview ? styles.submitButtonDisabled : ''}`}
@@ -661,7 +826,7 @@ const BridgeCard = ({ controller }) => {
               <div className={receiveSectionClassName}>
                 <div className={receiveSelectorClassName}>
                   <div className={styles.selectorHeader}>
-                    <span className={styles.selectorLabel}>You receive</span>
+                    {receiveLabelHeader}
                   </div>
 
                   <div className={styles.selectorRow}>
@@ -671,7 +836,7 @@ const BridgeCard = ({ controller }) => {
                         disabled
                         placeholder="0.00"
                         type="text"
-                        value={shouldShowReceiveAmount ? receiveAmountDisplay : ''}
+                        value={shouldShowReceiveAmount ? liveReceiveAmountDisplay : ''}
                       />
                     </div>
 
@@ -699,14 +864,6 @@ const BridgeCard = ({ controller }) => {
                       {receiveFiatLabel ? (
                         <div className={styles.fiatValue}>{receiveFiatLabel}</div>
                       ) : null}
-
-                      {showPathInfo ? (
-                        <div className={styles.pathInfo}>
-                          <RouteIcon />
-                          <span>Path: Ethereum → Verus → Ethereum</span>
-                        </div>
-                      ) : null}
-
                     </div>
                   ) : null}
                 </div>
@@ -722,7 +879,7 @@ const BridgeCard = ({ controller }) => {
             ) : null}
 
             <div className={styles.addressBlock}>
-              <div className={styles.addressHint}>Enter a Verus address (R-address or i-address) or Ethereum address</div>
+              <div className={styles.addressHint}>{addressHint}</div>
               <div className={styles.addressWrapper}>
                 <input
                   className={addressInputClassName}
@@ -738,7 +895,7 @@ const BridgeCard = ({ controller }) => {
                     setIsAddressFocused(true);
                     setDisplayAddress(controller.address);
                   }}
-                  placeholder="Enter receiving address"
+                  placeholder={addressPlaceholder}
                   type="text"
                   value={displayAddress}
                 />
@@ -795,7 +952,7 @@ const BridgeCard = ({ controller }) => {
 
           <CurrencyModal
             currencies={destinationCurrencies}
-            emptyStateMessage="No currencies available yet. Enter a valid destination address to unlock receive options."
+            emptyStateMessage={controller.destinationEmptyStateMessage || 'No currencies available yet. Enter a valid destination address to unlock receive options.'}
             isOpen={destinationSelectorOpen}
             onClose={() => setDestinationSelectorOpen(false)}
             onSelect={controller.selectDestination}

@@ -12,7 +12,6 @@ describe('ReferenceInfoBar', () => {
         bounceBackFee={0.013}
         ethUsdPrice={2100}
         notarizationHeight={123456}
-        notarizationLagBlocks={4}
         notarizationLagSeconds={7260}
         verusTipHeight={123460}
       />
@@ -32,7 +31,6 @@ describe('ReferenceInfoBar', () => {
         bounceBackFee={0.013}
         ethUsdPrice={2100}
         notarizationHeight={123456}
-        notarizationLagBlocks={4}
         notarizationLagSeconds={7260}
         verusTipHeight={123460}
       />
@@ -50,9 +48,14 @@ describe('ReferenceInfoBar', () => {
 
     const dialog = screen.getByRole('dialog', { name: /bridge notarization details/i });
 
-    expect(dialog).toHaveTextContent('Notarization block: 123,456');
-    expect(dialog).toHaveTextContent('Verus tip: 123,460');
-    expect(dialog).toHaveTextContent('4 blocks behind');
+    expect(dialog).toHaveTextContent('Notarization block');
+    expect(dialog).toHaveTextContent('123,456');
+    expect(dialog).toHaveTextContent('Verus tip');
+    expect(dialog).toHaveTextContent('123,460');
+    expect(dialog).not.toHaveTextContent(/blocks behind/i);
+    expect(dialog).toHaveTextContent(
+      'You can see your funds on the Verus side after one confirmed bridge notarization. A conversion might take a few blocks longer.'
+    );
 
     fireEvent.mouseDown(document.body);
 

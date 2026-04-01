@@ -68,24 +68,30 @@ const formatBlockHeight = (value) => {
   return blockHeightFormatter.format(value);
 };
 
-const getNotarizationTooltipText = ({ notarizationHeight, notarizationLagBlocks, verusTipHeight }) => {
+const getNotarizationTooltipDetails = ({ notarizationHeight, verusTipHeight }) => {
   if (!Number.isFinite(notarizationHeight) || notarizationHeight <= 1) {
     return null;
   }
 
-  const lines = [`Notarization block: ${formatBlockHeight(notarizationHeight)}`];
+  const stats = [
+    {
+      label: 'Notarization block',
+      value: formatBlockHeight(notarizationHeight)
+    }
+  ];
 
   if (Number.isFinite(verusTipHeight) && verusTipHeight > 1) {
-    lines.push(`Verus tip: ${formatBlockHeight(verusTipHeight)}`);
+    stats.push({
+      label: 'Verus tip',
+      value: formatBlockHeight(verusTipHeight)
+    });
   }
 
-  if (Number.isFinite(notarizationLagBlocks)) {
-    lines.push(
-      `${blockHeightFormatter.format(Math.max(0, notarizationLagBlocks))} ${notarizationLagBlocks === 1 ? 'block' : 'blocks'} behind`
-    );
-  }
-
-  return lines.join('\n');
+  return {
+    stats,
+    note:
+      'You can see your funds on the Verus side after one confirmed bridge notarization. A conversion might take a few blocks longer.'
+  };
 };
 
 const InfoIcon = () => (
@@ -101,7 +107,6 @@ const ReferenceInfoBar = ({
   bounceBackFee,
   ethUsdPrice,
   notarizationHeight,
-  notarizationLagBlocks,
   notarizationLagSeconds,
   verusTipHeight,
   ethToVerusCost,
@@ -110,12 +115,10 @@ const ReferenceInfoBar = ({
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const activityChipRef = useRef(null);
   const popoverIdRef = useRef(`notarization-popover-${Math.random().toString(36).slice(2, 10)}`);
-  const notarizationTooltipText = getNotarizationTooltipText({
+  const notarizationTooltipDetails = getNotarizationTooltipDetails({
     notarizationHeight,
-    notarizationLagBlocks,
     verusTipHeight
   });
-  const notarizationTooltipLines = notarizationTooltipText ? notarizationTooltipText.split('\n') : [];
   const bridgeLabel = BLOCKCHAIN_NAME === 'VRSC' ? 'Verus' : BLOCKCHAIN_NAME;
   const ethIcon = getCurrencyIcon('ETH');
   const verusIcon = getCurrencyIcon(BLOCKCHAIN_NAME);
@@ -151,7 +154,7 @@ const ReferenceInfoBar = ({
       <span className={styles.activityLabel}>Last confirmed bridge notarization:</span>
       <div className={styles.activityValueRow}>
         <span className={styles.activityValue}>{formatLagAgo(notarizationLagSeconds)}</span>
-        {notarizationTooltipLines.length > 0 ? (
+        {notarizationTooltipDetails ? (
           <button
             aria-controls={isTooltipOpen ? popoverIdRef.current : undefined}
             aria-expanded={isTooltipOpen}
@@ -165,25 +168,22 @@ const ReferenceInfoBar = ({
           </button>
         ) : null}
       </div>
-      {isTooltipOpen && notarizationTooltipLines.length > 0 ? (
+      {isTooltipOpen && notarizationTooltipDetails ? (
         <div
           aria-label="Bridge notarization details"
           className={styles.activityPopover}
           id={popoverIdRef.current}
           role="dialog"
         >
-          {notarizationTooltipLines.map((line, index) => (
-            <div
-              className={
-                index === notarizationTooltipLines.length - 1 && notarizationTooltipLines.length > 1
-                  ? `${styles.activityPopoverLine} ${styles.activityPopoverMetaLine}`
-                  : styles.activityPopoverLine
-              }
-              key={line}
-            >
-              {line}
-            </div>
-          ))}
+          <div className={styles.activityPopoverStats}>
+            {notarizationTooltipDetails.stats.map(({ label, value }) => (
+              <div className={styles.activityPopoverRow} key={label}>
+                <span className={styles.activityPopoverLabel}>{label}</span>
+                <span className={styles.activityPopoverValue}>{value}</span>
+              </div>
+            ))}
+          </div>
+          <p className={styles.activityPopoverNote}>{notarizationTooltipDetails.note}</p>
         </div>
       ) : null}
     </div>

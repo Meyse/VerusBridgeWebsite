@@ -437,7 +437,7 @@
   top: calc(100% + 8px);
   right: 0;
   z-index: 30;
-  min-width: 220px;
+  width: min(360px, calc(100vw - 32px));
   padding: 10px 12px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.98);
@@ -463,12 +463,35 @@
   transform: rotate(45deg);
 }
 
-.activityPopoverLine + .activityPopoverLine {
-  margin-top: 2px;
+.activityPopoverStats {
+  display: grid;
+  gap: 6px;
 }
 
-.activityPopoverMetaLine {
-  color: #64748b;
+.activityPopoverRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.activityPopoverLabel {
+  color: #334155;
+}
+
+.activityPopoverValue {
+  color: #0f172a;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.activityPopoverNote {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+  color: inherit;
+  line-height: 1.5;
 }
 
 .main {
@@ -564,6 +587,30 @@
   color: #4b5563;
 }
 
+.selectorLabelRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.selectorLabelInfo {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.selectorLabelPopover {
+  top: calc(100% + 6px);
+  left: -2px;
+  right: auto;
+  min-width: 232px;
+}
+
+.selectorLabelPopover::before {
+  left: 12px;
+  right: auto;
+}
+
 .selectorRow {
   display: flex;
   gap: 8px;
@@ -633,7 +680,7 @@
 }
 
 .selectorButtonSoft .selectorButtonText {
-  color: #334155;
+  color: #111827;
 }
 
 .selectorButtonSoft .selectorIconWrap {
@@ -994,9 +1041,34 @@
   gap: 16px;
 }
 
+.reviewDetailLabelRow {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .reviewDetailLabel {
   color: #475569;
   font-size: 14px;
+}
+
+.reviewDetailLabelInfo {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.reviewDetailPopover {
+  top: calc(100% + 8px);
+  left: 0;
+  right: auto;
+  min-width: 240px;
+}
+
+.reviewDetailPopover::before {
+  left: 12px;
+  right: auto;
 }
 
 .reviewDetailValue {
@@ -1011,30 +1083,27 @@
   flex-wrap: wrap;
 }
 
+.reviewRouteValue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reviewRouteSegment {
+  white-space: nowrap;
+}
+
+.reviewRouteArrow {
+  display: inline-flex;
+  align-items: center;
+  color: #2563eb;
+}
+
 .reviewDetailFiat {
   color: #6b7280;
   font-weight: 500;
-}
-
-.reviewWarning {
-  margin-top: 16px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: #fff7ed;
-  border: 1px solid #fdba74;
-}
-
-.reviewWarningTitle {
-  color: #9a3412;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.reviewWarningCopy {
-  margin-top: 6px;
-  color: #9a3412;
-  font-size: 13px;
-  line-height: 1.45;
 }
 
 .alert {

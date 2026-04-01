@@ -14,6 +14,7 @@ const selectedToken = {
 
 const createController = (overrides = {}) => ({
   alert: null,
+  allowsEthereumDestination: true,
   handleSubmit: jest.fn(),
   amount: '',
   amountFiatLabel: null,
@@ -31,7 +32,9 @@ const createController = (overrides = {}) => ({
   routeLabel: '',
   feeEstimate: '',
   address: '',
+  addressHint: 'Enter a Verus address (R-address or i-address) or Ethereum address',
   addressError: '',
+  addressPlaceholder: 'Enter receiving address',
   account: '',
   canConfirmReview: false,
   hasFreshReceiveQuote: true,
@@ -54,10 +57,10 @@ const createController = (overrides = {}) => ({
   reviewReceiveAmountDisplay: '',
   reviewReceiveFiatLabel: null,
   reviewRouteLabel: 'Ethereum -> Verus',
-  reviewTimeEstimate: '~10-30 min',
-  reviewWarningMessage: '',
+  reviewTimeEstimate: '1-6 hours',
   selectedToken,
   selectedDestination: null,
+  destinationEmptyStateMessage: 'No currencies available yet. Enter a valid destination address to unlock receive options.',
   sourceCurrencies: undefined,
   isSourceCatalogLoading: false,
   isSourceCurrenciesLoading: false,
@@ -109,6 +112,23 @@ describe('BridgeCard currency selectors', () => {
     expect(screen.getByRole('button', { name: 'Estimating...' })).toBeDisabled();
   });
 
+  test('keeps the receive amount blank before a receive currency is selected', () => {
+    render(
+      <BridgeCard
+        controller={createController({
+          amount: '0.322832',
+          amountFiatLabel: '$0.32',
+          isWalletConnected: true,
+          receiveAmountDisplay: '--',
+          selectedDestination: null
+        })}
+      />
+    );
+
+    expect(screen.queryByDisplayValue('Estimating...')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Select currency to receive' })).toBeDisabled();
+  });
+
   test('shows the full receive quote when a conversion quote is ready', () => {
     render(
       <BridgeCard
@@ -132,8 +152,32 @@ describe('BridgeCard currency selectors', () => {
       />
     );
 
-    expect(screen.getByDisplayValue('0.00107949')).toBeInTheDocument();
+    expect(screen.getByText('You receive (estimated)')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('~0.00107949')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Review' })).toBeEnabled();
+  });
+
+  test('opens estimated receive details for conversion quotes only', () => {
+    render(
+      <BridgeCard
+        controller={createController({
+          amount: '2.290298377929176',
+          hasFreshReceiveQuote: true,
+          isWalletConnected: true,
+          receiveAmountDisplay: '0.00107949',
+          requiresReceiveQuote: true,
+          selectedDestination: { value: 'bridgeETH' }
+        })}
+      />
+    );
+
+    expect(screen.queryByRole('dialog', { name: /estimated receive details/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /show estimated receive details/i }));
+
+    expect(screen.getByRole('dialog', { name: /estimated receive details/i })).toBeInTheDocument();
+    expect(screen.getByText(/estimated and not guaranteed/i)).toBeInTheDocument();
+    expect(screen.getByText(/final value can shift before completion/i)).toBeInTheDocument();
   });
 
   test('renders the inline review state with fee rows and a not-enough-eth CTA', () => {
@@ -156,12 +200,10 @@ describe('BridgeCard currency selectors', () => {
           requiredNativeEth: 0.003,
           reviewConfirmLabel: 'Not enough ETH',
           reviewFeeRows: [
-            { id: 'bridge-fee', label: 'Bridge fee', value: '0.0030 ETH', fiatLabel: '$6.30' },
-            { id: 'network-cost', label: 'Network cost', value: '0.0000 ETH', fiatLabel: null }
+            { id: 'bridge-fee', label: 'Bridge fee', value: '0.0030 ETH', fiatLabel: '$6.30' }
           ],
           reviewRouteLabel: 'Ethereum -> Verus',
-          reviewTimeEstimate: '~10-30 min',
-          reviewWarningMessage: 'Not enough ETH to cover bridge fees.',
+          reviewTimeEstimate: '1-6 hours',
           selectedDestination: { value: 'VRSC' }
         })}
       />
@@ -174,12 +216,21 @@ describe('BridgeCard currency selectors', () => {
     expect(editButton.querySelector('svg')).not.toBeNull();
     expect(screen.getByText('DAI.vETH')).toBeInTheDocument();
     expect(screen.getByText('Bridge fee')).toBeInTheDocument();
-    expect(screen.getByText('Estimated time')).toBeInTheDocument();
-    expect(screen.getByText('Not enough ETH to cover bridge fees.')).toBeInTheDocument();
+    expect(screen.queryByText('Network cost')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Ethereum -> Verus')).toBeInTheDocument();
+    expect(screen.getByText('1-6 hours')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Not enough ETH' })).toBeDisabled();
     expect(container.getElementsByClassName(styles.cardSectionWithFooter)).toHaveLength(0);
     expect(container.getElementsByClassName(styles.reviewCardSection)).toHaveLength(2);
     expect(container.getElementsByClassName(styles.reviewSummaryRow)).toHaveLength(2);
+
+    expect(screen.queryByRole('dialog', { name: /estimated time details/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /show estimated time details/i }));
+
+    expect(screen.getByRole('dialog', { name: /estimated time details/i })).toBeInTheDocument();
+    expect(screen.getByText(/more activity on the bridge can help transfers complete faster/i)).toBeInTheDocument();
+    expect(screen.getByText(/bridge protocol settles in a decentralized way/i)).toBeInTheDocument();
   });
 
   test('shows the snapped conversion quote in the review step', () => {
@@ -199,12 +250,14 @@ describe('BridgeCard currency selectors', () => {
           reviewConfirmLabel: 'Confirm',
           reviewReceiveAmountDisplay: '0.00107949',
           reviewRouteLabel: 'Ethereum -> Verus',
+          requiresReceiveQuote: true,
           selectedDestination: { value: 'bridgeETH' }
         })}
       />
     );
 
-    expect(screen.getByText('0.00107949')).toBeInTheDocument();
+    expect(screen.getByText('You receive (estimated)')).toBeInTheDocument();
+    expect(screen.getByText('~0.00107949')).toBeInTheDocument();
     expect(screen.queryByText('Estimating...')).not.toBeInTheDocument();
   });
 
@@ -228,7 +281,7 @@ describe('BridgeCard currency selectors', () => {
     expect(container.getElementsByClassName(styles.selectorWithFooter)).toHaveLength(0);
   });
 
-  test('shows the receive fiat inline while keeping the routing footer below', () => {
+  test('shows the receive fiat inline without the bounceback path footer', () => {
     const { container } = render(
       <BridgeCard
         controller={createController({
@@ -243,9 +296,9 @@ describe('BridgeCard currency selectors', () => {
     );
 
     expect(screen.getByText('$0.99')).toBeInTheDocument();
-    expect(screen.getByText(/path: ethereum/i)).toBeInTheDocument();
-    expect(container.getElementsByClassName(styles.cardSectionWithFooter)).toHaveLength(1);
-    expect(container.getElementsByClassName(styles.selectorWithFooter)).toHaveLength(1);
+    expect(screen.queryByText(/path: ethereum/i)).not.toBeInTheDocument();
+    expect(container.getElementsByClassName(styles.cardSectionWithFooter)).toHaveLength(0);
+    expect(container.getElementsByClassName(styles.selectorWithFooter)).toHaveLength(0);
     expect(container.getElementsByClassName(styles.receiveMeta)).toHaveLength(1);
   });
 
@@ -262,6 +315,9 @@ describe('BridgeCard currency selectors', () => {
       />
     );
 
+    expect(screen.getByText('You receive')).toBeInTheDocument();
+    expect(screen.queryByText('You receive (estimated)')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /show estimated receive details/i })).not.toBeInTheDocument();
     expect(screen.getByText('$0.99')).toBeInTheDocument();
     expect(container.getElementsByClassName(styles.receiveMeta)).toHaveLength(1);
     expect(container.getElementsByClassName(styles.fiatValue)).toHaveLength(1);
@@ -373,6 +429,24 @@ describe('BridgeCard currency selectors', () => {
     const dialog = screen.getByRole('dialog', { name: /select a currency/i });
     expect(within(dialog).getByText('USD Coin')).toBeInTheDocument();
     expect(within(dialog).getByText('vUSDC.vETH')).toBeInTheDocument();
+  });
+
+  test('uses Verus-only address copy and hides the Ethereum self shortcut for one-way routes', () => {
+    render(
+      <BridgeCard
+        controller={createController({
+          account: '0xabc',
+          allowsEthereumDestination: false,
+          addressHint: 'Enter a Verus address (R-address or i-address)',
+          addressPlaceholder: 'Enter Verus receiving address'
+        })}
+      />
+    );
+
+    expect(screen.getByText('Enter a Verus address (R-address or i-address)')).toBeInTheDocument();
+    expect(screen.queryByText(/or Ethereum address/i)).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Enter Verus receiving address')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /self/i })).not.toBeInTheDocument();
   });
 
   test('closes the currency picker when the close button is pressed', () => {

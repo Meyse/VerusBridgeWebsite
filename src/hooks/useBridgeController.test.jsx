@@ -207,6 +207,9 @@ const HookProbe = () => {
       <div data-testid="catalog-loading">{controller.isSourceCatalogLoading ? 'loading' : 'ready'}</div>
       <div data-testid="selected-flags">{controller.selectedToken?.flags || ''}</div>
       <div data-testid="selected-value">{controller.selectedToken?.value || ''}</div>
+      <div data-testid="allows-ethereum-destination">{controller.allowsEthereumDestination ? 'yes' : 'no'}</div>
+      <div data-testid="address-hint">{controller.addressHint || ''}</div>
+      <div data-testid="destination-count">{controller.destinationOptions.length}</div>
       <div data-testid="source-count">{controller.sourceCurrencies.length}</div>
       <div data-testid="source-symbols">{controller.sourceCurrencies.map((currency) => currency.symbol).join(',')}</div>
       <div data-testid="source-fiat-values">{controller.sourceCurrencies.map((currency) => `${currency.symbol}:${currency.fiatLabel || 'none'}`).join('|')}</div>
@@ -227,6 +230,8 @@ const HookProbe = () => {
       <div data-testid="is-reviewing">{controller.isReviewing ? 'yes' : 'no'}</div>
       <div data-testid="review-confirm-label">{controller.reviewConfirmLabel || ''}</div>
       <div data-testid="can-confirm-review">{controller.canConfirmReview ? 'yes' : 'no'}</div>
+      <div data-testid="review-route-label">{controller.reviewRouteLabel || ''}</div>
+      <div data-testid="review-time-estimate">{controller.reviewTimeEstimate || ''}</div>
       <div data-testid="review-fees">{(controller.reviewFeeRows || []).map((row) => `${row.label}:${row.value}`).join('|')}</div>
       <div data-testid="base-fee">{controller.baseBridgeFeeValue ?? ''}</div>
       <div data-testid="bounceback-fee">{controller.bounceBackFeeValue ?? ''}</div>
@@ -251,6 +256,15 @@ const HookProbe = () => {
         type="button"
       >
         Configure Bridge ETH
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(DAI_ADDRESS);
+          controller.setAmount('0.322832');
+        }}
+        type="button"
+      >
+        Configure DAI No Destination
       </button>
       <button
         onClick={() => {
@@ -369,6 +383,25 @@ const HookProbe = () => {
         type="button"
       >
         Configure LINK Direct
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(EURC_ADDRESS);
+          controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+          controller.setAmount('5');
+        }}
+        type="button"
+      >
+        Configure EURC Auto Direct
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(EURC_ADDRESS);
+          controller.setAmount('5');
+        }}
+        type="button"
+      >
+        Configure EURC Auto Direct No Address
       </button>
       <button onClick={() => controller.openReview()} type="button">Open Review</button>
     </div>
@@ -532,7 +565,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     expect(screen.getByTestId('source-symbols')).toHaveTextContent('ETH');
   });
 
-  test('shows DAI.vETH and a 1:1 eight-decimal receive amount for direct Verus sends', async () => {
+  test('shows DAI.vETH and a 1:1 receive amount for direct Verus sends', async () => {
     const library = createLibrary({
       getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
     });
@@ -554,6 +587,90 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
 
     expect(screen.getByTestId('receive-amount')).toHaveTextContent('2.29029837');
+  });
+
+  test('auto-selects the only valid direct Verus route for mapped tokens and shows an immediate 1:1 receive amount', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        getTokenList: jest.fn().mockResolvedValue([liveEthToken, daiToken, eurcToken])
+      }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure EURC Auto Direct' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-symbol')).toHaveTextContent('EURC.vETH');
+    });
+
+    expect(screen.getByTestId('receive-amount')).toHaveTextContent('5');
+    expect(screen.getByTestId('receive-quote-state')).toHaveTextContent('not-required');
+    expect(screen.getByTestId('submit-disabled-reason')).toBeEmptyDOMElement();
+  });
+
+  test('keeps the receive amount blank until a receive currency is selected', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure DAI No Destination' }));
+
+    expect(screen.getByTestId('receive-amount')).toHaveTextContent('--');
+    expect(screen.getByTestId('receive-symbol')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('receive-quote-state')).toHaveTextContent('not-required');
+    expect(screen.getByTestId('submit-disabled-reason')).toHaveTextContent('Select output');
+  });
+
+  test('exposes the one-way direct Verus route for mapped tokens before any address is entered', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        getTokenList: jest.fn().mockResolvedValue([liveEthToken, daiToken, eurcToken])
+      }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure EURC Auto Direct No Address' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-symbol')).toHaveTextContent('EURC.vETH');
+    });
+
+    expect(screen.getByTestId('destination-count')).toHaveTextContent('1');
+    expect(screen.getByTestId('receive-amount')).toHaveTextContent('5');
+    expect(screen.getByTestId('allows-ethereum-destination')).toHaveTextContent('no');
+    expect(screen.getByTestId('address-hint')).toHaveTextContent('Enter a Verus address (R-address or i-address)');
   });
 
   test('derives internal Bridge and Floralis USD prices while keeping DAI, USDT, and USDC pegged', async () => {
@@ -1070,6 +1187,9 @@ describe('useBridgeController disconnected source bootstrap', () => {
       expect(screen.getByTestId('review-confirm-label')).toHaveTextContent('Not enough ETH');
     });
 
+    expect(screen.getByTestId('review-route-label')).toHaveTextContent('Ethereum -> Verus');
+    expect(screen.getByTestId('review-time-estimate')).toHaveTextContent('1-6 hours');
+    expect(screen.getByTestId('review-fees').textContent).not.toContain('Network cost:');
     expect(screen.getByTestId('can-confirm-review')).toHaveTextContent('no');
   });
 

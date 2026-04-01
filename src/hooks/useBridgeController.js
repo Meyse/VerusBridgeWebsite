@@ -27,12 +27,16 @@ import {
   sortSourceCurrencies
 } from 'utils/bridgeUi';
 import { getContract, getMaxAmount } from 'utils/contract';
-import { getDestinationOptions, getTokenOptions } from 'utils/options';
+import {
+  getDestinationOptions,
+  getTokenOptions,
+  supportsOnlyDirectVerusDestination
+} from 'utils/options';
 import {
   REFUND_ADDRESS_STORAGE_KEY,
   requestRefundAddressData
 } from 'utils/refundAddress';
-import { coinsToSats, uint64ToVerusFloat, validateAddress } from 'utils/rules';
+import { coinsToSats, isETHAddress, uint64ToVerusFloat, validateAddress } from 'utils/rules';
 import { getConfigOptions } from 'utils/txConfig';
 
 const maxGas = 1000000;
@@ -521,9 +525,7 @@ const getRouteLabel = (destination) => {
   return 'Ethereum -> Verus';
 };
 
-const getRouteTimeEstimate = (destination) => (
-  destination && destination.startsWith('swapto') ? '~20-60 min' : '~10-30 min'
-);
+const getRouteTimeEstimate = () => '1-6 hours';
 
 const getGasEstimate = async (library) => {
   const latestBlock = await library.getBlockNumber();
@@ -723,6 +725,10 @@ export default function useBridgeController() {
     () => getDestinationOptions(poolAvailable, address, selectedToken?.value, selectedToken?.name),
     [address, poolAvailable, selectedToken]
   );
+  const allowsEthereumDestination = useMemo(
+    () => !supportsOnlyDirectVerusDestination(poolAvailable, selectedToken?.value),
+    [poolAvailable, selectedToken]
+  );
 
   const selectedDestination = useMemo(
     () => destinationOptions.find((option) => option.value === destination) || null,
@@ -877,6 +883,25 @@ export default function useBridgeController() {
   ), [quoteSignature, receiveQuote.signature, receiveQuote.state, requiresReceiveQuote, shouldFetchReceiveQuote]);
   const reviewReceiveAmountDisplay = reviewSnapshot?.receiveAmountDisplay || '';
   const reviewReceiveFiatLabel = reviewSnapshot?.receiveFiatLabel || null;
+  const addressHint = useMemo(
+    () => (
+      allowsEthereumDestination
+        ? 'Enter a Verus address (R-address or i-address) or Ethereum address'
+        : 'Enter a Verus address (R-address or i-address)'
+    ),
+    [allowsEthereumDestination]
+  );
+  const addressPlaceholder = useMemo(
+    () => (allowsEthereumDestination ? 'Enter receiving address' : 'Enter Verus receiving address'),
+    [allowsEthereumDestination]
+  );
+  const destinationEmptyStateMessage = useMemo(() => {
+    if (!allowsEthereumDestination && isETHAddress(address)) {
+      return 'This asset can only be received at a Verus address.';
+    }
+
+    return 'No currencies available yet. Enter a valid destination address to unlock receive options.';
+  }, [address, allowsEthereumDestination]);
   const requiresLiveGasEstimate = useMemo(
     () => Boolean(destination && destination.startsWith('swapto')),
     [destination]
@@ -887,8 +912,12 @@ export default function useBridgeController() {
       return '--';
     }
 
+    if (!selectedDestination) {
+      return '--';
+    }
+
     if (isDirectVerusReceive) {
-      return uint64ToVerusFloat(coinsToSats(amount));
+      return formatQuotedAmount(normalizedQuoteAmount);
     }
 
     if (receiveQuoteState !== 'ready') {
@@ -896,7 +925,7 @@ export default function useBridgeController() {
     }
 
     return formatQuotedAmount(receiveQuote.value);
-  }, [amount, isDirectVerusReceive, receiveQuote.value, receiveQuoteState]);
+  }, [amount, isDirectVerusReceive, normalizedQuoteAmount, receiveQuote.value, receiveQuoteState, selectedDestination]);
 
   const receiveFiatLabel = useMemo(() => {
     if (!receiveCurrency) {
@@ -1038,7 +1067,17 @@ export default function useBridgeController() {
   }, [account, nativeEthBalanceRaw, requiredNativeEthWei]);
 
   useEffect(() => {
-    if (!destinationOptions.some((option) => option.value === destination)) {
+    if (destinationOptions.length === 1) {
+      const onlyDestination = destinationOptions[0].value;
+
+      if (destination !== onlyDestination) {
+        setDestination(onlyDestination);
+      }
+
+      return;
+    }
+
+    if (destination && !destinationOptions.some((option) => option.value === destination)) {
       setDestination('');
     }
   }, [destination, destinationOptions]);
@@ -1583,29 +1622,33 @@ export default function useBridgeController() {
   }, [account]);
 
   const reviewRouteLabel = useMemo(() => getRouteLabel(destination), [destination]);
-  const reviewTimeEstimate = useMemo(() => getRouteTimeEstimate(destination), [destination]);
+  const reviewTimeEstimate = getRouteTimeEstimate();
 
   const reviewFeeRows = useMemo(() => {
     const networkCostWei = getGatewayFeeWei(destination, gasPrice);
     const networkCostEth = parseFloat(web3.utils.fromWei(networkCostWei.toString(), 'ether'));
     const bridgeFeeEth = parseFloat(ETH_FEES.ETH);
-
-    return [
+    const rows = [
       {
         id: 'bridge-fee',
         label: 'Bridge fee',
         value: formatEthValue(bridgeFeeEth),
         fiatLabel: getAmountFiatLabel(bridgeFeeEth, 'ETH', effectiveTokenUsdPrices)
-      },
-      {
+      }
+    ];
+
+    if (!networkCostWei.isZero()) {
+      rows.push({
         id: 'network-cost',
         label: 'Network cost',
         value: formatEthFromWei(networkCostWei),
         fiatLabel: Number.isFinite(networkCostEth)
           ? getAmountFiatLabel(networkCostEth, 'ETH', effectiveTokenUsdPrices)
           : null
-      }
-    ];
+      });
+    }
+
+    return rows;
   }, [destination, effectiveTokenUsdPrices, gasPrice]);
 
   const authoriseOneTokenAmount = async (tokenToAuthorise, amountToAuthorise) => {
@@ -1950,14 +1993,6 @@ export default function useBridgeController() {
     return hasEnoughNativeEth ? 'Confirm' : 'Not enough ETH';
   }, [hasEnoughNativeEth, isTxPending]);
 
-  const reviewWarningMessage = useMemo(() => {
-    if (!isReviewing || hasEnoughNativeEth) {
-      return '';
-    }
-
-    return 'Not enough ETH to cover bridge fees.';
-  }, [hasEnoughNativeEth, isReviewing]);
-
   const retrySourceCatalog = useCallback(() => {
     setSourceCatalogRetryNonce((currentValue) => currentValue + 1);
   }, []);
@@ -1965,8 +2000,11 @@ export default function useBridgeController() {
   return {
     account,
     address,
+    addressHint,
     addressError,
+    addressPlaceholder,
     alert,
+    allowsEthereumDestination,
     amount,
     amountFiatLabel,
     amountError,
@@ -1981,6 +2019,7 @@ export default function useBridgeController() {
     conversionWarningKind: conversionWarning.conversionWarningKind,
     conversionWarningMessage: conversionWarning.conversionWarningMessage,
     destination,
+    destinationEmptyStateMessage,
     destinationOptions,
     estimatedDisplayValue: receiveAmountDisplay,
     estimatedFiatLabel: receiveFiatLabel,
@@ -2018,7 +2057,6 @@ export default function useBridgeController() {
     reviewFeeRows,
     reviewRouteLabel,
     reviewTimeEstimate,
-    reviewWarningMessage,
     sourceCurrencies,
     priceSourceBySymbol,
     pricingLastUpdatedAt: internalPricingSnapshot.lastUpdatedAt,

@@ -20,7 +20,6 @@ import styles from '../styles/ReferenceBridge.module.css';
 const NAV_ITEMS = [
   { label: 'Bridge', to: '/' },
   { label: 'Info', to: '/#trustless-section' },
-  { label: 'Transactions', to: '/#bridge-interface' },
   { label: 'Refunds & claims', to: '/claim' }
 ];
 

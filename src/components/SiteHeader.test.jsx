@@ -76,7 +76,6 @@ describe('SiteHeader wallet interactions', () => {
 
     expect(within(navigation).getByRole('link', { name: 'Bridge' })).toHaveAttribute('href', '/');
     expect(within(navigation).getByRole('link', { name: 'Info' })).toHaveAttribute('href', '/#trustless-section');
-    expect(within(navigation).getByRole('link', { name: 'Transactions' })).toHaveAttribute('href', '/#bridge-interface');
     expect(within(navigation).getByRole('link', { name: 'Refunds & claims' })).toHaveAttribute('href', '/claim');
   });
 
