@@ -50,7 +50,7 @@ const ReferenceTrustlessSection = () => (
             />
           </div>
           <p className={`${styles.trustFeatureCopy} ${styles.trustFeatureCopyAccent}`}>
-            Thousands of miners and stakers verify every transaction.
+            Thousands of Verus miners and stakers verify every transaction.
             No multisig wallets. No trusted parties.
           </p>
         </div>

@@ -43,6 +43,11 @@ jest.mock('components/SiteHeader', () => ({
   default: () => <header data-testid="site-header" />
 }));
 
+jest.mock('components/SiteFooter', () => ({
+  __esModule: true,
+  default: () => <footer data-testid="site-footer" />
+}));
+
 jest.mock('hooks/useBridgeController', () => ({
   __esModule: true,
   default: jest.fn()
@@ -168,6 +173,7 @@ describe('BridgeHomePage', () => {
     expect(screen.queryByText(/bridge assets securely/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/scroll to learn more/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId('trust-section')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('site-footer')).not.toBeInTheDocument();
   });
 
   test('pushes the canonical review URL when the page enter-review callback is used', async () => {
@@ -178,28 +184,29 @@ describe('BridgeHomePage', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId('location-display')).toHaveTextContent('/?step=review#bridge-interface');
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/?step=review');
     });
 
     expect(router.state.historyAction).toBe('PUSH');
+    expect(scrollIntoViewSpy).not.toHaveBeenCalled();
   });
 
-  test('replaces review mode with the bridge-interface hash when auto-exiting review', async () => {
-    const { router } = renderRoute(['/?step=review#bridge-interface']);
+  test('replaces review mode with the home route when review auto-exits', async () => {
+    const { router } = renderRoute(['/?step=review']);
 
     act(() => {
-      capturedControllerOptions.exitReview({ hash: '#bridge-interface' });
+      capturedControllerOptions.exitReview();
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId('location-display')).toHaveTextContent('/#bridge-interface');
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/');
     });
 
     expect(router.state.historyAction).toBe('REPLACE');
   });
 
   test('replaces review mode with the home route when edit details exits review', async () => {
-    const { router } = renderRoute(['/?step=review#bridge-interface']);
+    const { router } = renderRoute(['/?step=review']);
 
     act(() => {
       capturedControllerOptions.exitReview({ hash: '' });

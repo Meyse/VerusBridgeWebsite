@@ -4,18 +4,18 @@ const bridgeBlockName = BLOCKCHAIN_NAME.toUpperCase();
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const POPULAR_SOURCE_CURRENCY_KEYS = [
   'ETH',
+  'VRSC',
   'DAI',
   'MKR',
   'USDC',
-  'USDT',
   'TBTC',
+  'USDT',
   'EURC',
   'SCRVUSD',
   'CRVUSD',
-  'LINK',
-  'WBTC',
-  'BAT'
+  'WBTC'
 ];
+const POPULAR_SOURCE_CURRENCY_KEY_SET = new Set(POPULAR_SOURCE_CURRENCY_KEYS);
 
 const PLACEHOLDER_ICON = '/icons/currencies/placeholder.svg';
 const usdFormatter = new Intl.NumberFormat('en-US', {
@@ -37,10 +37,12 @@ const iconMap = {
   LINK: '/icons/currencies/link.svg',
   MKR: '/icons/currencies/mkr.svg',
   PAXG: '/icons/currencies/paxg.svg',
+  PEPECOIN: '/icons/currencies/pepecoin.png',
   PURE: '/icons/currencies/pure.svg',
   SCRVUSD: '/icons/currencies/scrvUSD.svg',
   SWITCH: '/icons/currencies/switch.svg',
   TBTC: '/icons/currencies/tbtc.svg',
+  THUSD: '/icons/currencies/thusd.svg',
   USDC: '/icons/currencies/usdc.svg',
   USDT: '/icons/currencies/usdt.svg',
   VARRR: '/icons/currencies/varrr.svg',
@@ -65,10 +67,12 @@ const symbolIconAliases = {
   LINK: 'LINK',
   MKR: 'MKR',
   PAXG: 'PAXG',
+  PEPECOIN: 'PEPECOIN',
   PURE: 'PURE',
   SCRVUSD: 'SCRVUSD',
   SWITCH: 'SWITCH',
   TBTC: 'TBTC',
+  THUSD: 'THUSD',
   USDC: 'USDC',
   USDT: 'USDT',
   VARRR: 'VARRR',
@@ -120,7 +124,8 @@ const knownEthereumMetadata = {
   [GLOBAL_ADDRESS.BETH.toLowerCase()]: { name: 'VBRID', symbol: 'VBRID' },
   [GLOBAL_ADDRESS.DAI.toLowerCase()]: { name: 'Dai Stablecoin', symbol: 'DAI' },
   [GLOBAL_ADDRESS.ETH.toLowerCase()]: { name: 'Ethereum', symbol: 'ETH' },
-  [GLOBAL_ADDRESS.MKR.toLowerCase()]: { name: 'Maker', symbol: 'MKR' }
+  [GLOBAL_ADDRESS.MKR.toLowerCase()]: { name: 'Maker', symbol: 'MKR' },
+  [GLOBAL_ADDRESS.VRSC.toLowerCase()]: { name: 'Verus', symbol: 'VRSC' }
 };
 
 const knownVerusMetadata = {
@@ -141,12 +146,17 @@ const normalizeCurrencyAddress = (value) => (value || '').trim().toLowerCase();
 
 const normalizeCurrencySymbol = (value) => (value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
 
-const getKnownEthereumMetadata = (token) => knownEthereumMetadata[(token?.value || '').toLowerCase()];
-const getKnownVerusMetadata = (token) => (
-  knownVerusMetadata[
-    normalizeCurrencyAddress(token?.value || token?.iaddress || token?.address)
-  ]
-);
+const getKnownMetadata = (metadataMap, token) => uniqueValues([
+  token?.value,
+  token?.iaddress,
+  token?.address,
+  token?.erc20address
+])
+  .map((value) => metadataMap[normalizeCurrencyAddress(value)])
+  .find(Boolean);
+
+const getKnownEthereumMetadata = (token) => getKnownMetadata(knownEthereumMetadata, token);
+const getKnownVerusMetadata = (token) => getKnownMetadata(knownVerusMetadata, token);
 
 const getIconKeyFromAddress = (value) => addressIconAliases[normalizeCurrencyAddress(value)];
 
@@ -352,6 +362,29 @@ const getSourceCurrencySortKey = (currency) => (
 );
 
 const getSourceCurrencySortLabel = (currency) => currency?.name || currency?.symbol || '';
+
+export const isPopularSourceCurrency = (currency) => (
+  POPULAR_SOURCE_CURRENCY_KEY_SET.has(getSourceCurrencySortKey(currency))
+);
+
+export const getSourceCurrencySections = (currencies) => {
+  const popular = [];
+  const others = [];
+
+  currencies.forEach((currency) => {
+    if (isPopularSourceCurrency(currency)) {
+      popular.push(currency);
+      return;
+    }
+
+    others.push(currency);
+  });
+
+  return [
+    popular.length ? { id: 'popular', label: 'Popular', currencies: popular } : null,
+    others.length ? { id: 'others', label: 'Others', currencies: others } : null
+  ].filter(Boolean);
+};
 
 export const buildTokenCurrency = (token, metadata = {}) => ({
   id: token.value,

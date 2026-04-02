@@ -28,7 +28,6 @@ import {
   sortSourceCurrencies
 } from 'utils/bridgeUi';
 import { getContract, getMaxAmount } from 'utils/contract';
-import { HOME_BRIDGE_INTERFACE_HASH } from 'utils/homeNavigation';
 import {
   getDestinationOptions,
   getTokenOptions,
@@ -2157,7 +2156,7 @@ export default function useBridgeController({
 
     clearReview(
       isReviewRequested,
-      isReviewRequested ? { hash: HOME_BRIDGE_INTERFACE_HASH } : undefined
+      isReviewRequested ? { hash: '' } : undefined
     );
   }, [clearReview, editSignature, isReviewRequested, reviewSnapshot, submitDisabledReason]);
 

@@ -63,6 +63,21 @@ describe('bridge source token display metadata', () => {
     expect(currency.searchTerms).toContain('DAI.vETH');
   });
 
+  test('shows Verus as the source-token name for VRSC', () => {
+    const token = {
+      name: 'VRSC',
+      ticker: 'VRSC',
+      value: GLOBAL_ADDRESS.VRSC
+    };
+
+    const currency = buildTokenCurrency(token);
+
+    expect(currency.name).toBe('Verus');
+    expect(currency.symbol).toBe('VRSC');
+    expect(currency.icon).toBe('/icons/currencies/vrsc.svg');
+    expect(currency.searchTerms).toContain('VRSC');
+  });
+
   test('prefers canonical Verus naming for mapped reserve tokens', () => {
     expect(getTokenVerusSymbol({
       name: 'DAI.vETH',
@@ -184,13 +199,15 @@ describe('bridge source token display metadata', () => {
   test('resolves provided symbol icons for additional ERC20 assets', () => {
     expect(getCurrencyIcon('BAT')).toBe('/icons/currencies/bat.svg');
     expect(getCurrencyIcon('PAXG')).toBe('/icons/currencies/paxg.svg');
+    expect(getCurrencyIcon('pepeCoin')).toBe('/icons/currencies/pepecoin.png');
+    expect(getCurrencyIcon('thUSD')).toBe('/icons/currencies/thusd.svg');
     expect(getCurrencyIcon('XAUT')).toBe('/icons/currencies/xaut.svg');
     expect(getCurrencyIcon('WBTC')).toBe('/icons/currencies/wbtc.svg');
   });
 
   test('sorts source currencies by popularity first and alphabetically after that', () => {
     const currencies = [
-      { id: 'vrsc', name: 'VRSC', symbol: 'VRSC' },
+      { id: 'vrsc', name: 'Verus', symbol: 'VRSC' },
       { id: 'usdt', name: 'Tether USD', symbol: 'USDT' },
       { id: 'alpha', name: 'Alpha Token', symbol: 'ALPHA' },
       { id: 'mkr', name: 'Maker', symbol: 'MKR' },
@@ -198,21 +215,29 @@ describe('bridge source token display metadata', () => {
       { id: 'eth', name: 'Ethereum', symbol: 'ETH' },
       { id: 'beta', name: 'Beta Token', symbol: 'BETA' },
       { id: 'dai', name: 'Dai Stablecoin', symbol: 'DAI' },
-      { id: 'usdc', name: 'USDC', symbol: 'USDC' },
-      { id: 'link', name: 'ChainLink Token', symbol: 'LINK' }
+      { id: 'usdc', name: 'USD Coin', symbol: 'USDC' },
+      { id: 'tbtc', name: 'tBTC v2', symbol: 'TBTC' },
+      { id: 'eurc', name: 'Euro Coin', symbol: 'EURC' },
+      { id: 'scrvusd', name: 'Savings crvUSD', symbol: 'SCRVUSD' },
+      { id: 'crvusd', name: 'Curve.Fi USD Stablecoin', symbol: 'CRVUSD' },
+      { id: 'wbtc', name: 'Wrapped BTC', symbol: 'WBTC' }
     ];
 
-    expect(sortSourceCurrencies(currencies).map((currency) => currency.symbol)).toEqual([
-      'ETH',
-      'DAI',
-      'MKR',
-      'USDC',
-      'USDT',
-      'LINK',
+    expect(sortSourceCurrencies(currencies).map((currency) => currency.name)).toEqual([
+      'Ethereum',
+      'Verus',
+      'Dai Stablecoin',
+      'Maker',
+      'USD Coin',
+      'tBTC v2',
+      'Tether USD',
+      'Euro Coin',
+      'Savings crvUSD',
+      'Curve.Fi USD Stablecoin',
+      'Wrapped BTC',
+      'Alpha Token',
       'BAT',
-      'ALPHA',
-      'BETA',
-      'VRSC'
+      'Beta Token'
     ]);
   });
 });

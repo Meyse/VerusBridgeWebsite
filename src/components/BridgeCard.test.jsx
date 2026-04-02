@@ -2,6 +2,7 @@ import React from 'react';
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
+import { GLOBAL_ADDRESS } from 'constants/contractAddress';
 import BridgeCard from './BridgeCard';
 import styles from '../styles/ReferenceBridge.module.css';
 
@@ -614,6 +615,15 @@ describe('BridgeCard currency selectors', () => {
     expect(screen.queryByRole('dialog', { name: /select a currency/i })).not.toBeInTheDocument();
   });
 
+  test('renders the currency picker outside the bridge card stacking context', () => {
+    const { container } = render(<BridgeCard controller={createController()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /eth/i }));
+
+    expect(screen.getByRole('dialog', { name: /select a currency/i })).toBeInTheDocument();
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
+
   test('locks background scroll while the currency picker is open', () => {
     const originalBodyStyles = {
       overflow: document.body.style.overflow,
@@ -791,10 +801,60 @@ describe('BridgeCard currency selectors', () => {
     expect(options[1]).toHaveTextContent('0.5 ETH');
     expect(options[1].textContent.indexOf('$25.00')).toBeLessThan(options[1].textContent.indexOf('0.5 ETH'));
     expect(screen.queryByText('Maker')).not.toBeInTheDocument();
+    expect(screen.queryByText('Popular')).not.toBeInTheDocument();
+    expect(screen.queryByText('Others')).not.toBeInTheDocument();
+  });
+
+  test('groups the disconnected source catalog into Popular and Others', () => {
+    render(
+      <BridgeCard
+        controller={createController({
+          selectedToken: null,
+          sourceCurrencies: [
+            { id: 'eth', name: 'Ethereum', symbol: 'ETH', icon: '/icons/currencies/eth.svg' },
+            { id: 'vrsc', name: 'Verus', symbol: 'VRSC', icon: '/icons/currencies/vrsc.svg' },
+            { id: 'dai', name: 'Dai Stablecoin', symbol: 'DAI', icon: '/icons/currencies/dai.svg', value: GLOBAL_ADDRESS.DAI },
+            { id: 'mkr', name: 'Maker', symbol: 'MKR', icon: '/icons/currencies/mkr.svg' },
+            { id: 'usdc', name: 'USD Coin', symbol: 'USDC', icon: '/icons/currencies/usdc.svg' },
+            { id: 'tbtc', name: 'tBTC v2', symbol: 'TBTC', icon: '/icons/currencies/tbtc.svg' },
+            { id: 'usdt', name: 'Tether USD', symbol: 'USDT', icon: '/icons/currencies/usdt.svg' },
+            { id: 'eurc', name: 'Euro Coin', symbol: 'EURC', icon: '/icons/currencies/eurc.svg' },
+            { id: 'scrvusd', name: 'Savings crvUSD', symbol: 'SCRVUSD', icon: '/icons/currencies/scrvUSD.svg' },
+            { id: 'crvusd', name: 'Curve.Fi USD Stablecoin', symbol: 'CRVUSD', icon: '/icons/currencies/crvUSD.svg' },
+            { id: 'wbtc', name: 'Wrapped BTC', symbol: 'WBTC', icon: '/icons/currencies/wbtc.svg' },
+            { id: 'alpha', name: 'Alpha Token', symbol: 'ALPHA', icon: '/icons/currencies/placeholder.svg' },
+            { id: 'kaiju', name: 'Kaiju', symbol: 'KAIJU', icon: '/icons/currencies/kaiju.svg' }
+          ]
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: /select currency/i })[0]);
+
+    expect(screen.getByText('Popular')).toBeInTheDocument();
+    expect(screen.getByText('Others')).toBeInTheDocument();
+    expect(screen.getByText('Verus')).toBeInTheDocument();
+    expect(screen.getByText('VRSC')).toBeInTheDocument();
+
+    expect(Array.from(document.getElementsByClassName(styles.currencyOption)).map((element) => element.textContent)).toEqual([
+      'EthereumETH',
+      'VerusVRSC',
+      'Dai StablecoinDAI',
+      'MakerMKR',
+      'USD CoinUSDC',
+      'tBTC v2TBTC',
+      'Tether USDUSDT',
+      'Euro CoinEURC',
+      'Savings crvUSDSCRVUSD',
+      'Curve.Fi USD StablecoinCRVUSD',
+      'Wrapped BTCWBTC',
+      'Alpha TokenALPHA',
+      'KaijuKAIJU'
+    ]);
   });
 
   test('keeps a balance-only source row in balance styling when fiat is unavailable', () => {
-    const { container } = render(
+    render(
       <BridgeCard
         controller={createController({
           isWalletConnected: true,
@@ -818,8 +878,8 @@ describe('BridgeCard currency selectors', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /select currency/i })[0]);
 
     expect(screen.getByText('12 LINK')).toBeInTheDocument();
-    expect(container.getElementsByClassName(styles.currencyOptionValue)).toHaveLength(0);
-    expect(container.getElementsByClassName(styles.currencyOptionBalanceOnly)).toHaveLength(1);
+    expect(document.getElementsByClassName(styles.currencyOptionValue)).toHaveLength(0);
+    expect(document.getElementsByClassName(styles.currencyOptionBalanceOnly)).toHaveLength(1);
   });
 
   test('shows a disconnected source-catalog loading banner instead of an empty state', () => {

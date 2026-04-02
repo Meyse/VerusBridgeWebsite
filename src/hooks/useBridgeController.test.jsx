@@ -1490,7 +1490,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Change Amount' }));
 
     await waitFor(() => {
-      expect(exitReview).toHaveBeenCalledWith({ hash: '#bridge-interface' });
+      expect(exitReview).toHaveBeenCalledWith({ hash: '' });
     });
 
     expect(screen.getByTestId('is-reviewing')).toHaveTextContent('no');

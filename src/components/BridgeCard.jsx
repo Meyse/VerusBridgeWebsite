@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Alert } from '@mui/material';
+import { createPortal } from 'react-dom';
 
 import {
   buildDestinationCurrency,
   buildTokenCurrency,
   formatCompactAddress,
+  getSourceCurrencySections,
   getTokenDisplaySymbol,
   sortSourceCurrencies
 } from 'utils/bridgeUi';
@@ -200,6 +202,7 @@ const CurrencyModal = ({
   onSelect,
   onStatusAction,
   searchTerm,
+  showSections = false,
   setSearchTerm,
   statusActionLabel,
   statusMessage,
@@ -250,8 +253,11 @@ const CurrencyModal = ({
     (currency) => [currency.name, currency.symbol, currency.address, ...(currency.searchTerms || [])]
       .some((value) => (value || '').toLowerCase().includes(normalizedSearch))
   );
+  const currencySections = showSections
+    ? getSourceCurrencySections(filteredCurrencies)
+    : [{ id: 'all', currencies: filteredCurrencies }];
 
-  return (
+  const modalContent = (
     <div className={styles.modalOverlay}>
       <div
         aria-label={title}
@@ -313,51 +319,64 @@ const CurrencyModal = ({
               {isLoading ? loadingMessage : emptyStateMessage}
             </div>
           ) : (
-            filteredCurrencies.map((currency) => (
-              <button
-                className={styles.currencyOption}
-                key={currency.id}
-                onClick={() => {
-                  onSelect(currency.id);
-                  onClose();
-                }}
-                type="button"
-              >
-                <div className={styles.currencyOptionLeft}>
-                  <div className={styles.currencyOptionIconWrap}>
-                    <img alt={currency.symbol} className={styles.currencyOptionIcon} src={currency.icon} />
-                  </div>
-                  <div className={styles.currencyOptionText}>
-                    <div className={styles.currencyOptionName}>{currency.name}</div>
-                    <div className={styles.currencyOptionMeta}>
-                      <span className={styles.currencyOptionSymbol}>{currency.symbol}</span>
-                      {currency.address ? (
-                        <span className={styles.currencyOptionAddress}>
-                          {formatCompactAddress(currency.address)}
-                        </span>
-                      ) : null}
+            currencySections.map((section) => (
+              <div className={styles.currencySection} key={section.id}>
+                {showSections ? (
+                  <div className={styles.currencySectionLabel}>{section.label}</div>
+                ) : null}
+                {section.currencies.map((currency) => (
+                  <button
+                    className={styles.currencyOption}
+                    key={currency.id}
+                    onClick={() => {
+                      onSelect(currency.id);
+                      onClose();
+                    }}
+                    type="button"
+                  >
+                    <div className={styles.currencyOptionLeft}>
+                      <div className={styles.currencyOptionIconWrap}>
+                        <img alt={currency.symbol} className={styles.currencyOptionIcon} src={currency.icon} />
+                      </div>
+                      <div className={styles.currencyOptionText}>
+                        <div className={styles.currencyOptionName}>{currency.name}</div>
+                        <div className={styles.currencyOptionMeta}>
+                          <span className={styles.currencyOptionSymbol}>{currency.symbol}</span>
+                          {currency.address ? (
+                            <span className={styles.currencyOptionAddress}>
+                              {formatCompactAddress(currency.address)}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-                {currency.balanceLabel || currency.fiatLabel ? (
-                  <div className={styles.currencyOptionRight}>
-                    {currency.fiatLabel ? (
-                      <div className={styles.currencyOptionValue}>{currency.fiatLabel}</div>
-                    ) : null}
-                    {currency.balanceLabel ? (
-                      <div className={currency.fiatLabel ? styles.currencyOptionBalance : styles.currencyOptionBalanceOnly}>
-                        {currency.balanceLabel}
+                    {currency.balanceLabel || currency.fiatLabel ? (
+                      <div className={styles.currencyOptionRight}>
+                        {currency.fiatLabel ? (
+                          <div className={styles.currencyOptionValue}>{currency.fiatLabel}</div>
+                        ) : null}
+                        {currency.balanceLabel ? (
+                          <div className={currency.fiatLabel ? styles.currencyOptionBalance : styles.currencyOptionBalanceOnly}>
+                            {currency.balanceLabel}
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
-                  </div>
-                ) : null}
-              </button>
+                  </button>
+                ))}
+              </div>
             ))
           )}
         </div>
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return modalContent;
+  }
+
+  return createPortal(modalContent, document.body);
 };
 
 const formatAddressForInput = (address, isFocused) => {
@@ -1195,6 +1214,7 @@ const BridgeCard = ({ controller }) => {
             onSelect={controller.selectToken}
             onStatusAction={controller.retrySourceCatalog}
             searchTerm={sourceSearch}
+            showSections={!controller.isWalletConnected}
             setSearchTerm={setSourceSearch}
             statusActionLabel={sourceModalStatusActionLabel}
             statusMessage={sourceModalStatusMessage}

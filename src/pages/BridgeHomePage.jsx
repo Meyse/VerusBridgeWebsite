@@ -10,7 +10,6 @@ import SiteHeader from 'components/SiteHeader';
 import useBridgeController from 'hooks/useBridgeController';
 import { getCurrencyIcon } from 'utils/bridgeUi';
 import {
-  HOME_BRIDGE_INTERFACE_HASH,
   HOME_INFO_SECTION_ID,
   HOME_INFO_HASH,
   HOME_REVIEW_STEP,
@@ -167,14 +166,13 @@ const BridgeHomePage = () => {
   const enterReview = useCallback(() => {
     navigate(
       buildHomeLocation({
-        hash: HOME_BRIDGE_INTERFACE_HASH,
         search: location.search,
         step: HOME_REVIEW_STEP
       })
     );
   }, [location.search, navigate]);
 
-  const exitReview = useCallback(({ hash = HOME_BRIDGE_INTERFACE_HASH } = {}) => {
+  const exitReview = useCallback(({ hash = '' } = {}) => {
     navigate(
       buildHomeLocation({
         hash,
@@ -346,7 +344,7 @@ const BridgeHomePage = () => {
       </div>
 
       {!isReviewing ? <ReferenceTrustlessSection /> : null}
-      <SiteFooter />
+      {!isReviewing ? <SiteFooter /> : null}
     </div>
   );
 };
