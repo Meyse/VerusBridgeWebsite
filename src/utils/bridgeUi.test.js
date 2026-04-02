@@ -199,8 +199,12 @@ describe('bridge source token display metadata', () => {
   test('resolves provided symbol icons for additional ERC20 assets', () => {
     expect(getCurrencyIcon('BAT')).toBe('/icons/currencies/bat.svg');
     expect(getCurrencyIcon('PAXG')).toBe('/icons/currencies/paxg.svg');
+    expect(getCurrencyIcon('PEAS')).toBe('/icons/currencies/peas.png');
+    expect(getCurrencyIcon('Peapods')).toBe('/icons/currencies/peas.png');
     expect(getCurrencyIcon('pepeCoin')).toBe('/icons/currencies/pepecoin.png');
     expect(getCurrencyIcon('thUSD')).toBe('/icons/currencies/thusd.svg');
+    expect(getCurrencyIcon('TRAC')).toBe('/icons/currencies/trac.svg');
+    expect(getCurrencyIcon('Trace Token')).toBe('/icons/currencies/trac.svg');
     expect(getCurrencyIcon('XAUT')).toBe('/icons/currencies/xaut.svg');
     expect(getCurrencyIcon('WBTC')).toBe('/icons/currencies/wbtc.svg');
   });
