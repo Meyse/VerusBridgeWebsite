@@ -4,6 +4,7 @@ import { LoadingButton } from '@mui/lab';
 import { Alert, Switch } from '@mui/material';
 import { Link } from 'react-router-dom';
 
+import SiteFooter from 'components/SiteFooter';
 import SiteHeader from 'components/SiteHeader';
 import useClaimController from 'hooks/useClaimController';
 import formStyles from 'styles/Forms.module.css';
@@ -136,6 +137,8 @@ const Claim = () => {
           </div>
         </div>
       </main>
+
+      <SiteFooter />
     </div>
   );
 };

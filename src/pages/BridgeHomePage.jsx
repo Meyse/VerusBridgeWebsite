@@ -5,8 +5,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import BridgeCard from 'components/BridgeCard';
 import ReferenceInfoBar from 'components/ReferenceInfoBar';
 import ReferenceTrustlessSection from 'components/ReferenceTrustlessSection';
+import SiteFooter from 'components/SiteFooter';
 import SiteHeader from 'components/SiteHeader';
-import { getExplorerResources } from 'config/explorerLinks';
 import useBridgeController from 'hooks/useBridgeController';
 import { getCurrencyIcon } from 'utils/bridgeUi';
 import {
@@ -22,21 +22,6 @@ import {
 } from 'utils/homeNavigation';
 
 import styles from '../styles/ReferenceBridge.module.css';
-
-const internalResources = [
-  {
-    id: 'claim',
-    title: 'Claim / Refunds',
-    description: 'Recover claimable fees or refund balances with the live bridge recovery route.',
-    to: '/claim'
-  },
-  {
-    id: 'nft',
-    title: 'NFT Bridge',
-    description: 'Use the NFT route for ERC-721 and ERC-1155 bridging.',
-    to: '/nft'
-  }
-];
 
 const ScrollIcon = () => (
   <svg className={styles.scrollIcon} fill="none" viewBox="0 0 24 24">
@@ -275,7 +260,6 @@ const BridgeHomePage = () => {
     };
   }, []);
 
-  const resources = [...internalResources, ...getExplorerResources()];
   const isReviewing = Boolean(controller.isReviewing);
 
   return (
@@ -361,7 +345,8 @@ const BridgeHomePage = () => {
         ) : null}
       </div>
 
-      {!isReviewing ? <ReferenceTrustlessSection resources={resources} /> : null}
+      {!isReviewing ? <ReferenceTrustlessSection /> : null}
+      <SiteFooter />
     </div>
   );
 };

@@ -54,6 +54,14 @@ const PRICE_SOURCE_BRIDGE = 'Bridge.vETH';
 const PRICE_SOURCE_FLORALIS = 'Floralis';
 const PRICE_SOURCE_PEG = 'peg';
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const SEEDED_ETH_DECIMALS = 18;
+const SEND_AMOUNT_PRESET_FRACTIONS = [
+  { denominator: 100, id: '25', label: '25%', numerator: 25 },
+  { denominator: 100, id: '50', label: '50%', numerator: 50 },
+  { denominator: 100, id: '75', label: '75%', numerator: 75 }
+];
+const BOUNCEBACK_ROUTE_TIME_ESTIMATE = '2-10 hours';
+const DIRECT_ROUTE_TIME_ESTIMATE = '1-6 hours';
 const STATIC_USD_PRICE_BY_SYMBOL = {
   DAI: 1,
   USDC: 1,
@@ -355,7 +363,95 @@ const normalizeContractField = (value) => {
   return trimmedValue || undefined;
 };
 
+const hasAmountValue = (value) => value !== null && value !== undefined && value !== '';
+
+const isPositiveAmountValue = (value) => {
+  if (!hasAmountValue(value)) {
+    return false;
+  }
+
+  const parsedValue = parseFloat(value);
+  return Number.isFinite(parsedValue) && parsedValue > 0;
+};
+
+const normalizeTokenDecimals = (value) => {
+  if (!hasAmountValue(value)) {
+    return undefined;
+  }
+
+  const parsedValue = parseInt(`${value}`, 10);
+  return Number.isInteger(parsedValue) && parsedValue >= 0 ? parsedValue : undefined;
+};
+
+const getBaseUnitMultiplier = (decimals) => {
+  const normalizedDecimals = normalizeTokenDecimals(decimals);
+
+  if (normalizedDecimals === undefined) {
+    return null;
+  }
+
+  return new web3.utils.BN('10').pow(new web3.utils.BN(normalizedDecimals));
+};
+
+const parseTokenAmountToBaseUnits = (value, decimals) => {
+  if (!hasAmountValue(value)) {
+    return null;
+  }
+
+  const normalizedDecimals = normalizeTokenDecimals(decimals);
+  if (normalizedDecimals === undefined) {
+    return null;
+  }
+
+  const normalizedValue = `${value}`.trim();
+  if (!normalizedValue || !/^\d*(?:\.\d*)?$/.test(normalizedValue) || !/\d/.test(normalizedValue)) {
+    return null;
+  }
+
+  const [wholePart = '0', fractionPart = ''] = normalizedValue.split('.');
+  if (fractionPart.length > normalizedDecimals) {
+    return null;
+  }
+
+  const baseUnitMultiplier = getBaseUnitMultiplier(normalizedDecimals);
+  if (!baseUnitMultiplier) {
+    return null;
+  }
+
+  const paddedFraction = `${fractionPart}${'0'.repeat(normalizedDecimals - fractionPart.length)}` || '0';
+  return new web3.utils.BN(wholePart || '0')
+    .mul(baseUnitMultiplier)
+    .add(new web3.utils.BN(paddedFraction || '0'));
+};
+
+const formatTokenAmountFromBaseUnits = (value, decimals) => {
+  const normalizedDecimals = normalizeTokenDecimals(decimals);
+  if (normalizedDecimals === undefined || value === null || value === undefined) {
+    return '';
+  }
+
+  const baseUnits = web3.utils.toBN(value);
+  if (normalizedDecimals === 0) {
+    return baseUnits.toString(10);
+  }
+
+  const baseUnitMultiplier = getBaseUnitMultiplier(normalizedDecimals);
+  if (!baseUnitMultiplier) {
+    return '';
+  }
+
+  const wholePart = baseUnits.div(baseUnitMultiplier).toString(10);
+  const fractionPart = baseUnits
+    .mod(baseUnitMultiplier)
+    .toString(10)
+    .padStart(normalizedDecimals, '0')
+    .replace(/0+$/, '');
+
+  return fractionPart ? `${wholePart}.${fractionPart}` : wholePart;
+};
+
 const createSeededEthToken = () => ({
+  decimals: SEEDED_ETH_DECIMALS,
   label: 'vETH',
   name: 'vETH',
   ticker: 'ETH',
@@ -415,6 +511,7 @@ const isConversionDestination = (destination) => Boolean(QUOTE_TARGET_IADDRESS_B
 const getQuoteTargetIAddress = (destination) => QUOTE_TARGET_IADDRESS_BY_DESTINATION[destination] || null;
 
 const toTokenOption = (token, metadata = {}) => ({
+  decimals: normalizeTokenDecimals(token.decimals),
   label: token.name,
   name: token.name,
   ticker: token.ticker,
@@ -447,17 +544,7 @@ const getFeeEstimateWei = (destination, gasPrice) => (
   getBaseBridgeFeeWei().add(getGatewayFeeWei(destination, gasPrice))
 );
 
-const parseAmountToWei = (value) => {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    return new web3.utils.BN(web3.utils.toWei(value, 'ether'));
-  } catch (error) {
-    return null;
-  }
-};
+const parseAmountToWei = (value) => parseTokenAmountToBaseUnits(value, SEEDED_ETH_DECIMALS);
 
 const formatEthValue = (value) => {
   const parsedValue = parseFloat(value);
@@ -515,12 +602,14 @@ const formatFeeEstimate = (destination, gasPrice) => {
   return `${feeAsEth.toFixed(feeAsEth < 0.01 ? 4 : 3)} ETH`;
 };
 
+const isBouncebackDestination = (destination) => Boolean(destination?.startsWith('swapto'));
+
 const getRouteLabel = (destination) => {
   if (!destination) {
     return 'Choose a destination';
   }
 
-  if (destination.startsWith('swapto')) {
+  if (isBouncebackDestination(destination)) {
     return 'Ethereum -> Verus -> Ethereum';
   }
 
@@ -528,9 +617,15 @@ const getRouteLabel = (destination) => {
 };
 
 const getRouteTimeEstimate = (destination) => (
-  destination?.startsWith('swapto')
-    ? '2-10 hours'
-    : '1-6 hours'
+  isBouncebackDestination(destination)
+    ? BOUNCEBACK_ROUTE_TIME_ESTIMATE
+    : DIRECT_ROUTE_TIME_ESTIMATE
+);
+
+const getReviewBouncebackWarningMessage = (destination) => (
+  isBouncebackDestination(destination)
+    ? `This bounceback route can take ${BOUNCEBACK_ROUTE_TIME_ESTIMATE} to complete. The estimated amount shown here can change significantly before settlement if pricing moves during that time. Use caution before confirming.`
+    : ''
 );
 
 const getGasEstimate = async (library) => {
@@ -631,6 +726,100 @@ const fetchSelectedTokenBalance = async ({ account, library, selectedToken }) =>
   };
 };
 
+const getSpendableTokenBalance = ({ destination, gasPrice, selectedToken, tokenBalance }) => {
+  if (!selectedToken || !tokenBalance || !hasAmountValue(tokenBalance.raw)) {
+    return null;
+  }
+
+  const decimals = normalizeTokenDecimals(selectedToken.decimals);
+  if (getTokenValueKey(selectedToken) !== ETH_SOURCE_TOKEN_VALUE) {
+    const baseUnits = parseTokenAmountToBaseUnits(tokenBalance.raw, decimals);
+
+    return {
+      baseUnits,
+      decimals,
+      raw: baseUnits !== null && decimals !== undefined
+        ? formatTokenAmountFromBaseUnits(baseUnits, decimals)
+        : `${tokenBalance.raw}`
+    };
+  }
+
+  const nativeBalanceWei = parseAmountToWei(tokenBalance.raw);
+  if (nativeBalanceWei === null) {
+    return null;
+  }
+
+  const feeEstimateWei = getFeeEstimateWei(destination, gasPrice);
+  const spendableWei = nativeBalanceWei.gt(feeEstimateWei)
+    ? nativeBalanceWei.sub(feeEstimateWei)
+    : new web3.utils.BN('0');
+
+  return {
+    baseUnits: spendableWei,
+    decimals: SEEDED_ETH_DECIMALS,
+    raw: formatTokenAmountFromBaseUnits(spendableWei, SEEDED_ETH_DECIMALS)
+  };
+};
+
+const buildSendAmountPresets = (spendableTokenBalance) => {
+  if (!spendableTokenBalance || !isPositiveAmountValue(spendableTokenBalance.raw)) {
+    return [];
+  }
+
+  const maxPreset = {
+    amount: spendableTokenBalance.raw,
+    id: 'max',
+    label: 'Max'
+  };
+
+  if (
+    spendableTokenBalance.baseUnits === null
+    || spendableTokenBalance.baseUnits === undefined
+    || normalizeTokenDecimals(spendableTokenBalance.decimals) === undefined
+  ) {
+    return [maxPreset];
+  }
+
+  if (spendableTokenBalance.baseUnits.isZero()) {
+    return [];
+  }
+
+  const percentagePresets = SEND_AMOUNT_PRESET_FRACTIONS
+    .map(({ denominator, id, label, numerator }) => ({
+      amount: formatTokenAmountFromBaseUnits(
+        spendableTokenBalance.baseUnits.mul(new web3.utils.BN(`${numerator}`)).div(new web3.utils.BN(`${denominator}`)),
+        spendableTokenBalance.decimals
+      ),
+      id,
+      label
+    }))
+    .filter((preset) => isPositiveAmountValue(preset.amount));
+
+  return [...percentagePresets, maxPreset];
+};
+
+const getSendAmountPresetWarningMessage = ({
+  destination,
+  gasPrice,
+  selectedToken,
+  spendableTokenBalance,
+  tokenBalance
+}) => {
+  if (getTokenValueKey(selectedToken) !== ETH_SOURCE_TOKEN_VALUE) {
+    return '';
+  }
+
+  if (!isPositiveAmountValue(tokenBalance?.raw)) {
+    return '';
+  }
+
+  if (isPositiveAmountValue(spendableTokenBalance?.raw)) {
+    return '';
+  }
+
+  return `You don't have enough ETH to pay the bridge and network fees for this transfer. Estimated fees: ${formatFeeEstimate(destination, gasPrice)}.`;
+};
+
 const getEthereumTokenMetadata = async (library, token) => {
   if (!library || !token) {
     return {};
@@ -642,19 +831,33 @@ const getEthereumTokenMetadata = async (library, token) => {
     (token.iaddress || token.value || '').toLowerCase() === GLOBAL_ADDRESS.ETH.toLowerCase() ||
     token.ticker === 'ETH'
   ) {
-    return { ethereumName: 'Ethereum', ethereumSymbol: 'ETH' };
+    return {
+      decimals: SEEDED_ETH_DECIMALS,
+      ethereumName: 'Ethereum',
+      ethereumSymbol: 'ETH'
+    };
   }
 
   try {
     const tokenContract = getContract(tokenAddress, ERC20_ABI, library);
-    const [ethereumName, ethereumSymbol] = await Promise.all([
+    const [ethereumNameResult, ethereumSymbolResult, tokenDecimalsResult] = await Promise.allSettled([
       tokenContract.name(),
-      tokenContract.symbol()
+      tokenContract.symbol(),
+      typeof tokenContract.decimals === 'function'
+        ? tokenContract.decimals()
+        : Promise.resolve(undefined)
     ]);
 
     return {
-      ethereumName: normalizeContractField(ethereumName),
-      ethereumSymbol: normalizeContractField(ethereumSymbol)
+      decimals: tokenDecimalsResult.status === 'fulfilled'
+        ? normalizeTokenDecimals(tokenDecimalsResult.value)
+        : undefined,
+      ethereumName: ethereumNameResult.status === 'fulfilled'
+        ? normalizeContractField(ethereumNameResult.value)
+        : undefined,
+      ethereumSymbol: ethereumSymbolResult.status === 'fulfilled'
+        ? normalizeContractField(ethereumSymbolResult.value)
+        : undefined
     };
   } catch (error) {
     return {};
@@ -791,6 +994,32 @@ export default function useBridgeController({
       display: matchingBalance.display
     };
   }, [account, selectedToken, walletTokenBalances]);
+
+  const spendableTokenBalance = useMemo(
+    () => getSpendableTokenBalance({
+      destination,
+      gasPrice,
+      selectedToken,
+      tokenBalance
+    }),
+    [destination, gasPrice, selectedToken, tokenBalance]
+  );
+
+  const sendAmountPresets = useMemo(
+    () => buildSendAmountPresets(spendableTokenBalance),
+    [spendableTokenBalance]
+  );
+
+  const sendAmountPresetWarningMessage = useMemo(
+    () => getSendAmountPresetWarningMessage({
+      destination,
+      gasPrice,
+      selectedToken,
+      spendableTokenBalance,
+      tokenBalance
+    }),
+    [destination, gasPrice, selectedToken, spendableTokenBalance, tokenBalance]
+  );
 
   const sourceCurrencies = useMemo(() => {
     if (!account) {
@@ -1634,6 +1863,10 @@ export default function useBridgeController({
 
   const reviewRouteLabel = useMemo(() => getRouteLabel(destination), [destination]);
   const reviewTimeEstimate = getRouteTimeEstimate(destination);
+  const reviewBouncebackWarningMessage = useMemo(
+    () => getReviewBouncebackWarningMessage(destination),
+    [destination]
+  );
 
   const reviewFeeRows = useMemo(() => {
     const networkCostWei = getGatewayFeeWei(destination, gasPrice);
@@ -2062,8 +2295,8 @@ export default function useBridgeController({
     ethUsdPrice,
     feeEstimate: formatFeeEstimate(destination, gasPrice),
     handleMaxAmount: () => {
-      if (tokenBalance?.raw) {
-        setAmount(tokenBalance.raw);
+      if (isPositiveAmountValue(spendableTokenBalance?.raw)) {
+        setAmount(spendableTokenBalance.raw);
       }
     },
     handleSubmit,
@@ -2090,9 +2323,12 @@ export default function useBridgeController({
     reviewReceiveFiatLabel,
     routeLabel: getRouteLabel(destination),
     reviewConfirmLabel,
+    reviewBouncebackWarningMessage,
     reviewFeeRows,
     reviewRouteLabel,
     reviewTimeEstimate,
+    sendAmountPresets,
+    sendAmountPresetWarningMessage,
     sourceCurrencies,
     priceSourceBySymbol,
     pricingLastUpdatedAt: internalPricingSnapshot.lastUpdatedAt,

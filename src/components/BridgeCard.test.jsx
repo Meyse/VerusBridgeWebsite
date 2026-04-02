@@ -5,6 +5,25 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import BridgeCard from './BridgeCard';
 import styles from '../styles/ReferenceBridge.module.css';
 
+const createMatchMedia = (matches = false) => jest.fn().mockImplementation((query) => ({
+  matches,
+  media: query,
+  onchange: null,
+  addEventListener: jest.fn(),
+  removeEventListener: jest.fn(),
+  addListener: jest.fn(),
+  removeListener: jest.fn(),
+  dispatchEvent: jest.fn()
+}));
+
+const setMatchMedia = (matches = false) => {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: createMatchMedia(matches),
+    writable: true
+  });
+};
+
 const selectedToken = {
   name: 'vETH',
   ticker: 'ETH',
@@ -53,11 +72,14 @@ const createController = (overrides = {}) => ({
   openReview: jest.fn(),
   requiredNativeEth: 0,
   reviewConfirmLabel: 'Confirm',
+  reviewBouncebackWarningMessage: '',
   reviewFeeRows: [],
   reviewReceiveAmountDisplay: '',
   reviewReceiveFiatLabel: null,
   reviewRouteLabel: 'Ethereum -> Verus',
   reviewTimeEstimate: '1-6 hours',
+  sendAmountPresets: [{ id: 'max', label: 'Max', amount: '1' }],
+  sendAmountPresetWarningMessage: '',
   selectedToken,
   selectedDestination: null,
   destinationEmptyStateMessage: 'No currencies available yet. Enter a valid destination address to unlock receive options.',
@@ -74,6 +96,10 @@ const createController = (overrides = {}) => ({
 });
 
 describe('BridgeCard currency selectors', () => {
+  beforeEach(() => {
+    setMatchMedia(false);
+  });
+
   test('shows Review as the edit-step primary CTA', () => {
     render(
       <BridgeCard
@@ -281,6 +307,150 @@ describe('BridgeCard currency selectors', () => {
     expect(container.getElementsByClassName(styles.selectorWithFooter)).toHaveLength(0);
   });
 
+  test('shows desktop amount presets for hover-capable connected wallets', () => {
+    setMatchMedia(true);
+
+    render(
+      <BridgeCard
+        controller={createController({
+          isWalletConnected: true,
+          sendAmountPresets: [
+            { id: '25', label: '25%', amount: '0.25' },
+            { id: '50', label: '50%', amount: '0.5' },
+            { id: '75', label: '75%', amount: '0.75' },
+            { id: 'max', label: 'Max', amount: '1' }
+          ],
+          tokenBalance: '1',
+          tokenBalanceLabel: '1 ETH'
+        })}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Set amount to 25%' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set amount to 50%' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set amount to 75%' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set amount to Max' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^max$/i })).not.toBeInTheDocument();
+  });
+
+  test('keeps only the footer max button on non-hover clients', () => {
+    render(
+      <BridgeCard
+        controller={createController({
+          isWalletConnected: true,
+          sendAmountPresets: [
+            { id: '25', label: '25%', amount: '0.25' },
+            { id: '50', label: '50%', amount: '0.5' },
+            { id: '75', label: '75%', amount: '0.75' },
+            { id: 'max', label: 'Max', amount: '1' }
+          ],
+          tokenBalance: '1',
+          tokenBalanceLabel: '1 ETH'
+        })}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: 'Set amount to 25%' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^max$/i })).toBeInTheDocument();
+  });
+
+  test('clicking a desktop amount preset sets the send amount', () => {
+    const setAmount = jest.fn();
+
+    setMatchMedia(true);
+
+    render(
+      <BridgeCard
+        controller={createController({
+          isWalletConnected: true,
+          sendAmountPresets: [
+            { id: '25', label: '25%', amount: '0.25' },
+            { id: '50', label: '50%', amount: '0.5' },
+            { id: '75', label: '75%', amount: '0.75' },
+            { id: 'max', label: 'Max', amount: '1' }
+          ],
+          setAmount,
+          tokenBalance: '1',
+          tokenBalanceLabel: '1 ETH'
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set amount to 75%' }));
+
+    expect(setAmount).toHaveBeenCalledWith('0.75');
+  });
+
+  test('shows desktop amount presets for ETH balances that cannot cover fees', () => {
+    setMatchMedia(true);
+
+    render(
+      <BridgeCard
+        controller={createController({
+          isWalletConnected: true,
+          sendAmountPresets: [],
+          sendAmountPresetWarningMessage: "You don't have enough ETH to pay the bridge and network fees for this transfer. Estimated fees: 0.0030 ETH.",
+          tokenBalance: { raw: '0.003', display: '0.003 ETH' },
+          tokenBalanceLabel: '0.003 ETH'
+        })}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Set amount to 25%' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set amount to 50%' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set amount to 75%' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set amount to Max' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^max$/i })).not.toBeInTheDocument();
+  });
+
+  test('clicking a blocked ETH amount preset opens the fee warning popover', () => {
+    const setAmount = jest.fn();
+
+    setMatchMedia(true);
+
+    render(
+      <BridgeCard
+        controller={createController({
+          isWalletConnected: true,
+          sendAmountPresets: [],
+          sendAmountPresetWarningMessage: "You don't have enough ETH to pay the bridge and network fees for this transfer. Estimated fees: 0.0030 ETH.",
+          setAmount,
+          tokenBalance: { raw: '0.003', display: '0.003 ETH' },
+          tokenBalanceLabel: '0.003 ETH'
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set amount to Max' }));
+
+    expect(setAmount).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: /send amount preset details/i })).toBeInTheDocument();
+    expect(screen.getByText(/don't have enough ETH to pay the bridge and network fees/i)).toBeInTheDocument();
+  });
+
+  test('does not show desktop amount presets for disconnected wallets', () => {
+    setMatchMedia(true);
+
+    render(
+      <BridgeCard
+        controller={createController({
+          isWalletConnected: false,
+          sendAmountPresets: [
+            { id: '25', label: '25%', amount: '0.25' },
+            { id: '50', label: '50%', amount: '0.5' },
+            { id: '75', label: '75%', amount: '0.75' },
+            { id: 'max', label: 'Max', amount: '1' }
+          ],
+          tokenBalance: '1',
+          tokenBalanceLabel: '1 ETH'
+        })}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: 'Set amount to 25%' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set amount to Max' })).not.toBeInTheDocument();
+  });
+
   test('shows the receive fiat inline without the bounceback path footer', () => {
     const { container } = render(
       <BridgeCard
@@ -383,6 +553,55 @@ describe('BridgeCard currency selectors', () => {
     expect(screen.getByText(/better currently available route/i)).toBeInTheDocument();
   });
 
+  test('shows a bounceback warning in review mode only', () => {
+    const warningMessage = 'This bounceback route can take 2-10 hours to complete. The estimated amount shown here can change significantly before settlement if pricing moves during that time. Use caution before confirming.';
+
+    const { rerender } = render(
+      <BridgeCard
+        controller={createController({
+          isReviewing: false,
+          reviewBouncebackWarningMessage: warningMessage,
+          selectedDestination: { value: 'swaptoETH' }
+        })}
+      />
+    );
+
+    expect(screen.queryByText(/bounceback warning:/i)).not.toBeInTheDocument();
+
+    rerender(
+      <BridgeCard
+        controller={createController({
+          isReviewing: true,
+          reviewBouncebackWarningMessage: warningMessage,
+          selectedDestination: { value: 'swaptoETH' }
+        })}
+      />
+    );
+
+    expect(screen.getByText(/bounceback warning:/i)).toBeInTheDocument();
+    expect(screen.getByText(/can take 2-10 hours to complete/i)).toBeInTheDocument();
+  });
+
+  test('shows bounceback and slippage warnings together in review mode', () => {
+    render(
+      <BridgeCard
+        controller={createController({
+          canConfirmReview: true,
+          conversionWarningKind: 'spot-impact',
+          conversionWarningMessage: 'This quote is 5.0% below the current spot value.',
+          isReviewing: true,
+          reviewBouncebackWarningMessage: 'This bounceback route can take 2-10 hours to complete. The estimated amount shown here can change significantly before settlement if pricing moves during that time. Use caution before confirming.',
+          selectedDestination: { value: 'swaptoETH' }
+        })}
+      />
+    );
+
+    expect(screen.getByText(/high slippage warning:/i)).toBeInTheDocument();
+    expect(screen.getByText(/bounceback warning:/i)).toBeInTheDocument();
+    expect(screen.getByText(/below the current spot value/i)).toBeInTheDocument();
+    expect(screen.getByText(/use caution before confirming/i)).toBeInTheDocument();
+  });
+
   test('closes the send currency picker when the user clicks outside it', () => {
     render(<BridgeCard controller={createController()} />);
 
@@ -393,6 +612,49 @@ describe('BridgeCard currency selectors', () => {
     fireEvent.mouseDown(document.body);
 
     expect(screen.queryByRole('dialog', { name: /select a currency/i })).not.toBeInTheDocument();
+  });
+
+  test('locks background scroll while the currency picker is open', () => {
+    const originalBodyStyles = {
+      overflow: document.body.style.overflow,
+      paddingRight: document.body.style.paddingRight,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width
+    };
+
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1024,
+      writable: true
+    });
+    Object.defineProperty(window, 'scrollY', {
+      configurable: true,
+      value: 240,
+      writable: true
+    });
+    Object.defineProperty(document.documentElement, 'clientWidth', {
+      configurable: true,
+      value: 1000
+    });
+
+    render(<BridgeCard controller={createController()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /eth/i }));
+
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.body.style.position).toBe('fixed');
+    expect(document.body.style.top).toBe('-240px');
+    expect(document.body.style.width).toBe('100%');
+    expect(document.body.style.paddingRight).toBe('24px');
+
+    fireEvent.click(screen.getByRole('button', { name: /close currency picker/i }));
+
+    expect(document.body.style.overflow).toBe(originalBodyStyles.overflow);
+    expect(document.body.style.position).toBe(originalBodyStyles.position);
+    expect(document.body.style.top).toBe(originalBodyStyles.top);
+    expect(document.body.style.width).toBe(originalBodyStyles.width);
+    expect(document.body.style.paddingRight).toBe(originalBodyStyles.paddingRight);
   });
 
   test('closes the receive currency picker when the user clicks outside it', () => {
@@ -447,6 +709,26 @@ describe('BridgeCard currency selectors', () => {
     expect(screen.queryByText(/or Ethereum address/i)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText('Enter Verus receiving address')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /self/i })).not.toBeInTheDocument();
+  });
+
+  test('compacts Verus addresses on blur and restores the full value on focus', () => {
+    const address = 'iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv';
+
+    render(
+      <BridgeCard
+        controller={createController({
+          address
+        })}
+      />
+    );
+
+    const input = screen.getByDisplayValue('iMEHwE...4wLv');
+
+    fireEvent.focus(input);
+    expect(screen.getByDisplayValue(address)).toBeInTheDocument();
+
+    fireEvent.blur(screen.getByDisplayValue(address));
+    expect(screen.getByDisplayValue('iMEHwE...4wLv')).toBeInTheDocument();
   });
 
   test('closes the currency picker when the close button is pressed', () => {

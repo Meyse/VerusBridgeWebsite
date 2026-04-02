@@ -214,11 +214,14 @@ const HookProbe = ({ controllerOptions = {} }) => {
       <div data-testid="source-symbols">{controller.sourceCurrencies.map((currency) => currency.symbol).join(',')}</div>
       <div data-testid="source-fiat-values">{controller.sourceCurrencies.map((currency) => `${currency.symbol}:${currency.fiatLabel || 'none'}`).join('|')}</div>
       <div data-testid="token-flags">{controller.tokenOptions.map((token) => `${token.value}:${token.flags || ''}`).join('|')}</div>
+      <div data-testid="amount">{controller.amount || ''}</div>
       <div data-testid="amount-fiat">{controller.amountFiatLabel || ''}</div>
       <div data-testid="receive-fiat">{controller.receiveFiatLabel || ''}</div>
       <div data-testid="receive-symbol">{controller.receiveCurrency?.symbol || ''}</div>
       <div data-testid="receive-amount">{controller.receiveAmountDisplay || ''}</div>
       <div data-testid="receive-quote-state">{controller.receiveQuoteState || ''}</div>
+      <div data-testid="send-amount-presets">{JSON.stringify(controller.sendAmountPresets || [])}</div>
+      <div data-testid="send-amount-preset-warning">{controller.sendAmountPresetWarningMessage || ''}</div>
       <div data-testid="warning-kind">{controller.conversionWarningKind || ''}</div>
       <div data-testid="warning-gap">{controller.conversionWarningGapPercent || ''}</div>
       <div data-testid="warning-message">{controller.conversionWarningMessage || ''}</div>
@@ -230,11 +233,13 @@ const HookProbe = ({ controllerOptions = {} }) => {
       <div data-testid="is-reviewing">{controller.isReviewing ? 'yes' : 'no'}</div>
       <div data-testid="review-confirm-label">{controller.reviewConfirmLabel || ''}</div>
       <div data-testid="can-confirm-review">{controller.canConfirmReview ? 'yes' : 'no'}</div>
+      <div data-testid="review-bounceback-warning">{controller.reviewBouncebackWarningMessage || ''}</div>
       <div data-testid="review-route-label">{controller.reviewRouteLabel || ''}</div>
       <div data-testid="review-time-estimate">{controller.reviewTimeEstimate || ''}</div>
       <div data-testid="review-fees">{(controller.reviewFeeRows || []).map((row) => `${row.label}:${row.value}`).join('|')}</div>
       <div data-testid="base-fee">{controller.baseBridgeFeeValue ?? ''}</div>
       <div data-testid="bounceback-fee">{controller.bounceBackFeeValue ?? ''}</div>
+      <div data-testid="token-balance-label">{controller.tokenBalanceLabel || ''}</div>
       <button
         onClick={() => {
           controller.selectToken(DAI_ADDRESS);
@@ -403,6 +408,7 @@ const HookProbe = ({ controllerOptions = {} }) => {
       >
         Configure EURC Auto Direct No Address
       </button>
+      <button onClick={() => controller.handleMaxAmount()} type="button">Trigger Max</button>
       <button onClick={() => controller.openReview()} type="button">Open Review</button>
       <button onClick={() => controller.closeReview()} type="button">Close Review</button>
     </div>
@@ -417,14 +423,15 @@ describe('useBridgeController disconnected source bootstrap', () => {
     useToast.mockReturnValue({ addToast: jest.fn() });
     getMaxAmount.mockResolvedValue(100);
     const tokenMetadataByAddress = {
-      [daiToken.erc20ContractAddress.toLowerCase()]: { name: 'Dai Stablecoin', symbol: 'DAI' },
-      [eurcToken.erc20ContractAddress.toLowerCase()]: { name: 'Euro Coin', symbol: 'EURC' },
-      [scrvusdToken.erc20ContractAddress.toLowerCase()]: { name: 'Savings crvUSD', symbol: 'scrvUSD' },
-      [usdtToken.erc20ContractAddress.toLowerCase()]: { name: 'Tether USD', symbol: 'USDT' },
-      [tbtcToken.erc20ContractAddress.toLowerCase()]: { name: 'tBTC', symbol: 'tBTC' },
-      [linkToken.erc20ContractAddress.toLowerCase()]: { name: 'Chainlink', symbol: 'LINK' }
+      [daiToken.erc20ContractAddress.toLowerCase()]: { decimals: 18, name: 'Dai Stablecoin', symbol: 'DAI' },
+      [eurcToken.erc20ContractAddress.toLowerCase()]: { decimals: 6, name: 'Euro Coin', symbol: 'EURC' },
+      [scrvusdToken.erc20ContractAddress.toLowerCase()]: { decimals: 18, name: 'Savings crvUSD', symbol: 'scrvUSD' },
+      [usdtToken.erc20ContractAddress.toLowerCase()]: { decimals: 6, name: 'Tether USD', symbol: 'USDT' },
+      [tbtcToken.erc20ContractAddress.toLowerCase()]: { decimals: 18, name: 'tBTC', symbol: 'tBTC' },
+      [linkToken.erc20ContractAddress.toLowerCase()]: { decimals: 18, name: 'Chainlink', symbol: 'LINK' }
     };
     getContract.mockImplementation((address) => ({
+      decimals: jest.fn().mockResolvedValue(tokenMetadataByAddress[address?.toLowerCase()]?.decimals || 18),
       name: jest.fn().mockResolvedValue(tokenMetadataByAddress[address?.toLowerCase()]?.name || 'Token'),
       symbol: jest.fn().mockResolvedValue(tokenMetadataByAddress[address?.toLowerCase()]?.symbol || 'TKN')
     }));
@@ -641,6 +648,139 @@ describe('useBridgeController disconnected source bootstrap', () => {
     expect(screen.getByTestId('receive-symbol')).toBeEmptyDOMElement();
     expect(screen.getByTestId('receive-quote-state')).toHaveTextContent('not-required');
     expect(screen.getByTestId('submit-disabled-reason')).toHaveTextContent('Select output');
+  });
+
+  test('builds ERC20 send amount presets from the full token balance', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Direct DAI' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('token-balance-label')).toHaveTextContent('100 DAI');
+    });
+
+    expect(readJsonTestId('send-amount-presets')).toEqual([
+      { amount: '25', id: '25', label: '25%' },
+      { amount: '50', id: '50', label: '50%' },
+      { amount: '75', id: '75', label: '75%' },
+      { amount: '100', id: 'max', label: 'Max' }
+    ]);
+  });
+
+  test('uses spendable ETH for max and percentage presets', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        verusToERC20mapping: jest.fn().mockResolvedValue({ flags: '0' })
+      }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Direct' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('token-balance-label')).toHaveTextContent('1 ETH');
+    });
+
+    await waitFor(() => {
+      expect(readJsonTestId('send-amount-presets')).toEqual([
+        { amount: '0.24925', id: '25', label: '25%' },
+        { amount: '0.4985', id: '50', label: '50%' },
+        { amount: '0.74775', id: '75', label: '75%' },
+        { amount: '0.997', id: 'max', label: 'Max' }
+      ]);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Trigger Max' }));
+
+    expect(screen.getByTestId('amount')).toHaveTextContent('0.997');
+  });
+
+  test('derives fixed-decimal send amount presets without float drift', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+    });
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        getTokenList: jest.fn().mockResolvedValue([liveEthToken, daiToken, usdtToken])
+      }
+    });
+
+    getMaxAmount.mockResolvedValue('1.000003');
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure USDT Direct' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('token-balance-label')).toHaveTextContent('1.000003 USDT');
+    });
+
+    expect(readJsonTestId('send-amount-presets')).toEqual([
+      { amount: '0.25', id: '25', label: '25%' },
+      { amount: '0.500001', id: '50', label: '50%' },
+      { amount: '0.750002', id: '75', label: '75%' },
+      { amount: '1.000003', id: 'max', label: 'Max' }
+    ]);
+  });
+
+  test('returns no send amount presets when ETH is fully consumed by fees', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('0.003'))
+    });
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        verusToERC20mapping: jest.fn().mockResolvedValue({ flags: '0' })
+      }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Direct' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('token-balance-label')).toHaveTextContent('0.003 ETH');
+    });
+
+    expect(readJsonTestId('send-amount-presets')).toEqual([]);
+    expect(screen.getByTestId('send-amount-preset-warning')).toHaveTextContent(
+      /don't have enough ETH to pay the bridge and network fees/i
+    );
   });
 
   test('exposes the one-way direct Verus route for mapped tokens before any address is entered', async () => {
@@ -1190,6 +1330,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
     expect(screen.getByTestId('review-route-label')).toHaveTextContent('Ethereum -> Verus');
     expect(screen.getByTestId('review-time-estimate')).toHaveTextContent('1-6 hours');
+    expect(screen.getByTestId('review-bounceback-warning')).toBeEmptyDOMElement();
     expect(screen.getByTestId('review-fees').textContent).not.toContain('Network cost:');
     expect(screen.getByTestId('can-confirm-review')).toHaveTextContent('no');
   });
@@ -1297,6 +1438,9 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
 
     expect(screen.getByTestId('review-time-estimate')).toHaveTextContent('2-10 hours');
+    expect(screen.getByTestId('review-bounceback-warning')).toHaveTextContent(
+      /can take 2-10 hours to complete/i
+    );
   });
 
   test('calls enterReview after capturing a valid review snapshot and exits routed review when edits invalidate it', async () => {

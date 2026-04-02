@@ -1,50 +1,10 @@
 import React from 'react';
 
-import { Link } from 'react-router-dom';
-
 import styles from 'styles/ReferenceBridge.module.css';
 import { HOME_INFO_SECTION_ID } from 'utils/homeNavigation';
 
 import { ReactComponent as TrustFlashIcon } from '../images/icons/trust-flash-icon.svg';
 import { ReactComponent as TrustLockIcon } from '../images/icons/trust-lock-icon.svg';
-
-const traditionalBridgeRisks = [
-  {
-    title: 'Central custody control',
-    copy: 'Single or few addresses hold all funds, creating central authority.'
-  },
-  {
-    title: 'Modifiable smart contracts',
-    copy: 'Limited authorities can change contracts at will.'
-  },
-  {
-    title: 'Vulnerable to exploits',
-    copy: 'Bugs and malicious code can drain all assets.'
-  },
-  {
-    title: 'Proven track record of failure',
-    copy: 'Billions have already been lost in bridge hacks.'
-  }
-];
-
-const bridgeAdvantages = [
-  {
-    title: 'Distributed consensus custody',
-    copy: 'Thousands of validators control fund movement.'
-  },
-  {
-    title: 'Immutable protocols',
-    copy: 'Mathematical consensus with no admin keys.'
-  },
-  {
-    title: 'Cryptographic security',
-    copy: 'Verifiable proofs instead of exploitable custody logic.'
-  },
-  {
-    title: 'Dedicated recovery routes',
-    copy: 'Claims, refunds, and NFT bridging stay accessible from the main interface.'
-  }
-];
 
 const FAQItem = ({ children, question }) => (
   <details className={styles.faqItem}>
@@ -58,23 +18,7 @@ const FAQItem = ({ children, question }) => (
   </details>
 );
 
-const ResourceLink = ({ href, title, to }) => {
-  if (to) {
-    return (
-      <Link className={styles.faqResourceLink} to={to}>
-        {title}
-      </Link>
-    );
-  }
-
-  return (
-    <a className={styles.faqResourceLink} href={href} rel="noreferrer" target="_blank">
-      {title}
-    </a>
-  );
-};
-
-const ReferenceTrustlessSection = ({ resources = [] }) => (
+const ReferenceTrustlessSection = () => (
   <section className={styles.trustSection} id={HOME_INFO_SECTION_ID}>
     <div className={styles.trustInner}>
       <div className={styles.trustHeadline}>
@@ -120,59 +64,98 @@ const ReferenceTrustlessSection = ({ resources = [] }) => (
         <div className={styles.faqList}>
           <FAQItem question="Why do most bridges fail?">
             <p className={styles.faqAnswerLead}>
-              Numerous bridge hacks demonstrate the same structural weaknesses over and over again.
+              Most bridges have two weak points. First, they rely on a small group of key holders
+              (a multisig wallet) to custody funds. If those keys are compromised through hacking,
+              social engineering, or insider collusion, the funds can be drained.
             </p>
-            <ul className={styles.faqBulletList}>
-              {traditionalBridgeRisks.map((risk) => (
-                <li className={styles.faqBulletItem} key={risk.title}>
-                  <p className={styles.faqBulletTitle}>{risk.title}</p>
-                  <p className={styles.faqBulletCopy}>{risk.copy}</p>
-                </li>
-              ))}
-            </ul>
+            <div className={styles.faqAnswerCopy}>
+              <p className={styles.faqBulletCopy}>
+                Second, they depend on smart contracts that can contain vulnerabilities or, worse,
+                can be upgraded or modified by a small team. That means even a contract that looks
+                safe today can be changed tomorrow.
+              </p>
+              <p className={styles.faqBulletCopy}>
+                Billions have been lost to both attack vectors. The fundamental problem is the same
+                in each case: you&apos;re trusting a small group of people with everyone&apos;s money.
+              </p>
+            </div>
           </FAQItem>
 
           <FAQItem question="What makes the Verus-Ethereum Bridge different?">
             <p className={styles.faqAnswerLead}>
-              Verus removes trusted control points and replaces them with consensus-enforced rules.
+              No single entity, multisig, or key holder has custody of your funds at any point.
+              Instead, the entire decentralized network of Verus miners and stakers verifies every
+              cross-chain transaction through consensus rules.
             </p>
-            <ul className={styles.faqBulletList}>
-              {bridgeAdvantages.map((advantage) => (
-                <li className={styles.faqBulletItem} key={advantage.title}>
-                  <p className={styles.faqBulletTitle}>{advantage.title}</p>
-                  <p className={styles.faqBulletCopy}>{advantage.copy}</p>
-                </li>
-              ))}
-            </ul>
+            <div className={styles.faqAnswerCopy}>
+              <p className={styles.faqBulletCopy}>
+                To attack this bridge, you&apos;d need to simultaneously compromise the majority of
+                the mining and staking network, have colluding notary witnesses, and run a fake
+                shadow chain.
+              </p>
+              <p className={styles.faqBulletCopy}>
+                These are requirements comparable to attacking the blockchain itself.
+              </p>
+            </div>
           </FAQItem>
 
-          <FAQItem question="Who can move my funds?">
+          <FAQItem question="How long does it take for my funds to arrive on Verus?">
             <p className={styles.faqAnswerLead}>
-              No entity can steal, freeze, or manipulate your funds. Only mathematical consensus can move them.
+              Your funds arrive after two witnessed bridge notarizations have been confirmed.
+            </p>
+            <div className={styles.faqAnswerCopy}>
+              <p className={styles.faqBulletCopy}>
+                These notarizations are cryptographic snapshots of both chains, created and
+                verified by the decentralized network of miners and stakers.
+              </p>
+              <p className={styles.faqBulletCopy}>
+                How quickly that happens depends on bridge activity. Notarizations are only
+                produced when there&apos;s traffic to process. Ethereum confirmation times and gas
+                conditions also play a role. The process isn&apos;t instant, but every step exists to
+                make sure your funds are cryptographically proven before they arrive.
+              </p>
+            </div>
+          </FAQItem>
+
+          <FAQItem question="Where can I inspect the Verus-Ethereum Bridge contract?">
+            <p className={styles.faqAnswerLead}>
+              You can find the contract here:{' '}
+              <a
+                className={styles.faqInlineLink}
+                href="https://etherscan.io/address/0x71518580f36FeCEFfE0721F06bA4703218cD7F63"
+                rel="noreferrer"
+                target="_blank"
+              >
+                https://etherscan.io/address/0x71518580f36FeCEFfE0721F06bA4703218cD7F63
+              </a>
             </p>
           </FAQItem>
 
-          <FAQItem question="Who verifies each transaction?">
+          <FAQItem question="Are the website and the bridge contract open source?">
             <p className={styles.faqAnswerLead}>
-              Thousands of miners and stakers verify every transaction. No multisig wallets. No trusted parties.
+              Yes. You can find the website here:{' '}
+              <a
+                className={styles.faqInlineLink}
+                href="https://github.com/VerusCoin/VerusBridgeWebsite"
+                rel="noreferrer"
+                target="_blank"
+              >
+                https://github.com/VerusCoin/VerusBridgeWebsite
+              </a>
             </p>
-          </FAQItem>
-
-          <FAQItem question="Where do I go for claims, NFT bridging, and contract inspection?">
-            <p className={styles.faqAnswerLead}>
-              Claims, refunds, and NFT bridging stay accessible from the main interface, and the live bridge
-              contracts can be inspected directly whenever you want to verify them yourself.
-            </p>
-            {resources.length > 0 ? (
-              <ul className={styles.faqResourceList}>
-                {resources.map((resource) => (
-                  <li className={styles.faqResourceItem} key={resource.id}>
-                    <ResourceLink href={resource.href} title={resource.title} to={resource.to} />
-                    <span className={styles.faqResourceDescription}>{resource.description}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+            <div className={styles.faqAnswerCopy}>
+              <p className={styles.faqBulletCopy}>
+                And the Ethereum contracts here:{' '}
+                <a
+                  className={styles.faqInlineLink}
+                  href="https://github.com/VerusCoin/Verus-Ethereum-Contracts"
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  https://github.com/VerusCoin/Verus-Ethereum-Contracts
+                </a>
+              </p>
+            </div>
           </FAQItem>
         </div>
       </div>

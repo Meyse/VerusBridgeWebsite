@@ -9,6 +9,7 @@ import {
   getTokenDisplaySymbol,
   sortSourceCurrencies
 } from 'utils/bridgeUi';
+import { isETHAddress, isRAddress, isiAddress } from 'utils/rules';
 
 import styles from '../styles/ReferenceBridge.module.css';
 
@@ -73,6 +74,19 @@ const InfoIcon = () => (
   </svg>
 );
 
+const WarningIcon = () => (
+  <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 16 16" width="14">
+    <path
+      d="M7.13 2.46a1 1 0 011.74 0l5.1 9.18A1 1 0 0113.1 13H2.9a1 1 0 01-.87-1.36l5.1-9.18z"
+      stroke="currentColor"
+      strokeLinejoin="round"
+      strokeWidth="1.35"
+    />
+    <path d="M8 5.4v3.55" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
+    <circle cx="8" cy="11.15" fill="currentColor" r="0.8" />
+  </svg>
+);
+
 const ModalCloseIcon = () => (
   <svg aria-hidden="true" fill="none" height="20" viewBox="0 0 20 20" width="20">
     <path
@@ -96,6 +110,85 @@ const SearchIcon = () => (
     />
   </svg>
 );
+
+let bodyScrollLockCount = 0;
+let lockedBodyScrollY = 0;
+let lockedBodyStyles = null;
+
+const restoreInlineStyle = (styleDeclaration, propertyName, value) => {
+  if (value) {
+    styleDeclaration.setProperty(propertyName, value);
+    return;
+  }
+
+  styleDeclaration.removeProperty(propertyName);
+};
+
+const acquireBodyScrollLock = () => {
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    return () => {};
+  }
+
+  bodyScrollLockCount += 1;
+
+  if (bodyScrollLockCount === 1) {
+    const { body, documentElement } = document;
+    const viewportWidth = documentElement.clientWidth;
+    const scrollbarWidth = viewportWidth > 0 ? Math.max(0, window.innerWidth - viewportWidth) : 0;
+
+    lockedBodyScrollY = window.scrollY;
+    lockedBodyStyles = {
+      left: body.style.left,
+      overflow: body.style.overflow,
+      paddingRight: body.style.paddingRight,
+      position: body.style.position,
+      right: body.style.right,
+      top: body.style.top,
+      width: body.style.width
+    };
+
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${lockedBodyScrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+
+    if (scrollbarWidth > 0) {
+      body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+  }
+
+  return () => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      return;
+    }
+
+    bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1);
+
+    if (bodyScrollLockCount !== 0) {
+      return;
+    }
+
+    const { body } = document;
+
+    if (lockedBodyStyles) {
+      restoreInlineStyle(body.style, 'left', lockedBodyStyles.left);
+      restoreInlineStyle(body.style, 'overflow', lockedBodyStyles.overflow);
+      restoreInlineStyle(body.style, 'padding-right', lockedBodyStyles.paddingRight);
+      restoreInlineStyle(body.style, 'position', lockedBodyStyles.position);
+      restoreInlineStyle(body.style, 'right', lockedBodyStyles.right);
+      restoreInlineStyle(body.style, 'top', lockedBodyStyles.top);
+      restoreInlineStyle(body.style, 'width', lockedBodyStyles.width);
+    }
+
+    lockedBodyStyles = null;
+
+    if (typeof window.scrollTo === 'function') {
+      window.scrollTo(0, lockedBodyScrollY);
+    }
+  };
+};
 
 const CurrencyModal = ({
   currencies,
@@ -122,6 +215,7 @@ const CurrencyModal = ({
     }
 
     searchInputRef.current?.focus();
+    const releaseBodyScrollLock = acquireBodyScrollLock();
 
     const handlePointerDown = (event) => {
       if (modalCardRef.current && !modalCardRef.current.contains(event.target)) {
@@ -143,6 +237,7 @@ const CurrencyModal = ({
       document.removeEventListener('mousedown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('touchstart', handlePointerDown);
+      releaseBodyScrollLock();
     };
   }, [isOpen, onClose]);
 
@@ -270,8 +365,12 @@ const formatAddressForInput = (address, isFocused) => {
     return '';
   }
 
-  const shouldCompactHexAddress = !isFocused && address.startsWith('0x') && address.length === 42;
-  return shouldCompactHexAddress ? formatCompactAddress(address) : address;
+  const shouldCompactRecognizedAddress = !isFocused && (
+    isETHAddress(address)
+    || isRAddress(address)
+    || isiAddress(address)
+  );
+  return shouldCompactRecognizedAddress ? formatCompactAddress(address) : address;
 };
 
 const StaticCurrencyPill = ({ currency }) => {
@@ -289,6 +388,19 @@ const StaticCurrencyPill = ({ currency }) => {
   );
 };
 
+const ConversionWarning = ({ label, message }) => (
+  <div className={styles.conversionWarningText} role="alert">
+    <span className={styles.conversionWarningIcon}>
+      <WarningIcon />
+    </span>
+    <span className={styles.conversionWarningBody}>
+      <span className={styles.conversionWarningLabel}>{label}</span>
+      {' '}
+      <span>{message}</span>
+    </span>
+  </div>
+);
+
 const RECEIVE_ESTIMATE_TOOLTIP_LINES = [
   'This amount is estimated and not guaranteed.',
   'Bridging and conversion settle over time, so the final value can shift before completion.'
@@ -298,6 +410,19 @@ const REVIEW_TIME_TOOLTIP_LINES = [
   'More activity on the bridge can help transfers complete faster.',
   'Because the bridge protocol settles in a decentralized way, completion can still take a while.'
 ];
+const BLOCKED_SEND_AMOUNT_PRESETS = [
+  { id: '25', label: '25%' },
+  { id: '50', label: '50%' },
+  { id: '75', label: '75%' },
+  { id: 'max', label: 'Max' }
+];
+const DESKTOP_HOVER_MEDIA_QUERY = '(hover: hover) and (pointer: fine)';
+
+const getCanUseHoverAmountPresets = () => (
+  typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia(DESKTOP_HOVER_MEDIA_QUERY).matches
+);
 
 const splitRouteLabel = (routeLabel) => String(routeLabel || '')
   .split(/\s*(?:->|→)\s*/)
@@ -343,12 +468,16 @@ const BridgeCard = ({ controller }) => {
   const [isAddressFocused, setIsAddressFocused] = useState(false);
   const [isReceiveEstimateInfoOpen, setIsReceiveEstimateInfoOpen] = useState(false);
   const [isReviewTimeInfoOpen, setIsReviewTimeInfoOpen] = useState(false);
+  const [isSendAmountPresetInfoOpen, setIsSendAmountPresetInfoOpen] = useState(false);
+  const [isHoverCapable, setIsHoverCapable] = useState(getCanUseHoverAmountPresets);
   const [sourceSearch, setSourceSearch] = useState('');
   const [sourceSelectorOpen, setSourceSelectorOpen] = useState(false);
   const receiveEstimateInfoRef = useRef(null);
   const receiveEstimatePopoverIdRef = useRef(`receive-estimate-popover-${Math.random().toString(36).slice(2, 10)}`);
   const reviewTimeInfoRef = useRef(null);
   const reviewTimePopoverIdRef = useRef(`review-time-popover-${Math.random().toString(36).slice(2, 10)}`);
+  const sendAmountPresetInfoRef = useRef(null);
+  const sendAmountPresetPopoverIdRef = useRef(`send-amount-preset-popover-${Math.random().toString(36).slice(2, 10)}`);
 
   const sourceCurrencies = useMemo(
     () => (
@@ -406,7 +535,7 @@ const BridgeCard = ({ controller }) => {
   }, [controller.isReviewing]);
 
   useEffect(() => {
-    if (!isReceiveEstimateInfoOpen && !isReviewTimeInfoOpen) {
+    if (!isReceiveEstimateInfoOpen && !isReviewTimeInfoOpen && !isSendAmountPresetInfoOpen) {
       return undefined;
     }
 
@@ -418,12 +547,17 @@ const BridgeCard = ({ controller }) => {
       if (reviewTimeInfoRef.current && !reviewTimeInfoRef.current.contains(event.target)) {
         setIsReviewTimeInfoOpen(false);
       }
+
+      if (sendAmountPresetInfoRef.current && !sendAmountPresetInfoRef.current.contains(event.target)) {
+        setIsSendAmountPresetInfoOpen(false);
+      }
     };
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         setIsReceiveEstimateInfoOpen(false);
         setIsReviewTimeInfoOpen(false);
+        setIsSendAmountPresetInfoOpen(false);
       }
     };
 
@@ -436,7 +570,39 @@ const BridgeCard = ({ controller }) => {
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('touchstart', handlePointerDown);
     };
-  }, [isReceiveEstimateInfoOpen, isReviewTimeInfoOpen]);
+  }, [isReceiveEstimateInfoOpen, isReviewTimeInfoOpen, isSendAmountPresetInfoOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      setIsHoverCapable(false);
+      return undefined;
+    }
+
+    const mediaQueryList = window.matchMedia(DESKTOP_HOVER_MEDIA_QUERY);
+    const handleMediaQueryChange = (event) => {
+      setIsHoverCapable(event.matches);
+    };
+
+    setIsHoverCapable(mediaQueryList.matches);
+
+    if (typeof mediaQueryList.addEventListener === 'function') {
+      mediaQueryList.addEventListener('change', handleMediaQueryChange);
+
+      return () => {
+        mediaQueryList.removeEventListener('change', handleMediaQueryChange);
+      };
+    }
+
+    if (typeof mediaQueryList.addListener === 'function') {
+      mediaQueryList.addListener(handleMediaQueryChange);
+
+      return () => {
+        mediaQueryList.removeListener(handleMediaQueryChange);
+      };
+    }
+
+    return undefined;
+  }, []);
 
   const receiveAmountDisplay = controller.receiveAmountDisplay ?? controller.estimatedDisplayValue;
   const receiveFiatLabel = controller.receiveFiatLabel ?? controller.estimatedFiatLabel;
@@ -455,10 +621,22 @@ const BridgeCard = ({ controller }) => {
   const showBalance = controller.isWalletConnected && controller.tokenBalance;
   const isInsufficientBalance = Boolean(controller.amountError) && controller.amountError.includes('not available in your wallet');
   const showSendMeta = Boolean(controller.amountFiatLabel) || showBalance;
+  const sendAmountPresets = Array.isArray(controller.sendAmountPresets) ? controller.sendAmountPresets : [];
+  const sendAmountPresetWarningMessage = controller.sendAmountPresetWarningMessage || '';
+  const hasSendAmountPresetWarning = Boolean(sendAmountPresetWarningMessage);
+  const visibleSendAmountPresets = hasSendAmountPresetWarning ? BLOCKED_SEND_AMOUNT_PRESETS : sendAmountPresets;
+  const hasMaxPreset = visibleSendAmountPresets.some((preset) => preset.id === 'max');
+  const showDesktopAmountPresetRail = Boolean(
+    controller.isWalletConnected
+    && isHoverCapable
+    && visibleSendAmountPresets.length > 0
+  );
+  const showFooterMaxButton = Boolean(showBalance && hasMaxPreset && !showDesktopAmountPresetRail && !hasSendAmountPresetWarning);
   const addressHint = controller.addressHint || 'Enter a Verus address (R-address or i-address) or Ethereum address';
   const addressPlaceholder = controller.addressPlaceholder || 'Enter receiving address';
   const addressInputClassName = [
     styles.addressInput,
+    showSelfButton ? styles.addressInputWithSelf : '',
     isAddressValid ? styles.addressInputValid : '',
     isAddressInvalid ? styles.addressInputInvalid : ''
   ]
@@ -466,7 +644,6 @@ const BridgeCard = ({ controller }) => {
     .join(' ');
   const validationIconClassName = [
     styles.validationIcon,
-    showSelfButton ? styles.validationIconWithSelf : '',
     isAddressValid ? styles.validationIconSuccess : styles.validationIconError
   ]
     .filter(Boolean)
@@ -481,7 +658,12 @@ const BridgeCard = ({ controller }) => {
   ]
     .filter(Boolean)
     .join(' ');
-  const sendSelectorClassName = styles.selector;
+  const sendSelectorClassName = [
+    styles.selector,
+    showDesktopAmountPresetRail ? styles.selectorWithAmountPresets : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
   const receiveSelectorClassName = styles.selector;
   const reviewSendSectionClassName = [styles.cardSection, styles.reviewCardSection]
     .filter(Boolean)
@@ -498,6 +680,25 @@ const BridgeCard = ({ controller }) => {
     : '';
   const sourceModalStatusTone = controller.sourceCatalogError ? 'warning' : 'info';
   const sourceModalStatusActionLabel = controller.sourceCatalogError ? 'Retry' : '';
+
+  useEffect(() => {
+    if (hasSendAmountPresetWarning && showDesktopAmountPresetRail) {
+      return;
+    }
+
+    setIsSendAmountPresetInfoOpen(false);
+  }, [hasSendAmountPresetWarning, showDesktopAmountPresetRail]);
+
+  const handleSendAmountPresetClick = (preset) => {
+    if (hasSendAmountPresetWarning) {
+      setIsSendAmountPresetInfoOpen(true);
+      return;
+    }
+
+    setIsSendAmountPresetInfoOpen(false);
+    controller.setAmount(preset.amount);
+  };
+
   const formatReceiveAmount = (value) => {
     if (!isConversionReceiveEstimate || !value || value === '--' || /estimating/i.test(value)) {
       return value;
@@ -508,6 +709,18 @@ const BridgeCard = ({ controller }) => {
   const liveReceiveAmountDisplay = formatReceiveAmount(receiveAmountDisplay);
   const reviewReceiveAmountText = formatReceiveAmount(reviewReceiveAmountDisplay);
   const receiveLabel = isConversionReceiveEstimate ? 'You receive (estimated)' : 'You receive';
+  const reviewWarnings = [
+    conversionWarningMessage ? {
+      id: 'conversion',
+      label: 'High slippage warning:',
+      message: conversionWarningMessage
+    } : null,
+    controller.reviewBouncebackWarningMessage ? {
+      id: 'bounceback',
+      label: 'Bounceback warning:',
+      message: controller.reviewBouncebackWarningMessage
+    } : null
+  ].filter(Boolean);
   const receiveLabelHeader = (
     <div className={styles.selectorLabelRow}>
       <span className={styles.selectorLabel}>{receiveLabel}</span>
@@ -717,13 +930,9 @@ const BridgeCard = ({ controller }) => {
               </div>
             </div>
 
-            {conversionWarningMessage ? (
-              <div className={styles.conversionWarningText} role="alert">
-                <span className={styles.conversionWarningLabel}>High slippage warning:</span>
-                {' '}
-                <span>{conversionWarningMessage}</span>
-              </div>
-            ) : null}
+            {reviewWarnings.map((warning) => (
+              <ConversionWarning key={warning.id} label={warning.label} message={warning.message} />
+            ))}
 
             <div className={styles.reviewAddressPanel}>
               <div className={styles.reviewSectionLabel}>Destination address</div>
@@ -769,6 +978,42 @@ const BridgeCard = ({ controller }) => {
                 <div className={sendSelectorClassName}>
                   <div className={styles.selectorHeader}>
                     <span className={styles.selectorLabel}>You send</span>
+
+                    {showDesktopAmountPresetRail ? (
+                      <span className={styles.amountPresetInfoWrap} ref={sendAmountPresetInfoRef}>
+                        <div aria-label="Send amount presets" className={styles.amountPresetRail} role="group">
+                          {visibleSendAmountPresets.map((preset) => (
+                            <button
+                              aria-controls={hasSendAmountPresetWarning && isSendAmountPresetInfoOpen
+                                ? sendAmountPresetPopoverIdRef.current
+                                : undefined}
+                              aria-expanded={hasSendAmountPresetWarning ? isSendAmountPresetInfoOpen : undefined}
+                              aria-haspopup={hasSendAmountPresetWarning ? 'dialog' : undefined}
+                              aria-label={`Set amount to ${preset.label}`}
+                              className={styles.amountPresetButton}
+                              key={preset.id}
+                              onClick={() => handleSendAmountPresetClick(preset)}
+                              type="button"
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {hasSendAmountPresetWarning && isSendAmountPresetInfoOpen ? (
+                          <div
+                            aria-label="Send amount preset details"
+                            className={`${styles.activityPopover} ${styles.amountPresetPopover}`}
+                            id={sendAmountPresetPopoverIdRef.current}
+                            role="dialog"
+                          >
+                            <div className={styles.activityPopoverLine}>
+                              {sendAmountPresetWarningMessage}
+                            </div>
+                          </div>
+                        ) : null}
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className={styles.selectorRow}>
@@ -783,23 +1028,25 @@ const BridgeCard = ({ controller }) => {
                       />
                     </div>
 
-                    <button
-                      className={`${styles.selectorButton} ${styles.selectorButtonSoft} ${selectedSourceCurrency ? styles.selectorButtonWithIcon : ''}`}
-                      onClick={() => setSourceSelectorOpen(true)}
-                      type="button"
-                    >
-                      {selectedSourceCurrency ? (
-                        <>
-                          <div className={styles.selectorIconWrap}>
-                            <img alt={selectedSourceCurrency.symbol} className={styles.selectorIcon} src={selectedSourceCurrency.icon} />
-                          </div>
-                          <span className={styles.selectorButtonText}>{selectedSourceCurrency.symbol}</span>
-                        </>
-                      ) : (
-                        <span className={styles.selectorButtonText}>Select currency</span>
-                      )}
-                      <ChevronIcon />
-                    </button>
+                    <div className={styles.selectorActionGroup}>
+                      <button
+                        className={`${styles.selectorButton} ${styles.selectorButtonSoft} ${selectedSourceCurrency ? styles.selectorButtonWithIcon : ''}`}
+                        onClick={() => setSourceSelectorOpen(true)}
+                        type="button"
+                      >
+                        {selectedSourceCurrency ? (
+                          <>
+                            <div className={styles.selectorIconWrap}>
+                              <img alt={selectedSourceCurrency.symbol} className={styles.selectorIcon} src={selectedSourceCurrency.icon} />
+                            </div>
+                            <span className={styles.selectorButtonText}>{selectedSourceCurrency.symbol}</span>
+                          </>
+                        ) : (
+                          <span className={styles.selectorButtonText}>Select currency</span>
+                        )}
+                        <ChevronIcon />
+                      </button>
+                    </div>
                   </div>
 
                   {showSendMeta ? (
@@ -812,9 +1059,11 @@ const BridgeCard = ({ controller }) => {
                         <div className={styles.balanceDisplay}>
                           <div className={styles.balanceText}>
                             <span>{controller.tokenBalanceLabel}</span>
-                            <button className={styles.maxButton} onClick={controller.handleMaxAmount} type="button">
-                              Max
-                            </button>
+                            {showFooterMaxButton ? (
+                              <button className={styles.maxButton} onClick={controller.handleMaxAmount} type="button">
+                                Max
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                       ) : null}
@@ -871,11 +1120,10 @@ const BridgeCard = ({ controller }) => {
             </div>
 
             {conversionWarningMessage ? (
-              <div className={styles.conversionWarningText} role="alert">
-                <span className={styles.conversionWarningLabel}>High slippage warning:</span>
-                {' '}
-                <span>{conversionWarningMessage}</span>
-              </div>
+              <ConversionWarning
+                label="High slippage warning:"
+                message={conversionWarningMessage}
+              />
             ) : null}
 
             <div className={styles.addressBlock}>
@@ -900,19 +1148,23 @@ const BridgeCard = ({ controller }) => {
                   value={displayAddress}
                 />
 
-                {showSelfButton ? (
-                  <button
-                    className={styles.selfButton}
-                    onClick={() => controller.setAddress(controller.account)}
-                    type="button"
-                  >
-                    self
-                  </button>
-                ) : null}
+                {showSelfButton || showValidation ? (
+                  <div className={styles.addressActions}>
+                    {showValidation ? (
+                      <div className={validationIconClassName}>
+                        {isAddressValid ? <CheckIcon /> : <CloseIcon />}
+                      </div>
+                    ) : null}
 
-                {showValidation ? (
-                  <div className={validationIconClassName}>
-                    {isAddressValid ? <CheckIcon /> : <CloseIcon />}
+                    {showSelfButton ? (
+                      <button
+                        className={styles.selfButton}
+                        onClick={() => controller.setAddress(controller.account)}
+                        type="button"
+                      >
+                        self
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

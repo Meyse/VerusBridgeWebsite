@@ -43,10 +43,6 @@ jest.mock('components/SiteHeader', () => ({
   default: () => <header data-testid="site-header" />
 }));
 
-jest.mock('config/explorerLinks', () => ({
-  getExplorerResources: () => []
-}));
-
 jest.mock('hooks/useBridgeController', () => ({
   __esModule: true,
   default: jest.fn()
