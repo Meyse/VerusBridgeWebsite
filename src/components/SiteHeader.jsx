@@ -8,6 +8,15 @@ import { getExplorerBaseUrl } from 'config/explorerLinks';
 import { injectedConnector } from 'connectors/injectedConnector';
 import { formatCompactAddress } from 'utils/bridgeUi';
 import {
+  HOME_INFO_HASH,
+  HOME_INFO_SECTION_ID,
+  HOME_REVIEW_STEP,
+  buildHomeHref,
+  buildHomeLocation,
+  getHomeStep,
+  scrollToHomeSection
+} from 'utils/homeNavigation';
+import {
   clearInjectedWalletAutoConnectSuppression,
   suppressInjectedWalletAutoConnect
 } from 'utils/walletConnection';
@@ -18,9 +27,9 @@ import { ReactComponent as WalletIcon } from '../images/icons/wallet-icon.svg';
 import styles from '../styles/ReferenceBridge.module.css';
 
 const NAV_ITEMS = [
-  { label: 'Bridge', to: '/' },
-  { label: 'Info', to: '/#trustless-section' },
-  { label: 'Refunds & claims', to: '/claim' }
+  { id: 'bridge', label: 'Bridge' },
+  { id: 'info', label: 'Info' },
+  { id: 'claim', label: 'Refunds & claims', to: '/claim' }
 ];
 
 const CopyIcon = ({ copied }) => (
@@ -168,9 +177,14 @@ const SiteHeader = () => {
   useEffect(() => {
     setMobileMenuOpen(false);
     setShowDropdown(false);
-  }, [location.pathname, location.hash]);
+  }, [location.hash, location.pathname, location.search]);
 
   const walletLabel = useMemo(() => formatCompactAddress(account), [account]);
+  const homeStep = useMemo(() => getHomeStep(location.search), [location.search]);
+  const isHomeRoute = location.pathname === '/';
+  const isReviewRequested = homeStep === HOME_REVIEW_STEP;
+  const bridgeHref = useMemo(() => buildHomeHref(), []);
+  const infoHref = useMemo(() => buildHomeHref({ hash: HOME_INFO_HASH }), []);
 
   const handleConfirmWallet = async () => {
     try {
@@ -207,17 +221,62 @@ const SiteHeader = () => {
   };
 
   const handleBridgeClick = (event) => {
-    if (location.pathname !== '/' || typeof window === 'undefined') {
+    if (!isHomeRoute || typeof window === 'undefined') {
       return;
     }
 
     event.preventDefault();
 
-    if (location.hash) {
-      navigate('/');
+    if (location.search || location.hash) {
+      navigate(buildHomeLocation({ search: location.search }), { replace: isReviewRequested });
     }
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleInfoClick = (event) => {
+    if (!isHomeRoute) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const nextLocation = buildHomeLocation({
+      hash: HOME_INFO_HASH,
+      search: location.search
+    });
+    const isSameLocation = location.search === nextLocation.search && location.hash === nextLocation.hash;
+
+    if (isSameLocation) {
+      scrollToHomeSection(HOME_INFO_SECTION_ID);
+      return;
+    }
+
+    navigate(nextLocation, { replace: isReviewRequested });
+  };
+
+  const getNavItemHref = (item) => {
+    if (item.id === 'bridge') {
+      return bridgeHref;
+    }
+
+    if (item.id === 'info') {
+      return infoHref;
+    }
+
+    return item.to;
+  };
+
+  const getNavItemClickHandler = (item) => {
+    if (item.id === 'bridge') {
+      return handleBridgeClick;
+    }
+
+    if (item.id === 'info') {
+      return handleInfoClick;
+    }
+
+    return undefined;
   };
 
   return (
@@ -227,7 +286,7 @@ const SiteHeader = () => {
     >
       <div className={styles.headerInner}>
         <div className={styles.headerLeft}>
-          <Link className={styles.headerTitle} to="/">
+          <Link className={styles.headerTitle} onClick={handleBridgeClick} to={bridgeHref}>
             Verus-Ethereum Bridge
           </Link>
 
@@ -236,8 +295,8 @@ const SiteHeader = () => {
               <Link
                 className={styles.headerNavLink}
                 key={item.label}
-                onClick={item.to === '/' ? handleBridgeClick : undefined}
-                to={item.to}
+                onClick={getNavItemClickHandler(item)}
+                to={getNavItemHref(item)}
               >
                 {item.label}
               </Link>
@@ -343,8 +402,8 @@ const SiteHeader = () => {
             <Link
               className={styles.mobileNavLink}
               key={item.label}
-              onClick={item.to === '/' ? handleBridgeClick : undefined}
-              to={item.to}
+              onClick={getNavItemClickHandler(item)}
+              to={getNavItemHref(item)}
             >
               {item.label}
             </Link>

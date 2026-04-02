@@ -3,6 +3,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 
 import styles from 'styles/ReferenceBridge.module.css';
+import { HOME_INFO_SECTION_ID } from 'utils/homeNavigation';
 
 import { ReactComponent as TrustFlashIcon } from '../images/icons/trust-flash-icon.svg';
 import { ReactComponent as TrustLockIcon } from '../images/icons/trust-lock-icon.svg';
@@ -74,7 +75,7 @@ const ResourceLink = ({ href, title, to }) => {
 };
 
 const ReferenceTrustlessSection = ({ resources = [] }) => (
-  <section className={styles.trustSection} id="trustless-section">
+  <section className={styles.trustSection} id={HOME_INFO_SECTION_ID}>
     <div className={styles.trustInner}>
       <div className={styles.trustHeadline}>
         <h2 className={styles.trustHeadlineLine}>You don&apos;t need to trust anyone.</h2>

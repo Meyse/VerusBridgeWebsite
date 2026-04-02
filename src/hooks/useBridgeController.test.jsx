@@ -198,8 +198,8 @@ const createDeferred = () => {
 
 const readJsonTestId = (testId) => JSON.parse(screen.getByTestId(testId).textContent || '{}');
 
-const HookProbe = () => {
-  const controller = useBridgeController();
+const HookProbe = ({ controllerOptions = {} }) => {
+  const controller = useBridgeController(controllerOptions);
 
   return (
     <div>
@@ -404,6 +404,7 @@ const HookProbe = () => {
         Configure EURC Auto Direct No Address
       </button>
       <button onClick={() => controller.openReview()} type="button">Open Review</button>
+      <button onClick={() => controller.closeReview()} type="button">Close Review</button>
     </div>
   );
 };
@@ -1257,5 +1258,148 @@ describe('useBridgeController disconnected source bootstrap', () => {
     await waitFor(() => {
       expect(screen.getByTestId('review-fees').textContent).toContain('Network cost:0.012 ETH');
     });
+  });
+
+  test('shows the longer review time estimate for bounceback routes', async () => {
+    global.fetch = jest.fn((input) => {
+      if (input === './exclude.json') {
+        return Promise.resolve({
+          json: async () => ({ ETH: [] }),
+          ok: true
+        });
+      }
+
+      return new Promise(() => {});
+    });
+
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1')),
+      getBlockNumber: jest.fn().mockResolvedValue(100),
+      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+    });
+    const delegatorContract = createDelegatorContract();
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Swap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('review-route-label')).toHaveTextContent('Ethereum -> Verus -> Ethereum');
+    });
+
+    expect(screen.getByTestId('review-time-estimate')).toHaveTextContent('2-10 hours');
+  });
+
+  test('calls enterReview after capturing a valid review snapshot and exits routed review when edits invalidate it', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract();
+    const enterReview = jest.fn();
+    const exitReview = jest.fn();
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    const { rerender } = render(
+      <HookProbe
+        controllerOptions={{
+          enterReview,
+          exitReview,
+          isReviewRequested: false
+        }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Direct DAI' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(enterReview).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <HookProbe
+        controllerOptions={{
+          enterReview,
+          exitReview,
+          isReviewRequested: true
+        }}
+      />
+    );
+
+    expect(screen.getByTestId('is-reviewing')).toHaveTextContent('yes');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change Amount' }));
+
+    await waitFor(() => {
+      expect(exitReview).toHaveBeenCalledWith({ hash: '#bridge-interface' });
+    });
+
+    expect(screen.getByTestId('is-reviewing')).toHaveTextContent('no');
+  });
+
+  test('calls exitReview when the routed review is explicitly closed', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract();
+    const enterReview = jest.fn();
+    const exitReview = jest.fn();
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    const { rerender } = render(
+      <HookProbe
+        controllerOptions={{
+          enterReview,
+          exitReview,
+          isReviewRequested: false
+        }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Direct DAI' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(enterReview).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <HookProbe
+        controllerOptions={{
+          enterReview,
+          exitReview,
+          isReviewRequested: true
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close Review' }));
+
+    await waitFor(() => {
+      expect(exitReview).toHaveBeenCalledWith({ hash: '' });
+    });
+
+    expect(screen.getByTestId('is-reviewing')).toHaveTextContent('no');
   });
 });

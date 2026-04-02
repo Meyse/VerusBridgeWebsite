@@ -57,7 +57,7 @@ const formatLagAgo = (seconds) => {
   }
 
   const lagDuration = formatLagDuration(seconds);
-  return lagDuration ? `${lagDuration} ago` : '--';
+  return lagDuration ? `~${lagDuration} ago` : '--';
 };
 
 const formatBlockHeight = (value) => {
@@ -90,7 +90,7 @@ const getNotarizationTooltipDetails = ({ notarizationHeight, verusTipHeight }) =
   return {
     stats,
     note:
-      'You can see your funds on the Verus side after one confirmed bridge notarization. A conversion might take a few blocks longer.'
+      'You can see your funds on the Verus side after two confirmed bridge notarizations. If it includes a conversion it might take a few minutes longer.'
   };
 };
 

@@ -36,6 +36,8 @@ describe('ReferenceInfoBar', () => {
       />
     );
 
+    expect(screen.getByText('~2h 1m ago')).toBeInTheDocument();
+
     const activityChip = screen.getByText(/last confirmed bridge notarization:/i).closest('div');
     const toggleButton = screen.getByRole('button', {
       name: /show bridge notarization details/i
@@ -54,7 +56,7 @@ describe('ReferenceInfoBar', () => {
     expect(dialog).toHaveTextContent('123,460');
     expect(dialog).not.toHaveTextContent(/blocks behind/i);
     expect(dialog).toHaveTextContent(
-      'You can see your funds on the Verus side after one confirmed bridge notarization. A conversion might take a few blocks longer.'
+      'You can see your funds on the Verus side after two confirmed bridge notarizations. If it includes a conversion it might take a few minutes longer.'
     );
 
     fireEvent.mouseDown(document.body);

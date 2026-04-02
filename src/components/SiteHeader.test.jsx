@@ -1,7 +1,11 @@
 import React from 'react';
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import {
+  RouterProvider,
+  createMemoryRouter,
+  useLocation
+} from 'react-router-dom';
 
 import { useWeb3React } from '@web3-react/core';
 
@@ -33,11 +37,31 @@ jest.mock('./Toast/ToastProvider', () => ({
   useToast: () => ({ addToast: mockAddToast })
 }));
 
-const renderHeader = () => render(
-  <MemoryRouter>
-    <SiteHeader />
-  </MemoryRouter>
-);
+const LocationProbe = () => {
+  const location = useLocation();
+
+  return <div data-testid="location-display">{`${location.pathname}${location.search}${location.hash}`}</div>;
+};
+
+const renderHeader = (initialEntries = ['/']) => {
+  const router = createMemoryRouter(
+    [{
+      element: (
+        <>
+          <SiteHeader />
+          <LocationProbe />
+        </>
+      ),
+      path: '*'
+    }],
+    { initialEntries }
+  );
+
+  return {
+    router,
+    ...render(<RouterProvider router={router} />)
+  };
+};
 
 describe('SiteHeader wallet interactions', () => {
   let offsetHeightGetter;
@@ -75,7 +99,8 @@ describe('SiteHeader wallet interactions', () => {
     const navigation = screen.getByRole('navigation', { name: /primary/i });
 
     expect(within(navigation).getByRole('link', { name: 'Bridge' })).toHaveAttribute('href', '/');
-    expect(within(navigation).getByRole('link', { name: 'Info' })).toHaveAttribute('href', '/#trustless-section');
+    expect(within(navigation).getByRole('link', { name: 'Info' })).toHaveAttribute('href', '/#info');
+    expect(within(navigation).queryByRole('link', { name: 'Transactions' })).toBeNull();
     expect(within(navigation).getByRole('link', { name: 'Refunds & claims' })).toHaveAttribute('href', '/claim');
   });
 
@@ -134,6 +159,64 @@ describe('SiteHeader wallet interactions', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Bridge' }));
 
     expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' });
+  });
+
+  test('replaces the review route with edit mode when Bridge is clicked', async () => {
+    useWeb3React.mockReturnValue({
+      account: null,
+      activate: jest.fn(),
+      deactivate: jest.fn(),
+      error: null
+    });
+
+    const { router } = renderHeader(['/?step=review#bridge-interface']);
+
+    fireEvent.click(screen.getByRole('link', { name: 'Bridge' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/');
+    });
+
+    expect(router.state.historyAction).toBe('REPLACE');
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' });
+  });
+
+  test('matches Bridge behavior when the title link is clicked during review', async () => {
+    useWeb3React.mockReturnValue({
+      account: null,
+      activate: jest.fn(),
+      deactivate: jest.fn(),
+      error: null
+    });
+
+    const { router } = renderHeader(['/?step=review#bridge-interface']);
+
+    fireEvent.click(screen.getByRole('link', { name: 'Verus-Ethereum Bridge' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/');
+    });
+
+    expect(router.state.historyAction).toBe('REPLACE');
+  });
+
+  test('replaces the review route with the canonical info anchor when Info is clicked', async () => {
+    useWeb3React.mockReturnValue({
+      account: null,
+      activate: jest.fn(),
+      deactivate: jest.fn(),
+      error: null
+    });
+
+    const { router } = renderHeader(['/?step=review#bridge-interface']);
+
+    fireEvent.click(screen.getByRole('link', { name: 'Info' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/#info');
+    });
+
+    expect(router.state.historyAction).toBe('REPLACE');
   });
 
   test('stores the disconnect preference before deactivating the wallet', () => {

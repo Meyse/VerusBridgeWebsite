@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useWeb3React } from '@web3-react/core';
 import { utils } from 'ethers';
+import { flushSync } from 'react-dom';
 import { VerusdRpcInterface } from 'verusd-rpc-ts-client';
 import web3 from 'web3';
 
@@ -27,6 +28,7 @@ import {
   sortSourceCurrencies
 } from 'utils/bridgeUi';
 import { getContract, getMaxAmount } from 'utils/contract';
+import { HOME_BRIDGE_INTERFACE_HASH } from 'utils/homeNavigation';
 import {
   getDestinationOptions,
   getTokenOptions,
@@ -525,7 +527,11 @@ const getRouteLabel = (destination) => {
   return 'Ethereum -> Verus';
 };
 
-const getRouteTimeEstimate = () => '1-6 hours';
+const getRouteTimeEstimate = (destination) => (
+  destination?.startsWith('swapto')
+    ? '2-10 hours'
+    : '1-6 hours'
+);
 
 const getGasEstimate = async (library) => {
   const latestBlock = await library.getBlockNumber();
@@ -669,7 +675,11 @@ const enrichTokenChoices = async (library, tokenOptions) => Promise.all(
   }))
 );
 
-export default function useBridgeController() {
+export default function useBridgeController({
+  enterReview,
+  exitReview,
+  isReviewRequested = false
+} = {}) {
   const [alert, setAlert] = useState(null);
   const [amount, setAmount] = useState('');
   const [address, setAddress] = useState('');
@@ -695,7 +705,6 @@ export default function useBridgeController() {
       ...STATIC_USD_PRICE_BY_SYMBOL
     }
   }));
-  const [isReviewing, setIsReviewing] = useState(false);
   const [isSourceCatalogLoading, setIsSourceCatalogLoading] = useState(true);
   const [isTxPending, setIsTxPending] = useState(false);
   const [isWalletBalancesLoading, setIsWalletBalancesLoading] = useState(false);
@@ -708,6 +717,8 @@ export default function useBridgeController() {
   const [poolAvailable, setPoolAvailable] = useState(false);
   const [pubkey, setPubkey] = useState({});
   const [reviewSnapshot, setReviewSnapshot] = useState(null);
+  const hasReviewSnapshot = Boolean(reviewSnapshot);
+  const isReviewing = Boolean(isReviewRequested && reviewSnapshot);
   const [selectedToken, setSelectedToken] = useState(() => createSeededEthToken());
   const [sourceCatalogError, setSourceCatalogError] = useState(null);
   const [sourceCatalogRetryNonce, setSourceCatalogRetryNonce] = useState(0);
@@ -1622,7 +1633,7 @@ export default function useBridgeController() {
   }, [account]);
 
   const reviewRouteLabel = useMemo(() => getRouteLabel(destination), [destination]);
-  const reviewTimeEstimate = getRouteTimeEstimate();
+  const reviewTimeEstimate = getRouteTimeEstimate(destination);
 
   const reviewFeeRows = useMemo(() => {
     const networkCostWei = getGatewayFeeWei(destination, gasPrice);
@@ -1891,20 +1902,31 @@ export default function useBridgeController() {
     selectedToken
   ]);
 
-  const closeReview = useCallback(() => {
-    setIsReviewing(false);
+  const clearReview = useCallback((shouldExitReview = false, exitReviewOptions = undefined) => {
     setReviewSnapshot(null);
-  }, []);
+    if (shouldExitReview && typeof exitReview === 'function') {
+      exitReview(exitReviewOptions);
+    }
+  }, [exitReview]);
+
+  const closeReview = useCallback(() => {
+    clearReview(true, { hash: '' });
+  }, [clearReview]);
 
   useEffect(() => {
-    if (!isReviewing) {
+    if (!reviewSnapshot) {
       return;
     }
 
-    if (submitDisabledReason || reviewSnapshot?.editSignature !== editSignature) {
-      closeReview();
+    if (!submitDisabledReason && reviewSnapshot.editSignature === editSignature) {
+      return;
     }
-  }, [closeReview, editSignature, isReviewing, reviewSnapshot, submitDisabledReason]);
+
+    clearReview(
+      isReviewRequested,
+      isReviewRequested ? { hash: HOME_BRIDGE_INTERFACE_HASH } : undefined
+    );
+  }, [clearReview, editSignature, isReviewRequested, reviewSnapshot, submitDisabledReason]);
 
   const openReview = useCallback(async () => {
     if (!account) {
@@ -1954,13 +1976,25 @@ export default function useBridgeController() {
       return;
     }
 
-    setAlert(null);
-    setReviewSnapshot({
+    const nextReviewSnapshot = {
       editSignature,
       receiveAmountDisplay,
       receiveFiatLabel
-    });
-    setIsReviewing(true);
+    };
+
+    setAlert(null);
+
+    if (typeof enterReview === 'function') {
+      // Commit the snapshot before entering the review URL so the page does not
+      // normalize a transient ?step=review render back to edit mode.
+      flushSync(() => {
+        setReviewSnapshot(nextReviewSnapshot);
+      });
+      enterReview();
+      return;
+    }
+
+    setReviewSnapshot(nextReviewSnapshot);
   }, [
     account,
     address,
@@ -1973,6 +2007,7 @@ export default function useBridgeController() {
     library,
     receiveAmountDisplay,
     receiveFiatLabel,
+    enterReview,
     requiresLiveGasEstimate,
     requiresReceiveQuote,
     selectedToken
@@ -2032,6 +2067,7 @@ export default function useBridgeController() {
       }
     },
     handleSubmit,
+    hasReviewSnapshot,
     hasEnoughNativeEth,
     isReviewing,
     isSourceCatalogLoading,
