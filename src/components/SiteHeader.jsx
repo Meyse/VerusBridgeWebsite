@@ -6,6 +6,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getExplorerBaseUrl } from 'config/explorerLinks';
 import { injectedConnector } from 'connectors/injectedConnector';
+import { useThemeMode } from 'providers/ThemeModeProvider';
 import { formatCompactAddress } from 'utils/bridgeUi';
 import {
   HOME_INFO_HASH,
@@ -81,6 +82,29 @@ const MenuIcon = () => (
   </svg>
 );
 
+const SunIcon = () => (
+  <svg aria-hidden="true" fill="none" height="16" viewBox="0 0 24 24" width="16">
+    <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
+    <path
+      d="M12 2.75v2.5M12 18.75v2.5M4.75 12h-2.5M21.75 12h-2.5M5.76 5.76L4 4M20 20l-1.76-1.76M18.24 5.76L20 4M4 20l1.76-1.76"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeWidth="1.8"
+    />
+  </svg>
+);
+
+const MoonIcon = () => (
+  <svg aria-hidden="true" fill="none" height="16" viewBox="0 0 24 24" width="16">
+    <path
+      d="M20.2 14.37A8.75 8.75 0 019.63 3.8a8.75 8.75 0 1010.57 10.57z"
+      stroke="currentColor"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+    />
+  </svg>
+);
+
 const WALLET_OPTIONS = [
   {
     id: 'metamask',
@@ -100,6 +124,7 @@ const SiteHeader = () => {
   const navigate = useNavigate();
   const { account, activate, deactivate, error } = useWeb3React();
   const { addToast } = useToast();
+  const { isDarkMode, toggleMode } = useThemeMode();
 
   useEffect(() => {
     if (error instanceof NoEthereumProviderError) {
@@ -298,96 +323,108 @@ const SiteHeader = () => {
           </nav>
         </div>
 
-        <div className={styles.walletGroup} ref={dropdownRef}>
-          {!account ? (
-            <>
-              <button
-                aria-expanded={showDropdown}
-                className={styles.connectButton}
-                onClick={() => setShowDropdown((currentValue) => !currentValue)}
-                type="button"
-              >
-                <span>Connect wallet</span>
-              </button>
+        <div className={styles.headerRight}>
+          <button
+            aria-label={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}
+            className={styles.themeToggle}
+            onClick={toggleMode}
+            title={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}
+            type="button"
+          >
+            {isDarkMode ? <SunIcon /> : <MoonIcon />}
+          </button>
 
-              {showDropdown ? (
-                <div aria-label="Wallet connection options" className={styles.dropdown}>
-                  <div className={styles.walletOptionList}>
-                    {WALLET_OPTIONS.map((walletOption) => (
-                      <button
-                        className={styles.walletOption}
-                        key={walletOption.id}
-                        onClick={handleConfirmWallet}
-                        type="button"
-                      >
-                        <span className={styles.walletOptionIconWrap}>{walletOption.icon}</span>
-                        <span className={styles.walletOptionTitle}>{walletOption.title}</span>
-                      </button>
-                    ))}
+          <div className={styles.walletGroup} ref={dropdownRef}>
+            {!account ? (
+              <>
+                <button
+                  aria-expanded={showDropdown}
+                  className={styles.connectButton}
+                  onClick={() => setShowDropdown((currentValue) => !currentValue)}
+                  type="button"
+                >
+                  <span>Connect wallet</span>
+                </button>
+
+                {showDropdown ? (
+                  <div aria-label="Wallet connection options" className={styles.dropdown}>
+                    <div className={styles.walletOptionList}>
+                      {WALLET_OPTIONS.map((walletOption) => (
+                        <button
+                          className={styles.walletOption}
+                          key={walletOption.id}
+                          onClick={handleConfirmWallet}
+                          type="button"
+                        >
+                          <span className={styles.walletOptionIconWrap}>{walletOption.icon}</span>
+                          <span className={styles.walletOptionTitle}>{walletOption.title}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <button
-                aria-expanded={showDropdown}
-                className={showDropdown ? `${styles.connectedButton} ${styles.connectedButtonActive}` : styles.connectedButton}
-                onClick={() => setShowDropdown((currentValue) => !currentValue)}
-                type="button"
-              >
-                <span className={styles.connectedLabel}>{walletLabel}</span>
-              </button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <button
+                  aria-expanded={showDropdown}
+                  className={showDropdown ? `${styles.connectedButton} ${styles.connectedButtonActive}` : styles.connectedButton}
+                  onClick={() => setShowDropdown((currentValue) => !currentValue)}
+                  type="button"
+                >
+                  <span className={styles.connectedLabel}>{walletLabel}</span>
+                </button>
 
-              {showDropdown ? (
-                <div className={styles.dropdown}>
-                  <div className={styles.dropdownHeader}>
-                    <div className={styles.dropdownKicker}>Connected wallet</div>
-                    <div className={styles.dropdownAddressRow}>
-                      <div className={styles.dropdownAddress}>{account}</div>
+                {showDropdown ? (
+                  <div className={styles.dropdown}>
+                    <div className={styles.dropdownHeader}>
+                      <div className={styles.dropdownKicker}>Connected wallet</div>
+                      <div className={styles.dropdownAddressRow}>
+                        <div className={styles.dropdownAddress}>{account}</div>
+                        <button
+                          aria-label="Copy address"
+                          className={styles.copyButton}
+                          onClick={handleCopyAddress}
+                          title="Copy address"
+                          type="button"
+                        >
+                          <CopyIcon copied={copied} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className={styles.dropdownActions}>
+                      <button className={styles.dropdownAction} onClick={handleOpenExplorer} type="button">
+                        <ExternalLinkIcon />
+                        <span>View on Etherscan</span>
+                      </button>
                       <button
-                        aria-label="Copy address"
-                        className={styles.copyButton}
-                        onClick={handleCopyAddress}
-                        title="Copy address"
+                        className={`${styles.dropdownAction} ${styles.dropdownActionDanger}`}
+                        onClick={() => {
+                          suppressInjectedWalletAutoConnect();
+                          deactivate();
+                          setShowDropdown(false);
+                        }}
                         type="button"
                       >
-                        <CopyIcon copied={copied} />
+                        <span>Disconnect</span>
                       </button>
                     </div>
                   </div>
+                ) : null}
+              </>
+            )}
+          </div>
 
-                  <div className={styles.dropdownActions}>
-                    <button className={styles.dropdownAction} onClick={handleOpenExplorer} type="button">
-                      <ExternalLinkIcon />
-                      <span>View on Etherscan</span>
-                    </button>
-                    <button
-                      className={`${styles.dropdownAction} ${styles.dropdownActionDanger}`}
-                      onClick={() => {
-                        suppressInjectedWalletAutoConnect();
-                        deactivate();
-                        setShowDropdown(false);
-                      }}
-                      type="button"
-                    >
-                      <span>Disconnect</span>
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </>
-          )}
+          <button
+            aria-label="Open navigation"
+            className={styles.mobileMenuButton}
+            onClick={() => setMobileMenuOpen((currentValue) => !currentValue)}
+            type="button"
+          >
+            <MenuIcon />
+          </button>
         </div>
-
-        <button
-          aria-label="Open navigation"
-          className={styles.mobileMenuButton}
-          onClick={() => setMobileMenuOpen((currentValue) => !currentValue)}
-          type="button"
-        >
-          <MenuIcon />
-        </button>
       </div>
 
       {mobileMenuOpen ? (
