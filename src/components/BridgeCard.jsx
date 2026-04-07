@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Alert } from '@mui/material';
 import { createPortal } from 'react-dom';
@@ -15,10 +15,12 @@ import { isETHAddress, isRAddress, isiAddress } from 'utils/rules';
 
 import styles from '../styles/ReferenceBridge.module.css';
 
+const joinClassNames = (...classNames) => classNames.filter(Boolean).join(' ');
+
 const ChevronIcon = ({ primary = false }) => (
   <img
     alt="Open currency selector"
-    className={`${styles.selectorChevron} ${primary ? styles.selectorChevronPrimary : ''}`}
+    className={joinClassNames(styles.selectorChevron, primary ? styles.selectorChevronPrimary : '')}
     src="/chevron.svg"
   />
 );
@@ -111,6 +113,58 @@ const SearchIcon = () => (
       strokeWidth="2"
     />
   </svg>
+);
+
+const createPopoverId = (prefix) => `${prefix}-popover-${Math.random().toString(36).slice(2, 10)}`;
+
+const ActivityPopover = ({ ariaLabel, className, id, lines }) => (
+  <div
+    aria-label={ariaLabel}
+    className={joinClassNames(styles.activityPopover, className)}
+    id={id}
+    role="dialog"
+  >
+    {lines.map((line) => (
+      <div className={styles.activityPopoverLine} key={line}>
+        {line}
+      </div>
+    ))}
+  </div>
+);
+
+const InfoPopoverButton = ({
+  buttonAriaLabel,
+  dialogAriaLabel,
+  dialogClassName,
+  isOpen,
+  lines,
+  onToggle,
+  popoverId,
+  wrapperClassName,
+  wrapperRef
+}) => (
+  <span className={wrapperClassName} ref={wrapperRef}>
+    <button
+      aria-controls={isOpen ? popoverId : undefined}
+      aria-expanded={isOpen}
+      aria-haspopup="dialog"
+      aria-label={buttonAriaLabel}
+      className={styles.activityInfoButton}
+      onClick={onToggle}
+      type="button"
+    >
+      <InfoIcon />
+    </button>
+
+    {isOpen ? (
+      <ActivityPopover
+        ariaLabel={dialogAriaLabel}
+        className={dialogClassName}
+        id={popoverId}
+        lines={lines}
+      />
+    ) : null}
+  </span>
 );
 
 let bodyScrollLockCount = 0;
@@ -436,6 +490,16 @@ const BLOCKED_SEND_AMOUNT_PRESETS = [
   { id: 'max', label: 'Max' }
 ];
 const DESKTOP_HOVER_MEDIA_QUERY = '(hover: hover) and (pointer: fine)';
+const INFO_POPOVER_KEYS = {
+  receiveEstimate: 'receiveEstimate',
+  reviewTime: 'reviewTime',
+  sendAmountPreset: 'sendAmountPreset'
+};
+const CLOSED_INFO_POPOVERS = {
+  [INFO_POPOVER_KEYS.receiveEstimate]: false,
+  [INFO_POPOVER_KEYS.reviewTime]: false,
+  [INFO_POPOVER_KEYS.sendAmountPreset]: false
+};
 
 const getCanUseHoverAmountPresets = () => (
   typeof window !== 'undefined'
@@ -485,18 +549,21 @@ const BridgeCard = ({ controller }) => {
   const [destinationSelectorOpen, setDestinationSelectorOpen] = useState(false);
   const [displayAddress, setDisplayAddress] = useState(() => formatAddressForInput(controller.address, false));
   const [isAddressFocused, setIsAddressFocused] = useState(false);
-  const [isReceiveEstimateInfoOpen, setIsReceiveEstimateInfoOpen] = useState(false);
-  const [isReviewTimeInfoOpen, setIsReviewTimeInfoOpen] = useState(false);
-  const [isSendAmountPresetInfoOpen, setIsSendAmountPresetInfoOpen] = useState(false);
+  const [openInfoPopovers, setOpenInfoPopovers] = useState(CLOSED_INFO_POPOVERS);
   const [isHoverCapable, setIsHoverCapable] = useState(getCanUseHoverAmountPresets);
   const [sourceSearch, setSourceSearch] = useState('');
   const [sourceSelectorOpen, setSourceSelectorOpen] = useState(false);
   const receiveEstimateInfoRef = useRef(null);
-  const receiveEstimatePopoverIdRef = useRef(`receive-estimate-popover-${Math.random().toString(36).slice(2, 10)}`);
+  const receiveEstimatePopoverIdRef = useRef(createPopoverId('receive-estimate'));
   const reviewTimeInfoRef = useRef(null);
-  const reviewTimePopoverIdRef = useRef(`review-time-popover-${Math.random().toString(36).slice(2, 10)}`);
+  const reviewTimePopoverIdRef = useRef(createPopoverId('review-time'));
   const sendAmountPresetInfoRef = useRef(null);
-  const sendAmountPresetPopoverIdRef = useRef(`send-amount-preset-popover-${Math.random().toString(36).slice(2, 10)}`);
+  const sendAmountPresetPopoverIdRef = useRef(createPopoverId('send-amount-preset'));
+  const infoPopoverRefs = useMemo(() => ({
+    [INFO_POPOVER_KEYS.receiveEstimate]: receiveEstimateInfoRef,
+    [INFO_POPOVER_KEYS.reviewTime]: reviewTimeInfoRef,
+    [INFO_POPOVER_KEYS.sendAmountPreset]: sendAmountPresetInfoRef
+  }), []);
 
   const sourceCurrencies = useMemo(
     () => (
@@ -523,6 +590,47 @@ const BridgeCard = ({ controller }) => {
     ),
     [controller.receiveCurrency, controller.selectedDestination, controller.selectedToken]
   );
+  const isReceiveEstimateInfoOpen = openInfoPopovers[INFO_POPOVER_KEYS.receiveEstimate];
+  const isReviewTimeInfoOpen = openInfoPopovers[INFO_POPOVER_KEYS.reviewTime];
+  const isSendAmountPresetInfoOpen = openInfoPopovers[INFO_POPOVER_KEYS.sendAmountPreset];
+  const hasOpenInfoPopover = Object.values(openInfoPopovers).some(Boolean);
+
+  const closeInfoPopover = useCallback((popoverKey) => {
+    setOpenInfoPopovers((currentValue) => (
+      currentValue[popoverKey]
+        ? {
+          ...currentValue,
+          [popoverKey]: false
+        }
+        : currentValue
+    ));
+  }, []);
+
+  const closeAllInfoPopovers = useCallback(() => {
+    setOpenInfoPopovers((currentValue) => (
+      Object.values(currentValue).some(Boolean)
+        ? { ...CLOSED_INFO_POPOVERS }
+        : currentValue
+    ));
+  }, []);
+
+  const openInfoPopover = useCallback((popoverKey) => {
+    setOpenInfoPopovers((currentValue) => (
+      currentValue[popoverKey]
+        ? currentValue
+        : {
+          ...currentValue,
+          [popoverKey]: true
+        }
+    ));
+  }, []);
+
+  const toggleInfoPopover = useCallback((popoverKey) => {
+    setOpenInfoPopovers((currentValue) => ({
+      ...currentValue,
+      [popoverKey]: !currentValue[popoverKey]
+    }));
+  }, []);
 
   useEffect(() => {
     setDisplayAddress(formatAddressForInput(controller.address, isAddressFocused));
@@ -542,41 +650,33 @@ const BridgeCard = ({ controller }) => {
       return;
     }
 
-    setIsReceiveEstimateInfoOpen(false);
-  }, [controller.requiresReceiveQuote]);
+    closeInfoPopover(INFO_POPOVER_KEYS.receiveEstimate);
+  }, [closeInfoPopover, controller.requiresReceiveQuote]);
 
   useEffect(() => {
     if (controller.isReviewing) {
       return;
     }
 
-    setIsReviewTimeInfoOpen(false);
-  }, [controller.isReviewing]);
+    closeInfoPopover(INFO_POPOVER_KEYS.reviewTime);
+  }, [closeInfoPopover, controller.isReviewing]);
 
   useEffect(() => {
-    if (!isReceiveEstimateInfoOpen && !isReviewTimeInfoOpen && !isSendAmountPresetInfoOpen) {
+    if (!hasOpenInfoPopover) {
       return undefined;
     }
 
     const handlePointerDown = (event) => {
-      if (receiveEstimateInfoRef.current && !receiveEstimateInfoRef.current.contains(event.target)) {
-        setIsReceiveEstimateInfoOpen(false);
-      }
-
-      if (reviewTimeInfoRef.current && !reviewTimeInfoRef.current.contains(event.target)) {
-        setIsReviewTimeInfoOpen(false);
-      }
-
-      if (sendAmountPresetInfoRef.current && !sendAmountPresetInfoRef.current.contains(event.target)) {
-        setIsSendAmountPresetInfoOpen(false);
-      }
+      Object.entries(infoPopoverRefs).forEach(([popoverKey, popoverRef]) => {
+        if (openInfoPopovers[popoverKey] && popoverRef.current && !popoverRef.current.contains(event.target)) {
+          closeInfoPopover(popoverKey);
+        }
+      });
     };
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
-        setIsReceiveEstimateInfoOpen(false);
-        setIsReviewTimeInfoOpen(false);
-        setIsSendAmountPresetInfoOpen(false);
+        closeAllInfoPopovers();
       }
     };
 
@@ -589,7 +689,7 @@ const BridgeCard = ({ controller }) => {
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('touchstart', handlePointerDown);
     };
-  }, [isReceiveEstimateInfoOpen, isReviewTimeInfoOpen, isSendAmountPresetInfoOpen]);
+  }, [closeAllInfoPopovers, closeInfoPopover, hasOpenInfoPopover, infoPopoverRefs, openInfoPopovers]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -653,47 +753,32 @@ const BridgeCard = ({ controller }) => {
   const showFooterMaxButton = Boolean(showBalance && hasMaxPreset && !showDesktopAmountPresetRail && !hasSendAmountPresetWarning);
   const addressHint = controller.addressHint || 'Enter a Verus address (R-address or i-address) or Ethereum address';
   const addressPlaceholder = controller.addressPlaceholder || 'Enter receiving address';
-  const addressInputClassName = [
+  const addressInputClassName = joinClassNames(
     styles.addressInput,
     showSelfButton ? styles.addressInputWithSelf : '',
     isAddressValid ? styles.addressInputValid : '',
     isAddressInvalid ? styles.addressInputInvalid : ''
-  ]
-    .filter(Boolean)
-    .join(' ');
-  const validationIconClassName = [
+  );
+  const validationIconClassName = joinClassNames(
     styles.validationIcon,
     isAddressValid ? styles.validationIconSuccess : styles.validationIconError
-  ]
-    .filter(Boolean)
-    .join(' ');
+  );
 
   const showReceiveMeta = Boolean(receiveFiatLabel);
   const isReviewing = Boolean(controller.isReviewing);
   const sendSectionClassName = styles.cardSection;
-  const receiveSectionClassName = [
-    styles.cardSection,
-    styles.cardSectionSecondary
-  ]
-    .filter(Boolean)
-    .join(' ');
-  const sendSelectorClassName = [
+  const receiveSectionClassName = joinClassNames(styles.cardSection, styles.cardSectionSecondary);
+  const sendSelectorClassName = joinClassNames(
     styles.selector,
     showDesktopAmountPresetRail ? styles.selectorWithAmountPresets : ''
-  ]
-    .filter(Boolean)
-    .join(' ');
+  );
   const receiveSelectorClassName = styles.selector;
-  const reviewSendSectionClassName = [styles.cardSection, styles.reviewCardSection]
-    .filter(Boolean)
-    .join(' ');
-  const reviewReceiveSectionClassName = [
+  const reviewSendSectionClassName = joinClassNames(styles.cardSection, styles.reviewCardSection);
+  const reviewReceiveSectionClassName = joinClassNames(
     styles.cardSection,
     styles.cardSectionSecondary,
     styles.reviewCardSection
-  ]
-    .filter(Boolean)
-    .join(' ');
+  );
   const sourceModalStatusMessage = !controller.isWalletConnected
     ? controller.sourceCatalogError || (controller.isSourceCatalogLoading ? 'Loading all currencies...' : '')
     : '';
@@ -705,16 +790,16 @@ const BridgeCard = ({ controller }) => {
       return;
     }
 
-    setIsSendAmountPresetInfoOpen(false);
-  }, [hasSendAmountPresetWarning, showDesktopAmountPresetRail]);
+    closeInfoPopover(INFO_POPOVER_KEYS.sendAmountPreset);
+  }, [closeInfoPopover, hasSendAmountPresetWarning, showDesktopAmountPresetRail]);
 
   const handleSendAmountPresetClick = (preset) => {
     if (hasSendAmountPresetWarning) {
-      setIsSendAmountPresetInfoOpen(true);
+      openInfoPopover(INFO_POPOVER_KEYS.sendAmountPreset);
       return;
     }
 
-    setIsSendAmountPresetInfoOpen(false);
+    closeInfoPopover(INFO_POPOVER_KEYS.sendAmountPreset);
     controller.setAmount(preset.amount);
   };
 
@@ -744,68 +829,34 @@ const BridgeCard = ({ controller }) => {
     <div className={styles.selectorLabelRow}>
       <span className={styles.selectorLabel}>{receiveLabel}</span>
       {isConversionReceiveEstimate ? (
-        <span className={styles.selectorLabelInfo} ref={receiveEstimateInfoRef}>
-          <button
-            aria-controls={isReceiveEstimateInfoOpen ? receiveEstimatePopoverIdRef.current : undefined}
-            aria-expanded={isReceiveEstimateInfoOpen}
-            aria-haspopup="dialog"
-            aria-label="Show estimated receive details"
-            className={styles.activityInfoButton}
-            onClick={() => setIsReceiveEstimateInfoOpen((currentValue) => !currentValue)}
-            type="button"
-          >
-            <InfoIcon />
-          </button>
-
-          {isReceiveEstimateInfoOpen ? (
-            <div
-              aria-label="Estimated receive details"
-              className={`${styles.activityPopover} ${styles.selectorLabelPopover}`}
-              id={receiveEstimatePopoverIdRef.current}
-              role="dialog"
-            >
-              {RECEIVE_ESTIMATE_TOOLTIP_LINES.map((line) => (
-                <div className={styles.activityPopoverLine} key={line}>
-                  {line}
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </span>
+        <InfoPopoverButton
+          buttonAriaLabel="Show estimated receive details"
+          dialogAriaLabel="Estimated receive details"
+          dialogClassName={styles.selectorLabelPopover}
+          isOpen={isReceiveEstimateInfoOpen}
+          lines={RECEIVE_ESTIMATE_TOOLTIP_LINES}
+          onToggle={() => toggleInfoPopover(INFO_POPOVER_KEYS.receiveEstimate)}
+          popoverId={receiveEstimatePopoverIdRef.current}
+          wrapperClassName={styles.selectorLabelInfo}
+          wrapperRef={receiveEstimateInfoRef}
+        />
       ) : null}
     </div>
   );
   const reviewTimeLabel = (
     <span className={styles.reviewDetailLabelRow}>
       <span className={styles.reviewDetailLabel}>Estimated time</span>
-      <span className={styles.reviewDetailLabelInfo} ref={reviewTimeInfoRef}>
-        <button
-          aria-controls={isReviewTimeInfoOpen ? reviewTimePopoverIdRef.current : undefined}
-          aria-expanded={isReviewTimeInfoOpen}
-          aria-haspopup="dialog"
-          aria-label="Show estimated time details"
-          className={styles.activityInfoButton}
-          onClick={() => setIsReviewTimeInfoOpen((currentValue) => !currentValue)}
-          type="button"
-        >
-          <InfoIcon />
-        </button>
-
-        {isReviewTimeInfoOpen ? (
-          <div
-            aria-label="Estimated time details"
-            className={`${styles.activityPopover} ${styles.reviewDetailPopover}`}
-            id={reviewTimePopoverIdRef.current}
-            role="dialog"
-          >
-            {REVIEW_TIME_TOOLTIP_LINES.map((line) => (
-              <div className={styles.activityPopoverLine} key={line}>
-                {line}
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </span>
+      <InfoPopoverButton
+        buttonAriaLabel="Show estimated time details"
+        dialogAriaLabel="Estimated time details"
+        dialogClassName={styles.reviewDetailPopover}
+        isOpen={isReviewTimeInfoOpen}
+        lines={REVIEW_TIME_TOOLTIP_LINES}
+        onToggle={() => toggleInfoPopover(INFO_POPOVER_KEYS.reviewTime)}
+        popoverId={reviewTimePopoverIdRef.current}
+        wrapperClassName={styles.reviewDetailLabelInfo}
+        wrapperRef={reviewTimeInfoRef}
+      />
     </span>
   );
 
@@ -983,7 +1034,10 @@ const BridgeCard = ({ controller }) => {
             </div>
 
             <button
-              className={`${styles.submitButton} ${!controller.canConfirmReview ? styles.submitButtonDisabled : ''}`}
+              className={joinClassNames(
+                styles.submitButton,
+                !controller.canConfirmReview ? styles.submitButtonDisabled : ''
+              )}
               disabled={!controller.canConfirmReview}
               type="submit"
             >
@@ -1020,16 +1074,12 @@ const BridgeCard = ({ controller }) => {
                         </div>
 
                         {hasSendAmountPresetWarning && isSendAmountPresetInfoOpen ? (
-                          <div
-                            aria-label="Send amount preset details"
-                            className={`${styles.activityPopover} ${styles.amountPresetPopover}`}
+                          <ActivityPopover
+                            ariaLabel="Send amount preset details"
+                            className={styles.amountPresetPopover}
                             id={sendAmountPresetPopoverIdRef.current}
-                            role="dialog"
-                          >
-                            <div className={styles.activityPopoverLine}>
-                              {sendAmountPresetWarningMessage}
-                            </div>
-                          </div>
+                            lines={[sendAmountPresetWarningMessage]}
+                          />
                         ) : null}
                       </span>
                     ) : null}
@@ -1049,7 +1099,11 @@ const BridgeCard = ({ controller }) => {
 
                     <div className={styles.selectorActionGroup}>
                       <button
-                        className={`${styles.selectorButton} ${styles.selectorButtonSoft} ${selectedSourceCurrency ? styles.selectorButtonWithIcon : ''}`}
+                        className={joinClassNames(
+                          styles.selectorButton,
+                          styles.selectorButtonSoft,
+                          selectedSourceCurrency ? styles.selectorButtonWithIcon : ''
+                        )}
                         onClick={() => setSourceSelectorOpen(true)}
                         type="button"
                       >
@@ -1109,7 +1163,10 @@ const BridgeCard = ({ controller }) => {
                     </div>
 
                     <button
-                      className={`${styles.selectorButton} ${selectedDestinationCurrency ? styles.selectorButtonWithIcon : styles.selectorButtonPrimary}`}
+                      className={joinClassNames(
+                        styles.selectorButton,
+                        selectedDestinationCurrency ? styles.selectorButtonWithIcon : styles.selectorButtonPrimary
+                      )}
                       onClick={() => setDestinationSelectorOpen(true)}
                       type="button"
                     >
@@ -1190,7 +1247,10 @@ const BridgeCard = ({ controller }) => {
             </div>
 
             <button
-              className={`${styles.submitButton} ${submitState.disabled ? styles.submitButtonDisabled : ''}`}
+              className={joinClassNames(
+                styles.submitButton,
+                submitState.disabled ? styles.submitButtonDisabled : ''
+              )}
               disabled={submitState.disabled}
               type="submit"
             >

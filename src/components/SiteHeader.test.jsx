@@ -1,27 +1,54 @@
 import React from 'react';
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useWeb3React } from '@web3-react/core';
 import {
   RouterProvider,
   createMemoryRouter,
   useLocation
 } from 'react-router-dom';
 
-import { useWeb3React } from '@web3-react/core';
-
 import { INJECTED_WALLET_AUTO_CONNECT_DISABLED_KEY } from 'utils/walletConnection';
 
 import SiteHeader from './SiteHeader';
 
-jest.mock('@web3-react/core', () => ({
-  UnsupportedChainIdError: class UnsupportedChainIdError extends Error {},
-  useWeb3React: jest.fn()
-}));
+jest.mock('@web3-react/core', () => {
+  const createMockErrorType = (name) => {
+    function MockError(message) {
+      this.message = message;
+      this.name = name;
+    }
 
-jest.mock('@web3-react/injected-connector', () => ({
-  NoEthereumProviderError: class NoEthereumProviderError extends Error {},
-  UserRejectedRequestError: class UserRejectedRequestError extends Error {}
-}));
+    MockError.prototype = Object.create(Error.prototype);
+    MockError.prototype.constructor = MockError;
+
+    return MockError;
+  };
+
+  return {
+    UnsupportedChainIdError: createMockErrorType('UnsupportedChainIdError'),
+    useWeb3React: jest.fn()
+  };
+});
+
+jest.mock('@web3-react/injected-connector', () => {
+  const createMockErrorType = (name) => {
+    function MockError(message) {
+      this.message = message;
+      this.name = name;
+    }
+
+    MockError.prototype = Object.create(Error.prototype);
+    MockError.prototype.constructor = MockError;
+
+    return MockError;
+  };
+
+  return {
+    NoEthereumProviderError: createMockErrorType('NoEthereumProviderError'),
+    UserRejectedRequestError: createMockErrorType('UserRejectedRequestError')
+  };
+});
 
 jest.mock('config/explorerLinks', () => ({
   getExplorerBaseUrl: () => 'https://etherscan.io'
@@ -238,7 +265,7 @@ describe('SiteHeader wallet interactions', () => {
     expect(window.localStorage.getItem(INJECTED_WALLET_AUTO_CONNECT_DISABLED_KEY)).toBe('true');
   });
 
-  test('shows clear wallet choices in the header menu before connecting', () => {
+  test('shows only supported wallet choices in the header menu before connecting', () => {
     useWeb3React.mockReturnValue({
       account: null,
       activate: jest.fn(),
@@ -251,7 +278,7 @@ describe('SiteHeader wallet interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: /connect wallet/i }));
 
     expect(screen.getByRole('button', { name: /metamask/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /walletconnect/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /walletconnect/i })).not.toBeInTheDocument();
   });
 
   test('clears the disconnect preference after a successful manual connect', async () => {
@@ -291,10 +318,10 @@ describe('SiteHeader wallet interactions', () => {
     renderHeader();
 
     fireEvent.click(screen.getByRole('button', { name: /connect wallet/i }));
-    fireEvent.click(screen.getByRole('button', { name: /walletconnect/i }));
+    fireEvent.click(screen.getByRole('button', { name: /metamask/i }));
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /walletconnect/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /metamask/i })).not.toBeInTheDocument();
     });
 
     expect(activate).toHaveBeenCalledTimes(1);

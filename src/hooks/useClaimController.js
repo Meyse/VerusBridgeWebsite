@@ -98,11 +98,32 @@ const buildEarningsStatus = (amount, addressToInspect) => {
   };
 };
 
-const buildRefundStatus = (entries, hasTokenLoadError) => {
+const buildRefundStatus = ({
+  entries,
+  failedInspectionCount = 0,
+  hasTokenLoadError,
+  totalInspectionCount = 0
+}) => {
   if (hasTokenLoadError) {
     return {
       severity: 'warning',
       message: 'Refunded assets are temporarily unavailable to inspect.'
+    };
+  }
+
+  if (failedInspectionCount > 0) {
+    if (failedInspectionCount === totalInspectionCount) {
+      return {
+        severity: 'error',
+        message: 'Unable to inspect refunded assets right now.'
+      };
+    }
+
+    return {
+      severity: 'warning',
+      message: entries.length
+        ? `Found ${entries.length} refundable ${entries.length === 1 ? 'asset' : 'assets'} for this address. Some assets could not be inspected right now.`
+        : 'Some refunded assets could not be inspected right now.'
     };
   }
 
@@ -232,18 +253,32 @@ export default function useClaimController() {
       try {
         const amount = uint64ToVerusFloat(await delegatorContract.callStatic.refunds(refundAddress, token.value));
         return {
-          ...token,
-          amount
+          didFail: false,
+          entry: {
+            ...token,
+            amount
+          }
         };
       } catch (error) {
-        return null;
+        return {
+          didFail: true,
+          entry: null
+        };
       }
     }));
-    const nextRefundEntries = refundResults.filter((entry) => entry && hasPositiveAmount(entry.amount));
+    const failedInspectionCount = refundResults.filter((result) => result.didFail).length;
+    const nextRefundEntries = refundResults
+      .map((result) => result.entry)
+      .filter((entry) => entry && hasPositiveAmount(entry.amount));
 
     return {
       refundEntries: nextRefundEntries,
-      refundStatus: buildRefundStatus(nextRefundEntries, refundTokenLoadError)
+      refundStatus: buildRefundStatus({
+        entries: nextRefundEntries,
+        failedInspectionCount,
+        hasTokenLoadError: refundTokenLoadError,
+        totalInspectionCount: tokenOptions.length
+      })
     };
   }, [delegatorContract, refundTokenLoadError, tokenOptions]);
 
@@ -356,7 +391,10 @@ export default function useClaimController() {
     if (refundTokenLoadError) {
       setIsRefundLookupPending(false);
       setRefundEntries([]);
-      setRefundStatus(buildRefundStatus([], true));
+      setRefundStatus(buildRefundStatus({
+        entries: [],
+        hasTokenLoadError: true
+      }));
       return () => {
         ignore = true;
       };

@@ -23,7 +23,6 @@ import {
 
 import { useToast } from './Toast/ToastProvider';
 import { ReactComponent as MetaMaskIcon } from '../images/icons/metamask-icon.svg';
-import { ReactComponent as WalletIcon } from '../images/icons/wallet-icon.svg';
 import styles from '../styles/ReferenceBridge.module.css';
 
 const NAV_ITEMS = [
@@ -87,11 +86,6 @@ const WALLET_OPTIONS = [
     id: 'metamask',
     title: 'MetaMask',
     icon: <MetaMaskIcon />
-  },
-  {
-    id: 'browser-wallet',
-    title: 'WalletConnect',
-    icon: <WalletIcon />
   }
 ];
 

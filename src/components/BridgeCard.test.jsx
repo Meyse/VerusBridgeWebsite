@@ -3,6 +3,7 @@ import React from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
 import { GLOBAL_ADDRESS } from 'constants/contractAddress';
+
 import BridgeCard from './BridgeCard';
 import styles from '../styles/ReferenceBridge.module.css';
 
@@ -205,6 +206,29 @@ describe('BridgeCard currency selectors', () => {
     expect(screen.getByRole('dialog', { name: /estimated receive details/i })).toBeInTheDocument();
     expect(screen.getByText(/estimated and not guaranteed/i)).toBeInTheDocument();
     expect(screen.getByText(/final value can shift before completion/i)).toBeInTheDocument();
+  });
+
+  test('closes estimated receive details when clicking outside the popover', () => {
+    render(
+      <BridgeCard
+        controller={createController({
+          amount: '2.290298377929176',
+          hasFreshReceiveQuote: true,
+          isWalletConnected: true,
+          receiveAmountDisplay: '0.00107949',
+          requiresReceiveQuote: true,
+          selectedDestination: { value: 'bridgeETH' }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /show estimated receive details/i }));
+
+    expect(screen.getByRole('dialog', { name: /estimated receive details/i })).toBeInTheDocument();
+
+    fireEvent.mouseDown(document.body);
+
+    expect(screen.queryByRole('dialog', { name: /estimated receive details/i })).not.toBeInTheDocument();
   });
 
   test('renders the inline review state with fee rows and a not-enough-eth CTA', () => {
