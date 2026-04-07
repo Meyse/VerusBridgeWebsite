@@ -52,8 +52,15 @@ const PRICE_WARNING_THRESHOLD_PERCENT = 3;
 const PRICE_SOURCE_BRIDGE = 'Bridge.vETH';
 const PRICE_SOURCE_FLORALIS = 'Floralis';
 const PRICE_SOURCE_PEG = 'peg';
+const DEFAULT_PRICE_SOURCE_BY_SYMBOL = {
+  DAI: PRICE_SOURCE_PEG,
+  USDC: PRICE_SOURCE_PEG,
+  USDT: PRICE_SOURCE_PEG
+};
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const SEEDED_ETH_DECIMALS = 18;
+const BRIDGE_REFERENCE_PRICED_SYMBOLS = ['BRIDGE', 'ETH', 'MKR', 'VRSC'];
+const FLORALIS_REFERENCE_PRICED_SYMBOLS = ['EURC', 'SCRVUSD', 'TBTC'];
 const SEND_AMOUNT_PRESET_FRACTIONS = [
   { denominator: 100, id: '25', label: '25%', numerator: 25 },
   { denominator: 100, id: '50', label: '50%', numerator: 50 },
@@ -81,6 +88,23 @@ const verusd = new VerusdRpcInterface(GLOBAL_IADDRESS.VRSC, process.env.REACT_AP
 const hasGatewayFlag = (value) => Math.floor(Number(value) / FLAG_DEST_GATEWAY) % 2 === 1;
 const BALANCE_SORT_EPSILON = 0.000001;
 const ETH_SOURCE_TOKEN_VALUE = GLOBAL_ADDRESS.ETH.toLowerCase();
+const createAsyncValueState = (signature = '', state = 'not-required', value = null) => ({
+  signature,
+  state,
+  value
+});
+const createInternalPricingSnapshot = () => ({
+  bridgeReferencePriceBySymbol: {},
+  floralisReferencePriceBySymbol: {},
+  lastUpdatedAt: null,
+  priceSourceBySymbol: {
+    ...DEFAULT_PRICE_SOURCE_BY_SYMBOL
+  },
+  usdPriceBySymbol: {
+    ...STATIC_USD_PRICE_BY_SYMBOL
+  }
+});
+const getTokenLabel = (token) => getTokenDisplaySymbol(token) || token?.name || '';
 
 const toFiniteNumber = (value) => {
   const parsedValue = Number(value);
@@ -271,42 +295,58 @@ const buildFloralisReferencePriceBySymbol = (floralisCurrencyResult) => {
   };
 };
 
-const buildInternalPricingSnapshot = ({ bridgeCurrencyResult, floralisCurrencyResult }) => {
-  const bridgeReferencePriceBySymbol = buildBridgeReferencePriceBySymbol(bridgeCurrencyResult);
-  const floralisReferencePriceBySymbol = buildFloralisReferencePriceBySymbol(floralisCurrencyResult);
-  const usdPriceBySymbol = {
-    ...STATIC_USD_PRICE_BY_SYMBOL
-  };
-  const priceSourceBySymbol = {
-    DAI: PRICE_SOURCE_PEG,
-    USDC: PRICE_SOURCE_PEG,
-    USDT: PRICE_SOURCE_PEG
+const mergeFiniteReferencePrices = ({
+  priceBySymbol,
+  priceSource,
+  snapshot,
+  symbols
+}) => {
+  const nextSnapshot = {
+    ...snapshot,
+    priceSourceBySymbol: {
+      ...snapshot.priceSourceBySymbol
+    },
+    usdPriceBySymbol: {
+      ...snapshot.usdPriceBySymbol
+    }
   };
 
-  ['BRIDGE', 'ETH', 'MKR', 'VRSC'].forEach((symbol) => {
-    const usdPrice = bridgeReferencePriceBySymbol[symbol];
+  symbols.forEach((symbol) => {
+    const usdPrice = priceBySymbol[symbol];
 
     if (Number.isFinite(usdPrice)) {
-      usdPriceBySymbol[symbol] = usdPrice;
-      priceSourceBySymbol[symbol] = PRICE_SOURCE_BRIDGE;
+      nextSnapshot.usdPriceBySymbol[symbol] = usdPrice;
+      nextSnapshot.priceSourceBySymbol[symbol] = priceSource;
     }
   });
 
-  ['EURC', 'SCRVUSD', 'TBTC'].forEach((symbol) => {
-    const usdPrice = floralisReferencePriceBySymbol[symbol];
+  return nextSnapshot;
+};
 
-    if (Number.isFinite(usdPrice)) {
-      usdPriceBySymbol[symbol] = usdPrice;
-      priceSourceBySymbol[symbol] = PRICE_SOURCE_FLORALIS;
-    }
+const buildInternalPricingSnapshot = ({ bridgeCurrencyResult, floralisCurrencyResult }) => {
+  const bridgeReferencePriceBySymbol = buildBridgeReferencePriceBySymbol(bridgeCurrencyResult);
+  const floralisReferencePriceBySymbol = buildFloralisReferencePriceBySymbol(floralisCurrencyResult);
+  let nextSnapshot = createInternalPricingSnapshot();
+
+  nextSnapshot = mergeFiniteReferencePrices({
+    priceBySymbol: bridgeReferencePriceBySymbol,
+    priceSource: PRICE_SOURCE_BRIDGE,
+    snapshot: nextSnapshot,
+    symbols: BRIDGE_REFERENCE_PRICED_SYMBOLS
+  });
+  nextSnapshot = mergeFiniteReferencePrices({
+    priceBySymbol: floralisReferencePriceBySymbol,
+    priceSource: PRICE_SOURCE_FLORALIS,
+    snapshot: nextSnapshot,
+    symbols: FLORALIS_REFERENCE_PRICED_SYMBOLS
   });
 
   return {
     bridgeReferencePriceBySymbol,
     floralisReferencePriceBySymbol,
     lastUpdatedAt: Date.now(),
-    priceSourceBySymbol,
-    usdPriceBySymbol
+    priceSourceBySymbol: nextSnapshot.priceSourceBySymbol,
+    usdPriceBySymbol: nextSnapshot.usdPriceBySymbol
   };
 };
 
@@ -678,7 +718,7 @@ const validateBridgeAmount = async ({ account, amount, delegatorContract, librar
     return true;
   }
 
-  const tokenLabel = getTokenDisplaySymbol(selectedToken) || selectedToken.name;
+  const tokenLabel = getTokenLabel(selectedToken);
 
   if (selectedToken.value === GLOBAL_ADDRESS.ETH) {
     const nativeBalance = await library.getBalance(account);
@@ -705,7 +745,7 @@ const fetchSelectedTokenBalance = async ({ account, library, selectedToken }) =>
     return null;
   }
 
-  const tokenLabel = getTokenDisplaySymbol(selectedToken) || selectedToken.name;
+  const tokenLabel = getTokenLabel(selectedToken);
 
   if (selectedToken.value === GLOBAL_ADDRESS.ETH) {
     const nativeBalance = await library.getBalance(account);
@@ -887,35 +927,15 @@ export default function useBridgeController({
   const [address, setAddress] = useState('');
   const [amountError, setAmountError] = useState('');
   const [addressError, setAddressError] = useState('');
-  const [receiveQuote, setReceiveQuote] = useState({
-    signature: '',
-    state: 'not-required',
-    value: null
-  });
+  const [receiveQuote, setReceiveQuote] = useState(() => createAsyncValueState());
   const [destination, setDestination] = useState('');
   const [gasPrice, setGasPrice] = useState(null);
-  const [internalPricingSnapshot, setInternalPricingSnapshot] = useState(() => ({
-    bridgeReferencePriceBySymbol: {},
-    floralisReferencePriceBySymbol: {},
-    lastUpdatedAt: null,
-    priceSourceBySymbol: {
-      DAI: PRICE_SOURCE_PEG,
-      USDC: PRICE_SOURCE_PEG,
-      USDT: PRICE_SOURCE_PEG
-    },
-    usdPriceBySymbol: {
-      ...STATIC_USD_PRICE_BY_SYMBOL
-    }
-  }));
+  const [internalPricingSnapshot, setInternalPricingSnapshot] = useState(() => createInternalPricingSnapshot());
   const [isSourceCatalogLoading, setIsSourceCatalogLoading] = useState(true);
   const [isTxPending, setIsTxPending] = useState(false);
   const [isWalletBalancesLoading, setIsWalletBalancesLoading] = useState(false);
   const [natiCurrencyId, setNatiCurrencyId] = useState(null);
-  const [natiComparisonQuote, setNatiComparisonQuote] = useState({
-    signature: '',
-    state: 'not-required',
-    value: null
-  });
+  const [natiComparisonQuote, setNatiComparisonQuote] = useState(() => createAsyncValueState());
   const [poolAvailable, setPoolAvailable] = useState(false);
   const [pubkey, setPubkey] = useState({});
   const [reviewSnapshot, setReviewSnapshot] = useState(null);
@@ -1028,7 +1048,7 @@ export default function useBridgeController({
     return walletTokenBalances
       .filter((entry) => entry.balance > 0)
       .map((entry) => {
-        const symbol = getTokenDisplaySymbol(entry.token) || entry.token.name;
+        const symbol = getTokenLabel(entry.token);
         const fiatPrice = effectiveTokenUsdPrices[getPriceLookupSymbol(symbol)];
         const fiatValue = Number.isFinite(fiatPrice) ? entry.balance * fiatPrice : null;
 
@@ -1542,38 +1562,22 @@ export default function useBridgeController({
 
     const loadEstimate = async () => {
       if (!requiresReceiveQuote) {
-        setReceiveQuote({
-          signature: '',
-          state: 'not-required',
-          value: null
-        });
+        setReceiveQuote(createAsyncValueState());
         return;
       }
 
       if (!shouldFetchReceiveQuote) {
-        setReceiveQuote({
-          signature: quoteSignature,
-          state: 'pending',
-          value: null
-        });
+        setReceiveQuote(createAsyncValueState(quoteSignature, 'pending'));
         return;
       }
 
       const convertTo = getQuoteTargetIAddress(destination);
       if (!convertTo) {
-        setReceiveQuote({
-          signature: quoteSignature,
-          state: 'unavailable',
-          value: null
-        });
+        setReceiveQuote(createAsyncValueState(quoteSignature, 'unavailable'));
         return;
       }
 
-      setReceiveQuote({
-        signature: quoteSignature,
-        state: 'pending',
-        value: null
-      });
+      setReceiveQuote(createAsyncValueState(quoteSignature, 'pending'));
 
       try {
         const fromIaddress = bitGoUTXO.address.toBase58Check(Buffer.from(selectedToken.value.slice(2), 'hex'), 102);
@@ -1588,37 +1592,25 @@ export default function useBridgeController({
         }
 
         if (!Object.values(GLOBAL_ADDRESS).includes(selectedToken.value)) {
-          setReceiveQuote({
-            signature: quoteSignature,
-            state: 'unavailable',
-            value: null
-          });
+          setReceiveQuote(createAsyncValueState(quoteSignature, 'unavailable'));
           return;
         }
 
         const estimation = await verusd.estimateConversion(conversionPacket);
         if (estimation?.result?.estimatedcurrencyout > 0) {
           if (!ignore) {
-            setReceiveQuote({
-              signature: quoteSignature,
-              state: 'ready',
-              value: `${estimation.result.estimatedcurrencyout}`
-            });
+            setReceiveQuote(createAsyncValueState(
+              quoteSignature,
+              'ready',
+              `${estimation.result.estimatedcurrencyout}`
+            ));
           }
         } else if (!ignore) {
-          setReceiveQuote({
-            signature: quoteSignature,
-            state: 'unavailable',
-            value: null
-          });
+          setReceiveQuote(createAsyncValueState(quoteSignature, 'unavailable'));
         }
       } catch (error) {
         if (!ignore) {
-          setReceiveQuote({
-            signature: quoteSignature,
-            state: 'unavailable',
-            value: null
-          });
+          setReceiveQuote(createAsyncValueState(quoteSignature, 'unavailable'));
         }
       }
     };
@@ -1635,38 +1627,22 @@ export default function useBridgeController({
 
     const loadNatiComparisonQuote = async () => {
       if (!shouldFetchNatiComparison) {
-        setNatiComparisonQuote({
-          signature: '',
-          state: 'not-required',
-          value: null
-        });
+        setNatiComparisonQuote(createAsyncValueState());
         return;
       }
 
       if (!natiCurrencyId) {
-        setNatiComparisonQuote({
-          signature: natiComparisonSignature,
-          state: 'pending',
-          value: null
-        });
+        setNatiComparisonQuote(createAsyncValueState(natiComparisonSignature, 'pending'));
         return;
       }
 
       const fromIaddress = toIAddressFromHexCurrency(selectedToken?.value);
       if (!fromIaddress) {
-        setNatiComparisonQuote({
-          signature: natiComparisonSignature,
-          state: 'unavailable',
-          value: null
-        });
+        setNatiComparisonQuote(createAsyncValueState(natiComparisonSignature, 'unavailable'));
         return;
       }
 
-      setNatiComparisonQuote({
-        signature: natiComparisonSignature,
-        state: 'pending',
-        value: null
-      });
+      setNatiComparisonQuote(createAsyncValueState(natiComparisonSignature, 'pending'));
 
       try {
         const estimation = await verusd.estimateConversion({
@@ -1681,25 +1657,17 @@ export default function useBridgeController({
         }
 
         if (estimation?.result?.estimatedcurrencyout > 0) {
-          setNatiComparisonQuote({
-            signature: natiComparisonSignature,
-            state: 'ready',
-            value: `${estimation.result.estimatedcurrencyout}`
-          });
+          setNatiComparisonQuote(createAsyncValueState(
+            natiComparisonSignature,
+            'ready',
+            `${estimation.result.estimatedcurrencyout}`
+          ));
         } else {
-          setNatiComparisonQuote({
-            signature: natiComparisonSignature,
-            state: 'unavailable',
-            value: null
-          });
+          setNatiComparisonQuote(createAsyncValueState(natiComparisonSignature, 'unavailable'));
         }
       } catch (error) {
         if (!ignore) {
-          setNatiComparisonQuote({
-            signature: natiComparisonSignature,
-            state: 'unavailable',
-            value: null
-          });
+          setNatiComparisonQuote(createAsyncValueState(natiComparisonSignature, 'unavailable'));
         }
       }
     };
@@ -1784,7 +1752,7 @@ export default function useBridgeController({
 
       const balances = await Promise.all(
         tokenOptions.map(async (token) => {
-          const tokenLabel = getTokenDisplaySymbol(token) || token.name;
+          const tokenLabel = getTokenLabel(token);
           const emptyBalance = {
             token,
             balance: 0,
@@ -1894,8 +1862,47 @@ export default function useBridgeController({
     return rows;
   }, [destination, effectiveTokenUsdPrices, gasPrice]);
 
+  const validateTransferInputs = useCallback(async () => {
+    if (!account) {
+      setAlert({
+        severity: 'info',
+        message: 'Connect a wallet from the header before bridging assets.'
+      });
+      return false;
+    }
+
+    if (!selectedToken || !destination) {
+      setAlert({
+        severity: 'warning',
+        message: 'Select the asset you want to send and the asset you want to receive.'
+      });
+      return false;
+    }
+
+    const validDestination = await validateAddress(address);
+    if (validDestination !== true) {
+      setAddressError(validDestination);
+      return false;
+    }
+
+    const validAmount = await validateBridgeAmount({
+      account,
+      amount,
+      delegatorContract,
+      library,
+      selectedToken
+    });
+
+    if (validAmount !== true) {
+      setAmountError(validAmount);
+      return false;
+    }
+
+    return true;
+  }, [account, address, amount, delegatorContract, destination, library, selectedToken]);
+
   const authoriseOneTokenAmount = async (tokenToAuthorise, amountToAuthorise) => {
-    const tokenLabel = getTokenDisplaySymbol(tokenToAuthorise) || tokenToAuthorise.name;
+    const tokenLabel = getTokenLabel(tokenToAuthorise);
 
     setAlert({
       severity: 'warning',
@@ -1940,38 +1947,7 @@ export default function useBridgeController({
   };
 
   const handleSubmit = async () => {
-    if (!account) {
-      setAlert({
-        severity: 'info',
-        message: 'Connect a wallet from the header before bridging assets.'
-      });
-      return;
-    }
-
-    if (!selectedToken || !destination) {
-      setAlert({
-        severity: 'warning',
-        message: 'Select the asset you want to send and the asset you want to receive.'
-      });
-      return;
-    }
-
-    const validDestination = await validateAddress(address);
-    if (validDestination !== true) {
-      setAddressError(validDestination);
-      return;
-    }
-
-    const validAmount = await validateBridgeAmount({
-      account,
-      amount,
-      delegatorContract,
-      library,
-      selectedToken
-    });
-
-    if (validAmount !== true) {
-      setAmountError(validAmount);
+    if (!(await validateTransferInputs())) {
       return;
     }
 
@@ -2161,38 +2137,7 @@ export default function useBridgeController({
   }, [clearReview, editSignature, isReviewRequested, reviewSnapshot, submitDisabledReason]);
 
   const openReview = useCallback(async () => {
-    if (!account) {
-      setAlert({
-        severity: 'info',
-        message: 'Connect a wallet from the header before bridging assets.'
-      });
-      return;
-    }
-
-    if (!selectedToken || !destination) {
-      setAlert({
-        severity: 'warning',
-        message: 'Select the asset you want to send and the asset you want to receive.'
-      });
-      return;
-    }
-
-    const validDestination = await validateAddress(address);
-    if (validDestination !== true) {
-      setAddressError(validDestination);
-      return;
-    }
-
-    const validAmount = await validateBridgeAmount({
-      account,
-      amount,
-      delegatorContract,
-      library,
-      selectedToken
-    });
-
-    if (validAmount !== true) {
-      setAmountError(validAmount);
+    if (!(await validateTransferInputs())) {
       return;
     }
 
@@ -2242,7 +2187,8 @@ export default function useBridgeController({
     enterReview,
     requiresLiveGasEstimate,
     requiresReceiveQuote,
-    selectedToken
+    selectedToken,
+    validateTransferInputs
   ]);
 
   const canConfirmReview = Boolean(

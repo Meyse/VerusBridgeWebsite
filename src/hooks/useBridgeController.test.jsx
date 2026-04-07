@@ -1,11 +1,11 @@
 import React from 'react';
 
-import { utils } from 'ethers';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useWeb3React } from '@web3-react/core';
+import { utils } from 'ethers';
 
-import { BLOCKCHAIN_NAME, GLOBAL_ADDRESS, GLOBAL_IADDRESS } from 'constants/contractAddress';
 import { useToast } from 'components/Toast/ToastProvider';
+import { BLOCKCHAIN_NAME, GLOBAL_ADDRESS, GLOBAL_IADDRESS } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import { getContract, getMaxAmount } from 'utils/contract';
 
@@ -39,9 +39,6 @@ const useBridgeController = require('./useBridgeController').default;
 
 const ETH_ADDRESS = GLOBAL_ADDRESS.ETH;
 const DAI_ADDRESS = GLOBAL_ADDRESS.DAI;
-const MKR_ADDRESS = GLOBAL_ADDRESS.MKR;
-const BRIDGE_ADDRESS = GLOBAL_ADDRESS.BETH;
-const VRSC_ADDRESS = GLOBAL_ADDRESS.VRSC;
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const LINK_ADDRESS = '0x514910771AF9Ca656af840dff83E8264EcF986CA';
 const EURC_ADDRESS = '0x1AbAAE1F7c830bD89Acc67ec4af516284b1bC33c';
