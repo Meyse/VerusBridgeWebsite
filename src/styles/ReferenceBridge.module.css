@@ -340,7 +340,7 @@
   width: 100%;
   padding: 8px 0;
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 
 .infoBarInner {
@@ -417,6 +417,7 @@
   flex-direction: column;
   flex-wrap: nowrap;
   gap: 4px;
+  flex-shrink: 0;
   margin-left: auto;
   text-align: right;
 }
@@ -970,6 +971,8 @@
 
 .addressWrapper {
   position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .addressInput {
@@ -982,6 +985,16 @@
   background: #f5f7fb;
   outline: none;
   transition: background-color 200ms ease, box-shadow 200ms ease;
+}
+
+.claimAddressInput {
+  min-height: 52px;
+  border-radius: 12px;
+  font-size: 16px;
+}
+
+.claimAddressInputIconOnly {
+  padding-right: 56px;
 }
 
 .addressInputWithSelf {
@@ -1081,7 +1094,7 @@
 }
 
 .submitButton:hover:not(:disabled) {
-  background: rgba(49, 101, 212, 0.9);
+  background: #2b5cc2;
 }
 
 .submitButtonDisabled {
@@ -1806,6 +1819,348 @@
   font-weight: 600;
 }
 
+.claimLayout {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.claimWorkbench {
+  min-width: 0;
+  display: grid;
+  gap: 28px;
+}
+
+.claimInputBlock {
+  display: grid;
+  gap: 6px;
+  max-width: 700px;
+  width: min(100%, 700px);
+  margin: 0 auto;
+}
+
+.claimInputRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  width: 100%;
+}
+
+.claimInputRowCentered {
+  justify-content: center;
+}
+
+.claimAddressField {
+  width: min(100%, 520px);
+  flex: 0 1 520px;
+}
+
+.claimInlineHelp {
+  margin: 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.claimPasteButton {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.claimPasteButton:hover {
+  color: #111827;
+}
+
+.claimInputShortcut {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #4f6fe5;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.claimInputShortcut:hover:not(:disabled) {
+  color: #3156db;
+}
+
+.claimInputShortcut:disabled {
+  cursor: not-allowed;
+  color: #94a3b8;
+}
+
+.claimResultsArea {
+  min-height: 300px;
+  display: grid;
+  align-content: start;
+  padding-top: 30px;
+}
+
+.claimSectionStack {
+  display: grid;
+  gap: 18px;
+}
+
+.claimEmptyState {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  align-content: center;
+  min-height: 180px;
+  text-align: center;
+}
+
+.claimEmptyStateTitle {
+  margin: 0;
+  color: #111827;
+  font-size: 24px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+}
+
+.claimEmptyStateCopy {
+  margin: 0;
+  max-width: 460px;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.claimPanel {
+  display: grid;
+}
+
+.claimPanelSecondary {
+  position: relative;
+}
+
+.claimPanel + .claimPanel {
+  padding-top: 18px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.claimPanelInner {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  max-width: 760px;
+}
+
+.claimPanelInnerCentered {
+  justify-items: center;
+  text-align: center;
+}
+
+.claimColumnHeader {
+  display: grid;
+  gap: 4px;
+}
+
+.claimSectionLabel {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.claimAmountPanel {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.claimAmountValue {
+  color: #111827;
+  font-size: clamp(1.55rem, 3.4vw, 2.1rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.claimAmountTicker {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.claimStatus {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.claimStatusInfo {
+  color: #475569;
+}
+
+.claimStatusWarning {
+  color: #9a3412;
+}
+
+.claimStatusError {
+  color: #b42318;
+}
+
+.claimStatusSuccess {
+  color: #166534;
+}
+
+.claimActionButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  white-space: nowrap;
+}
+
+.claimActionButtonPrimary {
+  background: #3165d4;
+  border-color: #3165d4;
+  color: #ffffff;
+}
+
+.claimActionButtonPrimary:hover:not(:disabled) {
+  background: #2b5cc2;
+  border-color: #2b5cc2;
+}
+
+.claimActionButtonSoft {
+  background: #ffffff;
+  border-color: rgba(203, 213, 225, 0.7);
+  color: #111827;
+}
+
+.claimActionButtonSoft:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.72);
+}
+
+.claimActionButtonDisabled {
+  background: #e2e8f0;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.claimActionButtonFullWidth {
+  width: 100%;
+  justify-content: center;
+}
+
+.claimActionButtonCompact {
+  width: min(100%, 340px);
+}
+
+.claimTextButton {
+  width: fit-content;
+  min-height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: #3165d4;
+  font-size: 12px;
+  font-weight: 700;
+  justify-content: flex-start;
+}
+
+.claimTextButton:hover:not(:disabled) {
+  background: transparent;
+  color: #244ca8;
+}
+
+.claimRefundList {
+  display: grid;
+  gap: 10px;
+}
+
+.claimRefundRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(226, 232, 240, 0.92);
+}
+
+.claimRefundRow:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.claimRefundMain {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.claimRefundIcon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.claimRefundText {
+  min-width: 0;
+}
+
+.claimRefundTitle {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.claimRefundMeta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.claimFaqSection {
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.claimFaqList {
+  max-width: none;
+  margin: 0;
+}
+
 .siteFooter {
   position: relative;
   z-index: 1;
@@ -2071,6 +2426,74 @@
   .currencyOptionMeta,
   .currencyOptionAddress {
     font-size: 12px;
+  }
+
+  .claimAddressInput {
+    min-height: 52px;
+    padding-left: 14px;
+  }
+
+  .addressActions {
+    gap: 6px;
+  }
+
+  .claimAddressInputIconOnly {
+    padding-right: 52px;
+  }
+
+  .claimPasteButton {
+    width: 18px;
+    height: 18px;
+  }
+
+  .claimInputRow {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .claimAddressField {
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .claimInputShortcut {
+    align-self: flex-end;
+    font-size: 12px;
+  }
+
+  .claimResultsArea {
+    min-height: 0;
+    padding-top: 22px;
+  }
+
+  .claimRefundRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .claimEmptyState {
+    min-height: 140px;
+  }
+
+  .claimEmptyStateTitle {
+    font-size: 21px;
+  }
+
+  .claimEmptyStateCopy {
+    font-size: 13px;
+  }
+
+  .claimPanel + .claimPanel {
+    padding-top: 14px;
+  }
+
+  .claimFaqSection {
+    padding-top: 18px;
+  }
+
+  .claimActionButtonCompact {
+    width: 100%;
   }
 }
 

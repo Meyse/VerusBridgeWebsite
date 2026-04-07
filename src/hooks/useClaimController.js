@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useWeb3React } from '@web3-react/core';
 import web3 from 'web3';
@@ -11,8 +11,6 @@ import bitGoUTXO from 'utils/bitUTXO';
 import { getTokenOptions } from 'utils/options';
 import { requestRefundAddressData } from 'utils/refundAddress';
 import {
-  isiAddress,
-  isRAddress,
   uint64ToVerusFloat,
   validateClaimAddress
 } from 'utils/rules';
@@ -23,6 +21,8 @@ const TYPE_FEE = 1;
 const TYPE_REFUND = 2;
 const TYPE_REFUND_CHECK = 3;
 const TYPE_PUBLICKEY = 4;
+const MINIMUM_EARNINGS_TO_CLAIM = 0.006;
+const CONNECT_WALLET_LOOKUP_MESSAGE = 'Connect a wallet from the header to inspect earnings and refunds.';
 
 const formatHexAddress = (address, type) => {
   const verusAddress = bitGoUTXO.address.fromBase58Check(address);
@@ -65,67 +65,145 @@ const getTokenChoices = async (delegatorContract) => {
   })));
 };
 
+const hasPositiveAmount = (amount) => {
+  const parsedAmount = parseFloat(amount);
+  return Number.isFinite(parsedAmount) && parsedAmount > 0;
+};
+
+const buildEarningsStatus = (amount, addressToInspect) => {
+  if (!hasPositiveAmount(amount)) {
+    return {
+      severity: 'info',
+      message: 'No bridgekeeper earnings detected for this address yet.'
+    };
+  }
+
+  if (addressToInspect?.startsWith('R')) {
+    return {
+      severity: 'info',
+      message: `${amount} ETH is linked to this payout address.`
+    };
+  }
+
+  if (parseFloat(amount) < MINIMUM_EARNINGS_TO_CLAIM) {
+    return {
+      severity: 'warning',
+      message: `${amount} ETH found. A minimum of 0.006 ETH is required to cover import cost.`
+    };
+  }
+
+  return {
+    severity: 'info',
+    message: `${amount} ETH is ready to claim as bridgekeeper earnings.`
+  };
+};
+
+const buildRefundStatus = (entries, hasTokenLoadError) => {
+  if (hasTokenLoadError) {
+    return {
+      severity: 'warning',
+      message: 'Refunded assets are temporarily unavailable to inspect.'
+    };
+  }
+
+  if (!entries.length) {
+    return {
+      severity: 'info',
+      message: 'No refunded assets detected for this address.'
+    };
+  }
+
+  return {
+    severity: 'info',
+    message: `Found ${entries.length} refundable ${entries.length === 1 ? 'asset' : 'assets'} for this address.`
+  };
+};
+
+const buildDisconnectedInspectionStatus = () => ({
+  severity: 'info',
+  message: CONNECT_WALLET_LOOKUP_MESSAGE
+});
+
+const getAddressError = (address) => {
+  if (!address) {
+    return '';
+  }
+
+  const result = validateClaimAddress(address);
+  return result === true ? '' : result;
+};
+
 export default function useClaimController() {
   const [address, setAddress] = useState('');
-  const [alert, setAlert] = useState(null);
-  const [claimRefund, setClaimRefund] = useState(false);
-  const [feeToClaim, setFeeToClaim] = useState(null);
-  const [isTxPending, setIsTxPending] = useState(false);
-  const [refundCurrency, setRefundCurrency] = useState('');
+  const [earningsAmount, setEarningsAmount] = useState(null);
+  const [earningsStatus, setEarningsStatus] = useState(null);
+  const [refundEntries, setRefundEntries] = useState([]);
+  const [refundStatus, setRefundStatus] = useState(null);
   const [tokenOptions, setTokenOptions] = useState([]);
-  const [usePublicKey, setUsePublicKey] = useState(false);
+  const [hasLoadedRefundTokens, setHasLoadedRefundTokens] = useState(false);
+  const [refundTokenLoadError, setRefundTokenLoadError] = useState(false);
+  const [hasLookup, setHasLookup] = useState(false);
+  const [isEarningsLookupPending, setIsEarningsLookupPending] = useState(false);
+  const [isRefundLookupPending, setIsRefundLookupPending] = useState(false);
+  const [actionTarget, setActionTarget] = useState('');
+  const [walletAddressDetails, setWalletAddressDetails] = useState(null);
+  const [walletAddressStatus, setWalletAddressStatus] = useState(null);
+  const [isWalletAddressPending, setIsWalletAddressPending] = useState(false);
+  const [lookupRevision, setLookupRevision] = useState(0);
   const { account } = useWeb3React();
-  const { addToast, removeAllToasts } = useToast();
+  const { addToast } = useToast();
   const delegatorContract = useContract(DELEGATOR_ADD, DELEGATOR_ABI);
 
-  const selectedRefundCurrency = useMemo(
-    () => tokenOptions.find((token) => token.value === refundCurrency) || null,
-    [refundCurrency, tokenOptions]
+  const normalizedAddress = address.trim();
+  const addressError = getAddressError(normalizedAddress);
+  const isWalletVerificationRequired = normalizedAddress.startsWith('R');
+  const isWalletLinkedAddress = Boolean(
+    normalizedAddress
+    && walletAddressDetails
+    && walletAddressDetails.refundAddress === normalizedAddress
   );
 
-  const addressError = useMemo(() => {
-    if (!address || usePublicKey) {
-      return '';
-    }
+  const clearEarningsLookup = useCallback(() => {
+    setIsEarningsLookupPending(false);
+    setEarningsAmount(null);
+    setEarningsStatus(null);
+  }, []);
 
-    const result = validateClaimAddress(address);
-    return result === true ? '' : result;
-  }, [address, usePublicKey]);
-  const canSubmit = useMemo(() => {
-    if (usePublicKey) {
-      return Boolean(account) && !isTxPending;
-    }
-
-    return Boolean(feeToClaim && feeToClaim !== '0.00000000' && !addressError && !isTxPending);
-  }, [account, addressError, feeToClaim, isTxPending, usePublicKey]);
-  const submitLabel = useMemo(() => {
-    if (usePublicKey) {
-      return 'Claim via public key';
-    }
-
-    if (claimRefund) {
-      return 'Claim refund';
-    }
-
-    return 'Claim fees';
-  }, [claimRefund, usePublicKey]);
+  const clearRefundLookup = useCallback(() => {
+    setIsRefundLookupPending(false);
+    setRefundEntries([]);
+    setRefundStatus(null);
+  }, []);
 
   useEffect(() => {
     let ignore = false;
 
     const loadRefundTokens = async () => {
       if (!delegatorContract) {
+        if (!ignore) {
+          setTokenOptions([]);
+          setHasLoadedRefundTokens(false);
+          setRefundTokenLoadError(false);
+        }
         return;
+      }
+
+      if (!ignore) {
+        setHasLoadedRefundTokens(false);
+        setRefundTokenLoadError(false);
       }
 
       try {
         const tokens = await getTokenChoices(delegatorContract);
         if (!ignore) {
           setTokenOptions(tokens);
+          setHasLoadedRefundTokens(true);
         }
       } catch (error) {
         if (!ignore) {
           setTokenOptions([]);
+          setRefundTokenLoadError(true);
+          setHasLoadedRefundTokens(true);
         }
       }
     };
@@ -137,203 +215,495 @@ export default function useClaimController() {
     };
   }, [delegatorContract]);
 
-  const checkForAssets = async (addressToCheck, type, currency) => {
-    const formattedAddress = formatHexAddress(addressToCheck, type);
-    let feeSats = null;
-    let fees = null;
+  const inspectClaimableEarnings = useCallback(async (addressToInspect) => {
+    const feeAddress = formatHexAddress(addressToInspect, TYPE_FEE);
+    const earningsRaw = await delegatorContract.callStatic.claimableFees(feeAddress);
+    const nextEarningsAmount = uint64ToVerusFloat(earningsRaw);
 
-    if (type === TYPE_FEE) {
-      feeSats = await delegatorContract.callStatic.claimableFees(formattedAddress);
-      fees = uint64ToVerusFloat(feeSats);
-      if (fees === '0.00000000' || parseFloat(fees) < 0.006) {
-        setAlert({
-          severity: 'warning',
-          message: `${fees} ETH available to claim. A minimum of 0.006 ETH is required to cover import cost.`
-        });
-        setFeeToClaim(null);
-        return fees;
+    return {
+      earningsAmount: nextEarningsAmount,
+      earningsStatus: buildEarningsStatus(nextEarningsAmount, addressToInspect)
+    };
+  }, [delegatorContract]);
+
+  const inspectRefundEntries = useCallback(async (addressToInspect) => {
+    const refundAddress = formatHexAddress(addressToInspect, TYPE_REFUND_CHECK);
+    const refundResults = await Promise.all(tokenOptions.map(async (token) => {
+      try {
+        const amount = uint64ToVerusFloat(await delegatorContract.callStatic.refunds(refundAddress, token.value));
+        return {
+          ...token,
+          amount
+        };
+      } catch (error) {
+        return null;
       }
+    }));
+    const nextRefundEntries = refundResults.filter((entry) => entry && hasPositiveAmount(entry.amount));
 
-      setAlert({ severity: 'info', message: `${fees} ETH available to claim.` });
-    } else if (type === TYPE_REFUND_CHECK) {
-      feeSats = await delegatorContract.callStatic.refunds(formattedAddress, currency);
-      fees = uint64ToVerusFloat(feeSats);
-      setAlert({
-        severity: fees === '0.00000000' ? 'warning' : 'info',
-        message: `${fees} available to refund.`
-      });
-    } else if (type === TYPE_PUBLICKEY) {
-      feeSats = await delegatorContract.callStatic.claimableFees(formattedAddress);
-      fees = uint64ToVerusFloat(feeSats);
-    }
-
-    setFeeToClaim(fees);
-    return fees;
-  };
+    return {
+      refundEntries: nextRefundEntries,
+      refundStatus: buildRefundStatus(nextRefundEntries, refundTokenLoadError)
+    };
+  }, [delegatorContract, refundTokenLoadError, tokenOptions]);
 
   useEffect(() => {
     let ignore = false;
 
-    const loadClaimableAssets = async () => {
-      if (!address || usePublicKey || (!isRAddress(address) && !isiAddress(address))) {
-        if (!ignore && feeToClaim !== null) {
-          removeAllToasts();
-          setAlert(null);
-          setFeeToClaim(null);
+    if (!normalizedAddress) {
+      setHasLookup(false);
+      clearEarningsLookup();
+      clearRefundLookup();
+      return () => {
+        ignore = true;
+      };
+    }
+
+    if (addressError) {
+      setHasLookup(false);
+      clearEarningsLookup();
+      return () => {
+        ignore = true;
+      };
+    }
+
+    if (!delegatorContract) {
+      setHasLookup(false);
+      clearEarningsLookup();
+      setEarningsStatus(buildDisconnectedInspectionStatus());
+      return () => {
+        ignore = true;
+      };
+    }
+
+    setHasLookup(true);
+    setEarningsAmount(null);
+    setEarningsStatus(null);
+    setIsEarningsLookupPending(true);
+
+    const loadEarnings = async () => {
+      try {
+        const inspection = await inspectClaimableEarnings(normalizedAddress);
+        if (!ignore) {
+          setEarningsAmount(inspection.earningsAmount);
+          setEarningsStatus(inspection.earningsStatus);
         }
-        return;
-      }
-
-      if (claimRefund) {
-        if (!selectedRefundCurrency?.value) {
-          if (!ignore) {
-            setFeeToClaim(null);
-            setAlert(null);
-          }
-          return;
+      } catch (error) {
+        if (!ignore) {
+          setEarningsAmount(null);
+          setEarningsStatus({
+            severity: 'error',
+            message: error.message || 'Unable to inspect bridgekeeper earnings right now.'
+          });
         }
-
-        await checkForAssets(address, TYPE_REFUND_CHECK, selectedRefundCurrency.value);
-        return;
+      } finally {
+        if (!ignore) {
+          setIsEarningsLookupPending(false);
+        }
       }
-
-      await checkForAssets(address, TYPE_FEE);
     };
 
-    loadClaimableAssets();
+    loadEarnings();
 
     return () => {
       ignore = true;
     };
-  }, [address, claimRefund, removeAllToasts, selectedRefundCurrency, usePublicKey]);
+  }, [
+    addressError,
+    clearEarningsLookup,
+    clearRefundLookup,
+    delegatorContract,
+    inspectClaimableEarnings,
+    lookupRevision,
+    normalizedAddress
+  ]);
 
-  const handleSubmit = async () => {
-    if (!usePublicKey && addressError) {
+  useEffect(() => {
+    let ignore = false;
+
+    if (!normalizedAddress) {
+      clearRefundLookup();
+      return () => {
+        ignore = true;
+      };
+    }
+
+    if (addressError) {
+      clearRefundLookup();
+      return () => {
+        ignore = true;
+      };
+    }
+
+    if (!delegatorContract) {
+      clearRefundLookup();
+      setRefundStatus(buildDisconnectedInspectionStatus());
+      return () => {
+        ignore = true;
+      };
+    }
+
+    setRefundEntries([]);
+    setRefundStatus(null);
+
+    if (!hasLoadedRefundTokens) {
+      setIsRefundLookupPending(true);
+      return () => {
+        ignore = true;
+      };
+    }
+
+    if (refundTokenLoadError) {
+      setIsRefundLookupPending(false);
+      setRefundEntries([]);
+      setRefundStatus(buildRefundStatus([], true));
+      return () => {
+        ignore = true;
+      };
+    }
+
+    setIsRefundLookupPending(true);
+
+    const loadRefunds = async () => {
+      try {
+        const inspection = await inspectRefundEntries(normalizedAddress);
+        if (!ignore) {
+          setRefundEntries(inspection.refundEntries);
+          setRefundStatus(inspection.refundStatus);
+        }
+      } catch (error) {
+        if (!ignore) {
+          setRefundEntries([]);
+          setRefundStatus({
+            severity: 'error',
+            message: 'Unable to inspect refunded assets right now.'
+          });
+        }
+      } finally {
+        if (!ignore) {
+          setIsRefundLookupPending(false);
+        }
+      }
+    };
+
+    loadRefunds();
+
+    return () => {
+      ignore = true;
+    };
+  }, [
+    addressError,
+    clearRefundLookup,
+    delegatorContract,
+    hasLoadedRefundTokens,
+    inspectRefundEntries,
+    lookupRevision,
+    normalizedAddress,
+    refundTokenLoadError
+  ]);
+
+  useEffect(() => {
+    setWalletAddressDetails(null);
+    setWalletAddressStatus(null);
+    setIsWalletAddressPending(false);
+  }, [account]);
+
+  useEffect(() => {
+    setWalletAddressStatus(null);
+  }, [normalizedAddress]);
+
+  const refreshLookup = useCallback(() => {
+    setLookupRevision((value) => value + 1);
+  }, []);
+
+  const loadWalletAddressDetails = useCallback(async () => {
+    if (!account) {
+      throw new Error('Connect a wallet from the header to use the connected wallet address.');
+    }
+
+    if (walletAddressDetails) {
+      return walletAddressDetails;
+    }
+
+    const nextDetails = await requestRefundAddressData(account);
+    setWalletAddressDetails(nextDetails);
+    return nextDetails;
+  }, [account, walletAddressDetails]);
+
+  const handleWalletAddressAction = useCallback(async () => {
+    if (!account) {
+      setWalletAddressStatus({
+        severity: 'info',
+        message: isWalletVerificationRequired
+          ? 'Connect a wallet from the header to verify this payout address.'
+          : 'Connect a wallet from the header to use the connected wallet address.'
+      });
       return;
     }
 
-    if (!usePublicKey && !address) {
-      setAlert({ severity: 'warning', message: 'Enter a Verus R-address or i-address.' });
-      return;
-    }
-
-    if (usePublicKey && !account) {
-      setAlert({ severity: 'info', message: 'Connect a wallet from the header to use public-key claiming.' });
-      return;
-    }
-
-    setAlert(null);
-    setIsTxPending(true);
+    setIsWalletAddressPending(true);
+    setWalletAddressStatus(null);
 
     try {
-      if (usePublicKey) {
-        const { publicKey, refundAddress } = await requestRefundAddressData(account);
-        const checkFees = await checkForAssets(refundAddress, TYPE_PUBLICKEY);
+      const nextDetails = await loadWalletAddressDetails();
 
-        if (checkFees === '0.00000000') {
-          setAlert({
+      if (isWalletVerificationRequired) {
+        setWalletAddressStatus(
+          nextDetails.refundAddress === normalizedAddress
+            ? {
+              severity: 'success',
+              message: 'Connected wallet verified for this payout address.'
+            }
+            : {
+              severity: 'warning',
+              message: `Connected wallet derives ${nextDetails.refundAddress}, not this payout address.`
+            }
+        );
+        return;
+      }
+
+      setAddress(nextDetails.refundAddress);
+    } catch (error) {
+      setWalletAddressStatus({
+        severity: 'error',
+        message: error.message || 'Unable to derive the connected wallet payout address right now.'
+      });
+    } finally {
+      setIsWalletAddressPending(false);
+    }
+  }, [account, isWalletVerificationRequired, loadWalletAddressDetails, normalizedAddress]);
+
+  const handleClaimEarnings = useCallback(async () => {
+    if (!normalizedAddress || addressError) {
+      return;
+    }
+
+    if (!account) {
+      setEarningsStatus({
+        severity: 'info',
+        message: 'Connect a wallet from the header to claim earnings.'
+      });
+      return;
+    }
+
+    if (!delegatorContract) {
+      setEarningsStatus({
+        severity: 'warning',
+        message: 'Bridge data is temporarily unavailable.'
+      });
+      return;
+    }
+
+    setActionTarget('earnings');
+
+    try {
+      if (isWalletVerificationRequired) {
+        const nextDetails = await loadWalletAddressDetails();
+
+        if (nextDetails.refundAddress !== normalizedAddress) {
+          setEarningsStatus({
             severity: 'warning',
-            message: `${refundAddress} has no fees to claim. Try another Ethereum account.`
+            message: `${normalizedAddress} is not derived from the connected wallet. Switch to the matching wallet or use the connected wallet action above.`
           });
-          setIsTxPending(false);
           return;
         }
 
+        await delegatorContract.callStatic.sendfees(
+          `0x${nextDetails.publicKey.slice(4, 68)}`,
+          `0x${nextDetails.publicKey.slice(68, 132)}`
+        );
+
         const txResult = await delegatorContract.sendfees(
-          `0x${publicKey.slice(4, 68)}`,
-          `0x${publicKey.slice(68, 132)}`,
+          `0x${nextDetails.publicKey.slice(4, 68)}`,
+          `0x${nextDetails.publicKey.slice(68, 132)}`,
           { from: account, gasLimit: maxGasClaim }
         );
 
         await txResult.wait();
-        addToast({ type: 'success', description: 'Claim to ETH transaction submitted successfully.' });
-        setFeeToClaim(null);
-      } else if (claimRefund) {
-        const refundAddress = formatHexAddress(address, TYPE_REFUND);
-        const previewClaim = await delegatorContract.callStatic.claimRefund(refundAddress, selectedRefundCurrency.value);
-
-        if (previewClaim === '0x') {
-          setAlert({
-            severity: 'warning',
-            message: `No ${selectedRefundCurrency.value} available to refund.`
-          });
-          setIsTxPending(false);
-          return;
-        }
-
-        const txResult = await delegatorContract.claimRefund(refundAddress, selectedRefundCurrency.value, {
-          from: account,
-          gasLimit: maxGas
+        addToast({ type: 'success', description: 'Wallet-linked earnings transaction submitted successfully.' });
+        setEarningsStatus({
+          severity: 'success',
+          message: 'Bridgekeeper earnings claimed successfully to the connected Ethereum wallet.'
         });
-
-        await txResult.wait();
-        addToast({ type: 'success', description: 'Refund transaction submitted successfully.' });
-        setFeeToClaim(null);
-      } else {
-        const feeAddress = formatHexAddress(address, TYPE_FEE);
-        if (address.startsWith('R')) {
-          setAlert({
-            severity: 'warning',
-            message: `Import the private key for ${address} into MetaMask and use public-key claim to receive fees directly to that wallet.`
-          });
-          setIsTxPending(false);
-          return;
-        }
-
-        await delegatorContract.callStatic.sendfees(feeAddress, `0x${Buffer.alloc(32).toString('hex')}`);
-        const txResult = await delegatorContract.sendfees(
-          feeAddress,
-          `0x${Buffer.alloc(32).toString('hex')}`,
-          { from: account, gasLimit: maxGas }
-        );
-
-        await txResult.wait();
-        addToast({ type: 'success', description: 'Fee claim transaction submitted successfully.' });
-        setFeeToClaim(null);
+        refreshLookup();
+        return;
       }
 
-      setAlert(null);
+      const feeAddress = formatHexAddress(normalizedAddress, TYPE_FEE);
+      await delegatorContract.callStatic.sendfees(feeAddress, `0x${Buffer.alloc(32).toString('hex')}`);
+      const txResult = await delegatorContract.sendfees(
+        feeAddress,
+        `0x${Buffer.alloc(32).toString('hex')}`,
+        { from: account, gasLimit: maxGas }
+      );
+
+      await txResult.wait();
+      addToast({ type: 'success', description: 'Earnings claim transaction submitted successfully.' });
+      setEarningsStatus({
+        severity: 'success',
+        message: 'Bridgekeeper earnings claimed successfully.'
+      });
+      refreshLookup();
     } catch (error) {
-      addToast({ type: 'error', description: error.message || 'Claim transaction failed.' });
-      setAlert(null);
+      addToast({ type: 'error', description: error.message || 'Earnings claim transaction failed.' });
+      setEarningsStatus({
+        severity: 'error',
+        message: error.message || 'Unable to claim earnings right now.'
+      });
     } finally {
-      setIsTxPending(false);
+      setActionTarget('');
     }
-  };
+  }, [
+    account,
+    addressError,
+    addToast,
+    delegatorContract,
+    isWalletVerificationRequired,
+    loadWalletAddressDetails,
+    normalizedAddress,
+    refreshLookup
+  ]);
+
+  const handleClaimRefund = useCallback(async (currency) => {
+    if (!normalizedAddress || addressError) {
+      return;
+    }
+
+    if (!account) {
+      setRefundStatus({
+        severity: 'info',
+        message: 'Connect a wallet from the header to claim refunded assets.'
+      });
+      return;
+    }
+
+    if (!delegatorContract) {
+      setRefundStatus({
+        severity: 'warning',
+        message: 'Bridge data is temporarily unavailable.'
+      });
+      return;
+    }
+
+    const selectedEntry = refundEntries.find((entry) => entry.value === currency);
+    if (!selectedEntry) {
+      return;
+    }
+
+    setActionTarget(`refund:${currency}`);
+
+    try {
+      const refundAddress = formatHexAddress(normalizedAddress, TYPE_REFUND);
+      const previewClaim = await delegatorContract.callStatic.claimRefund(refundAddress, currency);
+
+      if (previewClaim === '0x') {
+        setRefundStatus({
+          severity: 'warning',
+          message: `No ${selectedEntry.name} is currently available to refund.`
+        });
+        return;
+      }
+
+      const txResult = await delegatorContract.claimRefund(refundAddress, currency, {
+        from: account,
+        gasLimit: maxGas
+      });
+
+      await txResult.wait();
+      addToast({ type: 'success', description: `${selectedEntry.name} refund transaction submitted successfully.` });
+      setRefundStatus({
+        severity: 'success',
+        message: `${selectedEntry.name} refunded successfully.`
+      });
+      refreshLookup();
+    } catch (error) {
+      addToast({ type: 'error', description: error.message || 'Refund transaction failed.' });
+      setRefundStatus({
+        severity: 'error',
+        message: error.message || 'Unable to claim the selected refund right now.'
+      });
+    } finally {
+      setActionTarget('');
+    }
+  }, [account, addressError, addToast, delegatorContract, normalizedAddress, refundEntries, refreshLookup]);
+
+  let walletActionLabel = 'Use connected wallet';
+  if (isWalletVerificationRequired) {
+    walletActionLabel = isWalletLinkedAddress ? 'Connected wallet verified' : 'Verify connected wallet';
+  }
+
+  let earningsActionLabel = 'Claim back to this Verus address';
+  if (isWalletVerificationRequired) {
+    earningsActionLabel = isWalletLinkedAddress
+      ? 'Claim to connected Ethereum wallet'
+      : 'Verify connected wallet to claim';
+  }
+
+  let earningsClaimHelp = '';
+  if (normalizedAddress && !addressError && isWalletVerificationRequired) {
+    if (isWalletLinkedAddress) {
+      earningsClaimHelp = 'This payout address matches the connected wallet.';
+    } else if (walletAddressDetails) {
+      earningsClaimHelp = `Connected wallet derives ${walletAddressDetails.refundAddress}, not this payout address.`;
+    } else {
+      earningsClaimHelp = 'Verify the connected wallet before claiming this R-address.';
+    }
+  }
+
+  const canClaimEarnings = Boolean(
+    account
+    && normalizedAddress
+    && !addressError
+    && hasPositiveAmount(earningsAmount)
+    && !actionTarget
+    && (
+      isWalletVerificationRequired
+        ? isWalletLinkedAddress
+        : parseFloat(earningsAmount) >= MINIMUM_EARNINGS_TO_CLAIM
+    )
+  );
+
+  const hasAnyResults = hasPositiveAmount(earningsAmount) || refundEntries.length > 0;
+
+  const isLookupPending = isEarningsLookupPending || isRefundLookupPending;
+  const hasLookupIssue = [earningsStatus, refundStatus].some((status) => status && status.severity !== 'info');
+  const isEmptyLookup = Boolean(
+    hasLookup
+    && !isLookupPending
+    && !hasAnyResults
+    && !addressError
+    && !hasLookupIssue
+    && Boolean(earningsStatus)
+    && Boolean(refundStatus)
+  );
 
   return {
     account,
+    actionTarget,
     address,
     addressError,
-    alert,
-    canSubmit,
-    claimRefund,
-    feeToClaim,
-    handleSubmit,
-    isTxPending,
-    refundCurrency,
-    selectRefundCurrency: (value) => setRefundCurrency(value),
+    canClaimEarnings,
+    earningsAmount,
+    earningsActionLabel,
+    earningsClaimHelp,
+    earningsStatus,
+    handleClaimEarnings,
+    handleClaimRefund,
+    handleWalletAddressAction,
+    hasAnyResults,
+    hasLookup,
+    isActionPending: Boolean(actionTarget),
+    isEarningsLookupPending,
+    isEmptyLookup,
+    isLookupPending,
+    isRefundLookupPending,
+    isWalletLinkedAddress,
+    isWalletAddressPending,
+    isWalletVerificationRequired,
+    refundEntries,
+    refundStatus,
     setAddress,
-    setClaimRefund: (nextValue) => {
-      setClaimRefund(nextValue);
-      setAlert(null);
-      if (!nextValue) {
-        setAddress('');
-      } else {
-        setUsePublicKey(false);
-      }
-    },
-    setUsePublicKey: (nextValue) => {
-      setUsePublicKey(nextValue);
-      setAddress('');
-      setAlert(null);
-      if (claimRefund) {
-        setClaimRefund(false);
-      }
-    },
-    selectedRefundCurrency,
-    submitLabel,
-    tokenOptions,
-    usePublicKey
+    walletActionLabel,
+    walletAddressStatus
   };
 }

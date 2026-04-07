@@ -31,7 +31,7 @@ const NFT = () => (
               Back to bridge
             </Link>
             <Link className={styles.secondaryLink} to="/claim">
-              Claim / Refunds
+              Refunds & earnings
             </Link>
           </div>
         </div>

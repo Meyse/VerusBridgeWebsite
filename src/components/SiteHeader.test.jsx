@@ -101,7 +101,7 @@ describe('SiteHeader wallet interactions', () => {
     expect(within(navigation).getByRole('link', { name: 'Bridge' })).toHaveAttribute('href', '/');
     expect(within(navigation).getByRole('link', { name: 'Info' })).toHaveAttribute('href', '/#info');
     expect(within(navigation).queryByRole('link', { name: 'Transactions' })).toBeNull();
-    expect(within(navigation).getByRole('link', { name: 'Refunds & claims' })).toHaveAttribute('href', '/claim');
+    expect(within(navigation).getByRole('link', { name: 'Refunds & earnings' })).toHaveAttribute('href', '/claim');
   });
 
   test('adds the scrolled header class after the page moves', () => {
