@@ -1,0 +1,4 @@
+# Support React Router paths like /claim and /nft on Replit Static Deployments.
+[[deployment.rewrites]]
+from = "/*"
+to = "/index.html"

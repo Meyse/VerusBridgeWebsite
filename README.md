@@ -33,6 +33,23 @@ Your app is ready to be deployed!
 
 See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
 
+## Deploy On Replit
+
+This project can be deployed on Replit as a Static Deployment.
+
+1. Import the repository into Replit.
+2. Add the environment variables from [.envexample](./.envexample) in Replit Secrets or Deployment Secrets.
+3. Open the Deployments tool and choose `Static`.
+4. Set `Public directory` to `/build`.
+5. Set `Build command` to `corepack yarn build`.
+6. Publish the app.
+
+Notes:
+
+- The root [.replit](./.replit) file includes a rewrite so React Router paths like `/claim` and `/nft` load correctly on refresh.
+- This repo uses classic Yarn via Corepack. Using `corepack yarn build` avoids picking up a global Yarn 4 install by mistake.
+- After publishing, Replit will give you a `*.replit.app` URL. If you want to use your own domain, connect it from the Deployments settings. See the Replit docs for [Static Deployments](https://docs.replit.com/cloud-services/deployments/static-deployments), [Static Deployment Configuration](https://docs.replit.com/cloud-services/deployments/static-deployments-advanced), and [Custom Domains](https://docs.replit.com/cloud-services/deployments/custom-domains).
+
 ### `yarn eject`
 
 **Note: this is a one-way operation. Once you `eject`, you can’t go back!**
