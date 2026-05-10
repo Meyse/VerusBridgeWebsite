@@ -195,7 +195,14 @@ const buildTheme = (mode) => {
           root: {
             borderRadius: 999,
             textTransform: 'none',
-            fontWeight: 700
+            fontWeight: 700,
+            boxShadow: 'none',
+            '&:hover': {
+              boxShadow: 'none'
+            },
+            '&.Mui-focusVisible': {
+              boxShadow: 'none'
+            }
           },
           containedPrimary: {
             backgroundColor: accentColor,
