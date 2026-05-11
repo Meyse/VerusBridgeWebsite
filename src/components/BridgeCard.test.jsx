@@ -76,6 +76,7 @@ const createController = (overrides = {}) => ({
   requiredNativeEth: 0,
   reviewConfirmLabel: 'Confirm',
   reviewBouncebackWarningMessage: '',
+  reviewExchangeRate: null,
   reviewFeeRows: [],
   reviewReceiveAmountDisplay: '',
   reviewReceiveFiatLabel: null,
@@ -268,6 +269,8 @@ describe('BridgeCard currency selectors', () => {
     expect(editButton.querySelector('svg')).not.toBeNull();
     expect(screen.getByText('DAI.vETH')).toBeInTheDocument();
     expect(screen.getByText('Bridge fee')).toBeInTheDocument();
+    expect(screen.getByText('0.0030 ETH')).toBeInTheDocument();
+    expect(screen.getByText('($6.30)')).toBeInTheDocument();
     expect(screen.queryByText('Network cost')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Ethereum -> Verus')).toBeInTheDocument();
     expect(screen.getByText('1-6 hours')).toBeInTheDocument();
@@ -311,6 +314,48 @@ describe('BridgeCard currency selectors', () => {
     expect(screen.getByText('You receive (estimated)')).toBeInTheDocument();
     expect(screen.getByText('~0.00107949')).toBeInTheDocument();
     expect(screen.queryByText('Estimating...')).not.toBeInTheDocument();
+  });
+
+  test('shows a clickable review exchange rate that can invert', () => {
+    render(
+      <BridgeCard
+        controller={createController({
+          amount: '2.290298377929176',
+          canConfirmReview: true,
+          isReviewing: true,
+          receiveCurrency: {
+            id: 'bridgeETH',
+            icon: '/icons/currencies/eth.svg',
+            name: 'vETH',
+            symbol: 'vETH'
+          },
+          reviewConfirmLabel: 'Confirm',
+          reviewExchangeRate: {
+            primary: {
+              fiatLabel: '$1,000.00',
+              label: '1 vETH = 2121.65 DAI'
+            },
+            inverse: {
+              fiatLabel: '$1.00',
+              label: '1 DAI = 0.00047133 vETH'
+            }
+          },
+          reviewReceiveAmountDisplay: '0.00107949',
+          requiresReceiveQuote: true,
+          selectedDestination: { value: 'bridgeETH' }
+        })}
+      />
+    );
+
+    expect(screen.getByText('1 vETH = 2121.65 DAI')).toBeInTheDocument();
+    expect(screen.getByText('($1,000.00)')).toBeInTheDocument();
+    expect(screen.getByText('Price')).toBeInTheDocument();
+    expect(screen.getByText('Price').closest(`.${styles.reviewDetails}`)).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /invert exchange rate/i }));
+
+    expect(screen.getByText('1 DAI = 0.00047133 vETH')).toBeInTheDocument();
+    expect(screen.getByText('($1.00)')).toBeInTheDocument();
   });
 
   test('shows the send fiat in the lower meta row alongside the balance row', () => {

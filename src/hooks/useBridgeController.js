@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useWeb3React } from '@web3-react/core';
+import BigNumber from 'bignumber.js';
 import { utils } from 'ethers';
 import { flushSync } from 'react-dom';
 import { VerusdRpcInterface } from 'verusd-rpc-ts-client';
@@ -59,6 +60,7 @@ const PRICE_WARNING_THRESHOLD_PERCENT = 3;
 const PRICE_SOURCE_BRIDGE = 'Bridge.vETH';
 const PRICE_SOURCE_FLORALIS = 'Floralis';
 const PRICE_SOURCE_PEG = 'peg';
+const MIN_EXCHANGE_RATE_DISPLAY_VALUE = new BigNumber('0.00000001');
 const DEFAULT_PRICE_SOURCE_BY_SYMBOL = {
   DAI: PRICE_SOURCE_PEG,
   USDC: PRICE_SOURCE_PEG,
@@ -180,6 +182,31 @@ const formatQuotedAmount = (value) => {
     .replace(/\.?0+$/, '');
 };
 
+const formatExchangeRateAmount = (value) => {
+  const parsedValue = new BigNumber(value);
+
+  if (!parsedValue.isFinite() || !parsedValue.isPositive()) {
+    return null;
+  }
+
+  if (parsedValue.lt(MIN_EXCHANGE_RATE_DISPLAY_VALUE)) {
+    return '<0.00000001';
+  }
+
+  let decimalPlaces = 8;
+
+  if (parsedValue.gte(1000)) {
+    decimalPlaces = 2;
+  } else if (parsedValue.gte(1)) {
+    decimalPlaces = 6;
+  }
+
+  return parsedValue
+    .decimalPlaces(decimalPlaces, BigNumber.ROUND_HALF_UP)
+    .toFixed(decimalPlaces)
+    .replace(/\.?0+$/, '');
+};
+
 const formatBalance = (value) => {
   const parsedValue = parseFloat(value);
   if (Number.isNaN(parsedValue)) {
@@ -233,6 +260,67 @@ const getAmountFiatLabel = (value, symbol, prices) => {
   }
 
   return formatCurrencyFiat(parsedAmount * fiatPrice);
+};
+
+const getUnitFiatLabel = (symbol, prices) => {
+  if (!symbol) {
+    return null;
+  }
+
+  const fiatPrice = prices[getPriceLookupSymbol(symbol)];
+  return Number.isFinite(fiatPrice) ? formatCurrencyFiat(fiatPrice) : null;
+};
+
+const buildExchangeRateSide = ({ baseSymbol, fiatLabel, quoteAmount, quoteSymbol }) => {
+  const rateAmount = formatExchangeRateAmount(quoteAmount);
+
+  if (!rateAmount || !baseSymbol || !quoteSymbol) {
+    return null;
+  }
+
+  return {
+    fiatLabel,
+    label: `1 ${baseSymbol} = ${rateAmount} ${quoteSymbol}`
+  };
+};
+
+const buildExchangeRateDisplay = ({
+  inputAmount,
+  inputSymbol,
+  outputAmount,
+  outputSymbol,
+  prices
+}) => {
+  const parsedInputAmount = new BigNumber(inputAmount || 0);
+  const parsedOutputAmount = new BigNumber(outputAmount || 0);
+
+  if (
+    !parsedInputAmount.isFinite()
+    || !parsedInputAmount.isPositive()
+    || !parsedOutputAmount.isFinite()
+    || !parsedOutputAmount.isPositive()
+    || !inputSymbol
+    || !outputSymbol
+  ) {
+    return null;
+  }
+
+  const primary = buildExchangeRateSide({
+    baseSymbol: outputSymbol,
+    fiatLabel: getUnitFiatLabel(outputSymbol, prices),
+    quoteAmount: parsedInputAmount.div(parsedOutputAmount),
+    quoteSymbol: inputSymbol
+  });
+  const inverse = buildExchangeRateSide({
+    baseSymbol: inputSymbol,
+    fiatLabel: getUnitFiatLabel(inputSymbol, prices),
+    quoteAmount: parsedOutputAmount.div(parsedInputAmount),
+    quoteSymbol: outputSymbol
+  });
+
+  return primary && inverse
+    ? { inverse, primary }
+    : null;
 };
 
 const getCurrencyState = (currencyResult) => (
@@ -1188,6 +1276,7 @@ export default function useBridgeController({
   ), [quoteSignature, receiveQuote.signature, receiveQuote.state, requiresReceiveQuote, shouldFetchReceiveQuote]);
   const reviewReceiveAmountDisplay = reviewSnapshot?.receiveAmountDisplay || '';
   const reviewReceiveFiatLabel = reviewSnapshot?.receiveFiatLabel || null;
+  const reviewExchangeRate = reviewSnapshot?.exchangeRate || null;
   const addressHint = useMemo(
     () => (
       allowsEthereumDestination
@@ -1258,6 +1347,27 @@ export default function useBridgeController({
     receiveCurrency,
     receiveQuote.value,
     receiveQuoteState
+  ]);
+  const conversionExchangeRate = useMemo(() => {
+    if (!requiresReceiveQuote || receiveQuoteState !== 'ready' || !receiveCurrency) {
+      return null;
+    }
+
+    return buildExchangeRateDisplay({
+      inputAmount: normalizedQuoteAmount,
+      inputSymbol: getTokenDisplaySymbol(selectedToken),
+      outputAmount: receiveQuote.value,
+      outputSymbol: receiveCurrency.symbol,
+      prices: effectiveTokenUsdPrices
+    });
+  }, [
+    effectiveTokenUsdPrices,
+    normalizedQuoteAmount,
+    receiveCurrency,
+    receiveQuote.value,
+    receiveQuoteState,
+    requiresReceiveQuote,
+    selectedToken
   ]);
   const conversionWarning = useMemo(() => {
     if (receiveQuoteState !== 'ready' || !requiresReceiveQuote) {
@@ -2292,6 +2402,7 @@ export default function useBridgeController({
 
     const nextReviewSnapshot = {
       editSignature: requestedEditSignature,
+      exchangeRate: conversionExchangeRate,
       refundAddress: needsRefundAddressSignature ? getCachedRefundAddress(account) || refundAddress : '',
       receiveAmountDisplay,
       receiveFiatLabel
@@ -2314,6 +2425,7 @@ export default function useBridgeController({
     account,
     address,
     amount,
+    conversionExchangeRate,
     delegatorContract,
     destination,
     editSignature,
@@ -2412,6 +2524,7 @@ export default function useBridgeController({
     routeLabel: getRouteLabel(destination),
     reviewConfirmLabel,
     reviewBouncebackWarningMessage,
+    reviewExchangeRate,
     reviewFeeRows,
     reviewRouteLabel,
     reviewTimeEstimate,

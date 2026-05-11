@@ -273,6 +273,8 @@ const HookProbe = ({ controllerOptions = {} }) => {
       <div data-testid="review-confirm-label">{controller.reviewConfirmLabel || ''}</div>
       <div data-testid="can-confirm-review">{controller.canConfirmReview ? 'yes' : 'no'}</div>
       <div data-testid="review-bounceback-warning">{controller.reviewBouncebackWarningMessage || ''}</div>
+      <div data-testid="review-exchange-rate-primary">{controller.reviewExchangeRate?.primary ? `${controller.reviewExchangeRate.primary.label}|${controller.reviewExchangeRate.primary.fiatLabel || ''}` : ''}</div>
+      <div data-testid="review-exchange-rate-inverse">{controller.reviewExchangeRate?.inverse ? `${controller.reviewExchangeRate.inverse.label}|${controller.reviewExchangeRate.inverse.fiatLabel || ''}` : ''}</div>
       <div data-testid="review-route-label">{controller.reviewRouteLabel || ''}</div>
       <div data-testid="review-time-estimate">{controller.reviewTimeEstimate || ''}</div>
       <div data-testid="review-fees">{(controller.reviewFeeRows || []).map((row) => `${row.label}:${row.value}`).join('|')}</div>
@@ -1109,6 +1111,45 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
 
     expect(screen.getByTestId('receive-amount')).toHaveTextContent('0.00107949');
+  });
+
+  test('snapshots a reversible conversion exchange rate for review', async () => {
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockResolvedValue({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('eth-usd-price')).toHaveTextContent('1000');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Bridge ETH' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-quote-state')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes');
+    });
+
+    expect(screen.getByTestId('review-exchange-rate-primary')).toHaveTextContent('1 vETH = 2121.65 DAI|$1,000.00');
+    expect(screen.getByTestId('review-exchange-rate-inverse')).toHaveTextContent('1 DAI = 0.00047133 vETH|$1.00');
   });
 
   test('does not warn when an ETH to VRSC quote stays within the 3% threshold', async () => {

@@ -478,6 +478,29 @@ const ConversionWarning = ({ label, message }) => (
   </div>
 );
 
+const ReviewExchangeRate = ({ exchangeRate, isInverted, onToggle }) => {
+  if (!exchangeRate?.primary || !exchangeRate?.inverse) {
+    return null;
+  }
+
+  const activeRate = isInverted ? exchangeRate.inverse : exchangeRate.primary;
+  const fiatText = activeRate.fiatLabel ? ` (${activeRate.fiatLabel})` : '';
+
+  return (
+    <button
+      aria-label={`Invert exchange rate. Current rate: ${activeRate.label}${fiatText}`}
+      className={styles.reviewExchangeRate}
+      onClick={onToggle}
+      type="button"
+    >
+      <span>{activeRate.label}</span>
+      {activeRate.fiatLabel ? (
+        <span className={styles.reviewExchangeRateFiat}>({activeRate.fiatLabel})</span>
+      ) : null}
+    </button>
+  );
+};
+
 const RECEIVE_ESTIMATE_TOOLTIP_LINES = [
   'This amount is estimated and not guaranteed.',
   'Bridging and conversion settle over time, so the final value can shift before completion.'
@@ -553,6 +576,7 @@ const BridgeCard = ({ controller }) => {
   const [destinationSelectorOpen, setDestinationSelectorOpen] = useState(false);
   const [displayAddress, setDisplayAddress] = useState(() => formatAddressForInput(controller.address, false));
   const [isAddressFocused, setIsAddressFocused] = useState(false);
+  const [isExchangeRateInverted, setIsExchangeRateInverted] = useState(false);
   const [openInfoPopovers, setOpenInfoPopovers] = useState(CLOSED_INFO_POPOVERS);
   const [isHoverCapable, setIsHoverCapable] = useState(getCanUseHoverAmountPresets);
   const [sourceSearch, setSourceSearch] = useState('');
@@ -732,6 +756,7 @@ const BridgeCard = ({ controller }) => {
   const reviewReceiveAmountDisplay = controller.reviewReceiveAmountDisplay || receiveAmountDisplay;
   const reviewReceiveFiatLabel = controller.reviewReceiveFiatLabel ?? receiveFiatLabel;
   const conversionWarningMessage = controller.conversionWarningMessage || '';
+  const reviewExchangeRate = controller.reviewExchangeRate || null;
   const amountNumber = parseFloat(controller.amount);
   const hasPositiveAmount = !Number.isNaN(amountNumber) && amountNumber > 0;
   const isConversionReceiveEstimate = Boolean(controller.requiresReceiveQuote);
@@ -788,6 +813,10 @@ const BridgeCard = ({ controller }) => {
     : '';
   const sourceModalStatusTone = controller.sourceCatalogError ? 'warning' : 'info';
   const sourceModalStatusActionLabel = controller.sourceCatalogError ? 'Retry' : '';
+
+  useEffect(() => {
+    setIsExchangeRateInverted(false);
+  }, [isReviewing, reviewExchangeRate?.primary?.label]);
 
   useEffect(() => {
     if (hasSendAmountPresetWarning && showDesktopAmountPresetRail) {
@@ -1041,6 +1070,19 @@ const BridgeCard = ({ controller }) => {
                 </span>
               </div>
 
+              {reviewExchangeRate ? (
+                <div className={styles.reviewDetailRow}>
+                  <span className={styles.reviewDetailLabel}>Price</span>
+                  <span className={styles.reviewDetailValue}>
+                    <ReviewExchangeRate
+                      exchangeRate={reviewExchangeRate}
+                      isInverted={isExchangeRateInverted}
+                      onToggle={() => setIsExchangeRateInverted((currentValue) => !currentValue)}
+                    />
+                  </span>
+                </div>
+              ) : null}
+
               <div className={styles.reviewDetailRow}>
                 {reviewTimeLabel}
                 <span className={styles.reviewDetailValue}>{controller.reviewTimeEstimate}</span>
@@ -1050,8 +1092,8 @@ const BridgeCard = ({ controller }) => {
                 <div className={styles.reviewDetailRow} key={row.id}>
                   <span className={styles.reviewDetailLabel}>{row.label}</span>
                   <span className={styles.reviewDetailValue}>
-                    {row.fiatLabel ? <span className={styles.reviewDetailFiat}>{row.fiatLabel}</span> : null}
                     {row.value}
+                    {row.fiatLabel ? <span className={styles.reviewDetailFiat}>({row.fiatLabel})</span> : null}
                   </span>
                 </div>
               ))}
