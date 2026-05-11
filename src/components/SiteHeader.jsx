@@ -6,7 +6,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getExplorerBaseUrl } from 'config/explorerLinks';
 import { injectedConnector } from 'connectors/injectedConnector';
-import { useThemeMode } from 'providers/ThemeModeProvider';
 import { formatCompactAddress } from 'utils/bridgeUi';
 import {
   HOME_INFO_HASH,
@@ -17,6 +16,15 @@ import {
   getHomeStep,
   scrollToHomeSection
 } from 'utils/homeNavigation';
+import {
+  REFUND_ADDRESS_STATE_EVENT,
+  REFUND_ADDRESS_STATUS_FAILED,
+  REFUND_ADDRESS_STATUS_REQUIRED,
+  getCachedRefundAddress,
+  getRefundAddressSignatureStatus,
+  requestAndCacheRefundAddressData,
+  setRefundAddressSignatureStatus
+} from 'utils/refundAddress';
 import {
   clearInjectedWalletAutoConnectSuppression,
   suppressInjectedWalletAutoConnect
@@ -82,25 +90,14 @@ const MenuIcon = () => (
   </svg>
 );
 
-const SunIcon = () => (
-  <svg aria-hidden="true" fill="none" height="16" viewBox="0 0 24 24" width="16">
-    <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
+const AlertIcon = () => (
+  <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 24 24" width="14">
     <path
-      d="M12 2.75v2.5M12 18.75v2.5M4.75 12h-2.5M21.75 12h-2.5M5.76 5.76L4 4M20 20l-1.76-1.76M18.24 5.76L20 4M4 20l1.76-1.76"
+      d="M12 8v5m0 4h.01M10.3 3.9L2.8 17.2A2 2 0 004.5 20h15a2 2 0 001.7-2.8L13.7 3.9a2 2 0 00-3.4 0z"
       stroke="currentColor"
       strokeLinecap="round"
-      strokeWidth="1.8"
-    />
-  </svg>
-);
-
-const MoonIcon = () => (
-  <svg aria-hidden="true" fill="none" height="16" viewBox="0 0 24 24" width="16">
-    <path
-      d="M20.2 14.37A8.75 8.75 0 019.63 3.8a8.75 8.75 0 1010.57 10.57z"
-      stroke="currentColor"
       strokeLinejoin="round"
-      strokeWidth="1.8"
+      strokeWidth="2"
     />
   </svg>
 );
@@ -115,8 +112,10 @@ const WALLET_OPTIONS = [
 
 const SiteHeader = () => {
   const [copied, setCopied] = useState(false);
+  const [isRetryingRefundSignature, setIsRetryingRefundSignature] = useState(false);
   const [isScrolled, setIsScrolled] = useState(() => (typeof window !== 'undefined' ? window.scrollY > 0 : false));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [refundSignatureStatus, setRefundSignatureStatus] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
   const headerRef = useRef(null);
@@ -124,7 +123,6 @@ const SiteHeader = () => {
   const navigate = useNavigate();
   const { account, activate, deactivate, error } = useWeb3React();
   const { addToast } = useToast();
-  const { isDarkMode, toggleMode } = useThemeMode();
 
   useEffect(() => {
     if (error instanceof NoEthereumProviderError) {
@@ -204,6 +202,32 @@ const SiteHeader = () => {
   const isReviewRequested = homeStep === HOME_REVIEW_STEP;
   const bridgeHref = useMemo(() => buildHomeHref(), []);
   const infoHref = useMemo(() => buildHomeHref({ hash: HOME_INFO_HASH }), []);
+  const needsRefundSignatureAction = Boolean(
+    account
+    && !getCachedRefundAddress(account)
+    && [REFUND_ADDRESS_STATUS_FAILED, REFUND_ADDRESS_STATUS_REQUIRED].includes(refundSignatureStatus)
+  );
+
+  useEffect(() => {
+    const refreshRefundSignatureStatus = () => {
+      if (!account || getCachedRefundAddress(account)) {
+        setRefundSignatureStatus('');
+        setIsRetryingRefundSignature(false);
+        return;
+      }
+
+      setRefundSignatureStatus(getRefundAddressSignatureStatus(account));
+    };
+
+    refreshRefundSignatureStatus();
+    window.addEventListener(REFUND_ADDRESS_STATE_EVENT, refreshRefundSignatureStatus);
+    window.addEventListener('storage', refreshRefundSignatureStatus);
+
+    return () => {
+      window.removeEventListener(REFUND_ADDRESS_STATE_EVENT, refreshRefundSignatureStatus);
+      window.removeEventListener('storage', refreshRefundSignatureStatus);
+    };
+  }, [account]);
 
   const handleConfirmWallet = async () => {
     try {
@@ -237,6 +261,29 @@ const SiteHeader = () => {
 
     window.open(`${getExplorerBaseUrl()}/address/${account}`, '_blank', 'noopener,noreferrer');
     setShowDropdown(false);
+  };
+
+  const handleRetryRefundSigning = async () => {
+    if (!account) {
+      return;
+    }
+
+    setIsRetryingRefundSignature(true);
+
+    try {
+      await requestAndCacheRefundAddressData(account);
+      setRefundSignatureStatus('');
+      addToast({ type: 'success', description: 'Public key signature confirmed.' });
+    } catch (signingError) {
+      setRefundAddressSignatureStatus(account, REFUND_ADDRESS_STATUS_FAILED);
+      setRefundSignatureStatus(REFUND_ADDRESS_STATUS_FAILED);
+      addToast({
+        type: 'error',
+        description: signingError.message || 'Public key signature was not completed.'
+      });
+    } finally {
+      setIsRetryingRefundSignature(false);
+    }
   };
 
   const handleBridgeClick = (event) => {
@@ -324,16 +371,6 @@ const SiteHeader = () => {
         </div>
 
         <div className={styles.headerRight}>
-          <button
-            aria-label={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}
-            className={styles.themeToggle}
-            onClick={toggleMode}
-            title={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}
-            type="button"
-          >
-            {isDarkMode ? <SunIcon /> : <MoonIcon />}
-          </button>
-
           <div className={styles.walletGroup} ref={dropdownRef}>
             {!account ? (
               <>
@@ -373,6 +410,16 @@ const SiteHeader = () => {
                   type="button"
                 >
                   <span className={styles.connectedLabel}>{walletLabel}</span>
+                  {needsRefundSignatureAction ? (
+                    <span
+                      aria-label="Public key signature required"
+                      className={styles.connectedAlertIcon}
+                      role="img"
+                      title="Public key signature required"
+                    >
+                      <AlertIcon />
+                    </span>
+                  ) : null}
                 </button>
 
                 {showDropdown ? (
@@ -392,6 +439,22 @@ const SiteHeader = () => {
                         </button>
                       </div>
                     </div>
+
+                    {needsRefundSignatureAction ? (
+                      <div className={styles.walletNotice} role="alert">
+                        <div className={styles.walletNoticeHeader}>
+                          <span>Public key signature needed</span>
+                        </div>
+                        <button
+                          className={styles.walletNoticeAction}
+                          disabled={isRetryingRefundSignature}
+                          onClick={handleRetryRefundSigning}
+                          type="button"
+                        >
+                          {isRetryingRefundSignature ? 'Waiting for signature...' : 'Retry signing'}
+                        </button>
+                      </div>
+                    ) : null}
 
                     <div className={styles.dropdownActions}>
                       <button className={styles.dropdownAction} onClick={handleOpenExplorer} type="button">

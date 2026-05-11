@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useWeb3React } from '@web3-react/core';
 import {
   RouterProvider,
@@ -8,6 +8,11 @@ import {
   useLocation
 } from 'react-router-dom';
 
+import {
+  REFUND_ADDRESS_STATUS_FAILED,
+  requestAndCacheRefundAddressData,
+  setRefundAddressSignatureStatus
+} from 'utils/refundAddress';
 import { INJECTED_WALLET_AUTO_CONNECT_DISABLED_KEY } from 'utils/walletConnection';
 
 import SiteHeader from './SiteHeader';
@@ -57,6 +62,15 @@ jest.mock('config/explorerLinks', () => ({
 jest.mock('connectors/injectedConnector', () => ({
   injectedConnector: { id: 'injected' }
 }));
+
+jest.mock('utils/refundAddress', () => {
+  const actual = jest.requireActual('utils/refundAddress');
+
+  return {
+    ...actual,
+    requestAndCacheRefundAddressData: jest.fn()
+  };
+});
 
 const mockAddToast = jest.fn();
 
@@ -263,6 +277,40 @@ describe('SiteHeader wallet interactions', () => {
 
     expect(deactivate).toHaveBeenCalledTimes(1);
     expect(window.localStorage.getItem(INJECTED_WALLET_AUTO_CONNECT_DISABLED_KEY)).toBe('true');
+  });
+
+  test('shows a public key signing alert on the wallet button and retries from the menu', async () => {
+    const account = '0x1234567890123456789012345678901234567890';
+
+    requestAndCacheRefundAddressData.mockResolvedValue({
+      publicKey: `0x04${'11'.repeat(64)}`,
+      refundAddress: 'RPublicKeyAddress'
+    });
+    useWeb3React.mockReturnValue({
+      account,
+      activate: jest.fn(),
+      deactivate: jest.fn(),
+      error: null
+    });
+
+    renderHeader();
+    act(() => {
+      setRefundAddressSignatureStatus(account, REFUND_ADDRESS_STATUS_FAILED);
+    });
+
+    expect(await screen.findByRole('img', { name: /public key signature required/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /0x1234/i }));
+    fireEvent.click(screen.getByRole('button', { name: /retry signing/i }));
+
+    await waitFor(() => {
+      expect(requestAndCacheRefundAddressData).toHaveBeenCalledWith(account);
+    });
+
+    expect(mockAddToast).toHaveBeenCalledWith({
+      type: 'success',
+      description: 'Public key signature confirmed.'
+    });
   });
 
   test('shows only supported wallet choices in the header menu before connecting', () => {

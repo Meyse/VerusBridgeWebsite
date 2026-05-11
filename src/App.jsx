@@ -233,8 +233,8 @@ const router = createBrowserRouter([
 ]);
 
 function App() {
-  const { mode } = useThemeMode();
-  const theme = useMemo(() => buildTheme(mode), [mode]);
+  const { resolvedMode } = useThemeMode();
+  const theme = useMemo(() => buildTheme(resolvedMode), [resolvedMode]);
 
   return (
     <ThemeProvider theme={theme}>

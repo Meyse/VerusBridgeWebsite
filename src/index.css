@@ -41,7 +41,7 @@
   --theme-input-valid-bg: #edf9f1;
   --theme-input-invalid-bg: #fef2f2;
   --theme-backdrop: rgba(15, 23, 42, 0.38);
-  --theme-card-shadow: 0 20px 40px rgba(226, 232, 240, 0.88);
+  --theme-card-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
   --theme-elevated-shadow: 0 24px 56px rgba(15, 23, 42, 0.14);
   --theme-focus-ring: 0 0 0 3px rgba(49, 101, 212, 0.12);
   --theme-hero-glow-main: transparent;

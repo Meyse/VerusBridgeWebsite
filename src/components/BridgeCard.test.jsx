@@ -69,6 +69,7 @@ const createController = (overrides = {}) => ({
   closeReview: jest.fn(),
   hasEnoughNativeEth: true,
   isReviewing: false,
+  isRefundSignaturePending: false,
   isTxPending: false,
   nativeEthBalance: 0,
   openReview: jest.fn(),
@@ -625,6 +626,24 @@ describe('BridgeCard currency selectors', () => {
     expect(screen.getByText(/bounceback warning:/i)).toBeInTheDocument();
     expect(screen.getByText(/below the current spot value/i)).toBeInTheDocument();
     expect(screen.getByText(/use caution before confirming/i)).toBeInTheDocument();
+  });
+
+  test('shows a spinner on the review confirmation button while submitting', () => {
+    render(
+      <BridgeCard
+        controller={createController({
+          canConfirmReview: false,
+          isReviewing: true,
+          isTxPending: true,
+          reviewConfirmLabel: 'Submitting...',
+          selectedDestination: { value: 'swaptoETH' }
+        })}
+      />
+    );
+
+    const submitButton = screen.getByRole('button', { name: /submitting/i });
+    expect(within(submitButton).getByText(/submitting/i)).toBeInTheDocument();
+    expect(submitButton.querySelector(`.${styles.buttonSpinner}`)).toBeInTheDocument();
   });
 
   test('closes the send currency picker when the user clicks outside it', () => {

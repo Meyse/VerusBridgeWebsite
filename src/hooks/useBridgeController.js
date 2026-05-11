@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useWeb3React } from '@web3-react/core';
 import { utils } from 'ethers';
@@ -34,8 +34,13 @@ import {
   supportsOnlyDirectVerusDestination
 } from 'utils/options';
 import {
-  REFUND_ADDRESS_STORAGE_KEY,
-  requestRefundAddressData
+  REFUND_ADDRESS_STATE_EVENT,
+  REFUND_ADDRESS_STATUS_FAILED,
+  REFUND_ADDRESS_STATUS_REQUIRED,
+  getCachedRefundAddress,
+  getStoredRefundAddresses,
+  requestAndCacheRefundAddressData,
+  setRefundAddressSignatureStatus
 } from 'utils/refundAddress';
 import { coinsToSats, isETHAddress, uint64ToVerusFloat, validateAddress } from 'utils/rules';
 import { getConfigOptions } from 'utils/txConfig';
@@ -43,6 +48,8 @@ import { getConfigOptions } from 'utils/txConfig';
 const maxGas = 1000000;
 const maxGas2 = 100000;
 const BRIDGE_STATUS_POLL_INTERVAL_MS = 60_000;
+const BRIDGE_STATUS_RETRY_INTERVAL_MS = 5_000;
+const BRIDGE_STATUS_RPC_TIMEOUT_MS = 8_000;
 const INTERNAL_PRICE_POLL_INTERVAL_MS = 60_000;
 const ESTIMATED_VERUS_BLOCK_TIME_SECONDS = 60;
 const FLAG_DEST_GATEWAY = 128;
@@ -68,6 +75,7 @@ const SEND_AMOUNT_PRESET_FRACTIONS = [
 ];
 const BOUNCEBACK_ROUTE_TIME_ESTIMATE = '2-10 hours';
 const DIRECT_ROUTE_TIME_ESTIMATE = '1-6 hours';
+const REFUND_SIGNATURE_ALERT_CODE = 'refund-signature-required';
 const STATIC_USD_PRICE_BY_SYMBOL = {
   DAI: 1,
   USDC: 1,
@@ -129,6 +137,32 @@ const getBlockTime = async (height) => {
   }
 
   return toFiniteNumber(blockInfo.time);
+};
+
+const loadBridgeStatusValue = async (loadValue, timeoutIds) => {
+  let timeoutId = null;
+
+  const timeoutPromise = new Promise((resolve) => {
+    timeoutId = window.setTimeout(() => {
+      timeoutIds.delete(timeoutId);
+      resolve({ status: 'timed-out' });
+    }, BRIDGE_STATUS_RPC_TIMEOUT_MS);
+    timeoutIds.add(timeoutId);
+  });
+
+  const valuePromise = Promise.resolve()
+    .then(loadValue)
+    .then((value) => ({ status: 'fulfilled', value }))
+    .catch((reason) => ({ status: 'rejected', reason }));
+
+  const result = await Promise.race([valuePromise, timeoutPromise]);
+
+  if (timeoutId !== null) {
+    window.clearTimeout(timeoutId);
+    timeoutIds.delete(timeoutId);
+  }
+
+  return result;
 };
 
 const formatQuotedAmount = (value) => {
@@ -667,6 +701,12 @@ const getReviewBouncebackWarningMessage = (destination) => (
     : ''
 );
 
+const routeNeedsRefundAddressSignature = ({ address, destination }) => (
+  Boolean(isETHAddress(address) && isBouncebackDestination(destination))
+);
+
+const getRefundSignatureAccountKey = (account) => (account || '').toLowerCase();
+
 const getGasEstimate = async (library) => {
   const latestBlock = await library.getBlockNumber();
   let block = await library.getBlock(latestBlock - 10);
@@ -932,6 +972,7 @@ export default function useBridgeController({
   const [gasPrice, setGasPrice] = useState(null);
   const [internalPricingSnapshot, setInternalPricingSnapshot] = useState(() => createInternalPricingSnapshot());
   const [isSourceCatalogLoading, setIsSourceCatalogLoading] = useState(true);
+  const [refundSignaturePendingAccount, setRefundSignaturePendingAccount] = useState('');
   const [isTxPending, setIsTxPending] = useState(false);
   const [isWalletBalancesLoading, setIsWalletBalancesLoading] = useState(false);
   const [natiCurrencyId, setNatiCurrencyId] = useState(null);
@@ -997,6 +1038,11 @@ export default function useBridgeController({
     destination || '',
     selectedToken?.value || ''
   ].join('|'), [account, address, amount, destination, selectedToken]);
+  const editSignatureRef = useRef(editSignature);
+
+  useEffect(() => {
+    editSignatureRef.current = editSignature;
+  }, [editSignature]);
 
   const tokenBalance = useMemo(() => {
     if (!account || !selectedToken) {
@@ -1499,15 +1545,17 @@ export default function useBridgeController({
 
   useEffect(() => {
     let ignore = false;
+    const timeoutIds = new Set();
+    let retryTimeoutId = null;
 
     const loadBridgeStatus = async () => {
-      if (!delegatorContract) {
+      if (ignore || !delegatorContract) {
         return;
       }
 
-      const [forksResult, chainInfoResult] = await Promise.allSettled([
-        delegatorContract.callStatic.bestForks(0),
-        verusd.getInfo()
+      const [forksResult, chainInfoResult] = await Promise.all([
+        loadBridgeStatusValue(() => delegatorContract.callStatic.bestForks(0), timeoutIds),
+        loadBridgeStatusValue(() => verusd.getInfo(), timeoutIds)
       ]);
 
       const nextVerusChainHeight = forksResult.status === 'fulfilled'
@@ -1526,13 +1574,13 @@ export default function useBridgeController({
       let nextLagSeconds = null;
 
       if (nextVerusChainHeight > 1 && Number.isFinite(tipTime)) {
-        try {
-          const blockTime = await getBlockTime(nextVerusChainHeight);
-          if (Number.isFinite(blockTime)) {
-            nextLagSeconds = Math.max(0, tipTime - blockTime);
-          }
-        } catch (error) {
-          nextLagSeconds = null;
+        const blockTimeResult = await loadBridgeStatusValue(
+          () => getBlockTime(nextVerusChainHeight),
+          timeoutIds
+        );
+
+        if (blockTimeResult.status === 'fulfilled' && Number.isFinite(blockTimeResult.value)) {
+          nextLagSeconds = Math.max(0, tipTime - blockTimeResult.value);
         }
       }
 
@@ -1541,10 +1589,29 @@ export default function useBridgeController({
       }
 
       if (!ignore) {
-        setVerusChainHeight(nextVerusChainHeight);
-        setVerusTipHeight(nextVerusTipHeight);
-        setNotarizationLagBlocks(nextLagBlocks);
-        setNotarizationLagSeconds(nextLagSeconds);
+        const hasNextVerusChainHeight = nextVerusChainHeight > 1;
+        const hasNextVerusTipHeight = Number.isFinite(nextVerusTipHeight);
+        const hasNextLagBlocks = Number.isFinite(nextLagBlocks);
+        const hasNextLagSeconds = Number.isFinite(nextLagSeconds);
+
+        setVerusChainHeight(hasNextVerusChainHeight ? nextVerusChainHeight : null);
+        setVerusTipHeight(hasNextVerusTipHeight ? nextVerusTipHeight : null);
+        setNotarizationLagBlocks(hasNextLagBlocks ? nextLagBlocks : null);
+        setNotarizationLagSeconds(hasNextLagSeconds ? nextLagSeconds : null);
+
+        if (hasNextVerusChainHeight && hasNextLagSeconds) {
+          if (retryTimeoutId !== null) {
+            window.clearTimeout(retryTimeoutId);
+            retryTimeoutId = null;
+          }
+        } else if (retryTimeoutId === null) {
+          retryTimeoutId = window.setTimeout(() => {
+            retryTimeoutId = null;
+            if (!ignore) {
+              loadBridgeStatus();
+            }
+          }, BRIDGE_STATUS_RETRY_INTERVAL_MS);
+        }
       }
     };
 
@@ -1554,6 +1621,11 @@ export default function useBridgeController({
     return () => {
       ignore = true;
       window.clearInterval(intervalId);
+      if (retryTimeoutId !== null) {
+        window.clearTimeout(retryTimeoutId);
+      }
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      timeoutIds.clear();
     };
   }, [delegatorContract]);
 
@@ -1790,43 +1862,83 @@ export default function useBridgeController({
   }, [account, library, tokenOptions]);
 
   useEffect(() => {
-    let ignore = false;
+    const syncRefundAddress = () => {
+      const cachedItems = getStoredRefundAddresses();
+      setPubkey(cachedItems);
 
-    const loadRefundAddress = async () => {
-      if (!account || !window.ethereum) {
-        return;
-      }
-
-      const cachedItems = JSON.parse(localStorage.getItem(REFUND_ADDRESS_STORAGE_KEY) || '{}');
-      if (cachedItems[account]) {
-        setPubkey(cachedItems);
-        return;
-      }
-
-      try {
-        const { refundAddress } = await requestRefundAddressData(account);
-        const nextItems = { ...cachedItems, [account]: refundAddress };
-
-        localStorage.setItem(REFUND_ADDRESS_STORAGE_KEY, JSON.stringify(nextItems));
-        if (!ignore) {
-          setPubkey(nextItems);
-        }
-      } catch (error) {
-        if (!ignore) {
-          setAlert({
-            severity: 'warning',
-            message: `Error with public key: ${error.message}`
-          });
-        }
+      if (account && getCachedRefundAddress(account, cachedItems)) {
+        setAlert((currentAlert) => (
+          currentAlert?.code === REFUND_SIGNATURE_ALERT_CODE ? null : currentAlert
+        ));
       }
     };
 
-    loadRefundAddress();
+    syncRefundAddress();
+    window.addEventListener(REFUND_ADDRESS_STATE_EVENT, syncRefundAddress);
 
     return () => {
-      ignore = true;
+      window.removeEventListener(REFUND_ADDRESS_STATE_EVENT, syncRefundAddress);
     };
   }, [account]);
+
+  const refundAddress = useMemo(
+    () => getCachedRefundAddress(account, pubkey),
+    [account, pubkey]
+  );
+  const needsRefundAddressSignature = useMemo(
+    () => routeNeedsRefundAddressSignature({ address, destination }),
+    [address, destination]
+  );
+  const isRefundSignaturePending = useMemo(() => (
+    Boolean(
+      needsRefundAddressSignature
+      && account
+      && refundSignaturePendingAccount === getRefundSignatureAccountKey(account)
+    )
+  ), [account, needsRefundAddressSignature, refundSignaturePendingAccount]);
+
+  const ensureRefundAddressSignature = useCallback(async () => {
+    const cachedRefundAddress = getCachedRefundAddress(account);
+    const pendingAccountKey = getRefundSignatureAccountKey(account);
+
+    if (!needsRefundAddressSignature || refundAddress || cachedRefundAddress) {
+      if (cachedRefundAddress && !refundAddress) {
+        setPubkey(getStoredRefundAddresses());
+      }
+
+      return true;
+    }
+
+    setRefundAddressSignatureStatus(account, REFUND_ADDRESS_STATUS_REQUIRED);
+    setRefundSignaturePendingAccount(pendingAccountKey);
+
+    try {
+      const nextDetails = await requestAndCacheRefundAddressData(account);
+
+      setPubkey((currentItems) => ({
+        ...currentItems,
+        [account]: nextDetails.refundAddress
+      }));
+      setAlert((currentAlert) => (
+        currentAlert?.code === REFUND_SIGNATURE_ALERT_CODE ? null : currentAlert
+      ));
+
+      return true;
+    } catch (error) {
+      setRefundAddressSignatureStatus(account, REFUND_ADDRESS_STATUS_FAILED);
+      setAlert({
+        code: REFUND_SIGNATURE_ALERT_CODE,
+        severity: 'warning',
+        message: 'Public key signature is required for bounceback refunds. Retry signing from the wallet menu, or click Review again.'
+      });
+
+      return false;
+    } finally {
+      setRefundSignaturePendingAccount((currentAccountKey) => (
+        currentAccountKey === pendingAccountKey ? '' : currentAccountKey
+      ));
+    }
+  }, [account, needsRefundAddressSignature, refundAddress]);
 
   const reviewRouteLabel = useMemo(() => getRouteLabel(destination), [destination]);
   const reviewTimeEstimate = getRouteTimeEstimate(destination);
@@ -1947,6 +2059,14 @@ export default function useBridgeController({
   };
 
   const handleSubmit = async () => {
+    if (isReviewing && reviewSnapshot?.editSignature !== editSignature) {
+      setReviewSnapshot(null);
+      if (typeof exitReview === 'function') {
+        exitReview({ hash: '' });
+      }
+      return;
+    }
+
     if (!(await validateTransferInputs())) {
       return;
     }
@@ -1967,6 +2087,13 @@ export default function useBridgeController({
       return;
     }
 
+    if (!(await ensureRefundAddressSignature())) {
+      return;
+    }
+
+    const currentReviewSnapshot = reviewSnapshot?.editSignature === editSignature ? reviewSnapshot : null;
+    const transferRefundAddress = currentReviewSnapshot?.refundAddress || getCachedRefundAddress(account) || refundAddress;
+
     setAlert(null);
     setIsTxPending(true);
 
@@ -1982,7 +2109,7 @@ export default function useBridgeController({
         poolAvailable,
         token: selectedToken,
         GASPrice: gasPrice,
-        auxDest: pubkey[account]
+        auxDest: transferRefundAddress
       });
 
       if (!result) {
@@ -2006,7 +2133,7 @@ export default function useBridgeController({
       let metaMaskFee = new web3.utils.BN(web3.utils.toWei(ETH_FEES.ETH, 'ether'));
       if (hasGatewayFlag(destinationtype)) {
         metaMaskFee = metaMaskFee.add(new web3.utils.BN(gasPrice.WEICOST));
-        if (!pubkey[account]) {
+        if (!transferRefundAddress) {
           throw new Error('No refund address is available for this wallet.');
         }
       }
@@ -2137,6 +2264,8 @@ export default function useBridgeController({
   }, [clearReview, editSignature, isReviewRequested, reviewSnapshot, submitDisabledReason]);
 
   const openReview = useCallback(async () => {
+    const requestedEditSignature = editSignature;
+
     if (!(await validateTransferInputs())) {
       return;
     }
@@ -2153,8 +2282,17 @@ export default function useBridgeController({
       return;
     }
 
+    if (!(await ensureRefundAddressSignature())) {
+      return;
+    }
+
+    if (editSignatureRef.current !== requestedEditSignature) {
+      return;
+    }
+
     const nextReviewSnapshot = {
-      editSignature,
+      editSignature: requestedEditSignature,
+      refundAddress: needsRefundAddressSignature ? getCachedRefundAddress(account) || refundAddress : '',
       receiveAmountDisplay,
       receiveFiatLabel
     };
@@ -2181,9 +2319,12 @@ export default function useBridgeController({
     editSignature,
     gasPrice,
     hasFreshReceiveQuote,
+    ensureRefundAddressSignature,
+    needsRefundAddressSignature,
     library,
     receiveAmountDisplay,
     receiveFiatLabel,
+    refundAddress,
     enterReview,
     requiresLiveGasEstimate,
     requiresReceiveQuote,
@@ -2195,6 +2336,7 @@ export default function useBridgeController({
     isReviewing
     && !submitDisabledReason
     && hasEnoughNativeEth
+    && !isRefundSignaturePending
     && !isTxPending
   );
 
@@ -2225,7 +2367,7 @@ export default function useBridgeController({
     baseBridgeFeeDisplay: formatFeeEstimate('', gasPrice),
     bounceBackFeeDisplay: formatFeeEstimate('swaptoETH', gasPrice),
     bounceBackFeeValue: getFeeEstimateValue('swaptoETH', gasPrice),
-    canSubmit: !submitDisabledReason && !isTxPending,
+    canSubmit: !submitDisabledReason && !isRefundSignaturePending && !isTxPending,
     canConfirmReview,
     closeReview,
     conversionWarningGapPercent: conversionWarning.conversionWarningGapPercent,
@@ -2247,6 +2389,7 @@ export default function useBridgeController({
     handleSubmit,
     hasReviewSnapshot,
     hasEnoughNativeEth,
+    isRefundSignaturePending,
     isReviewing,
     isSourceCatalogLoading,
     isSourceCurrenciesLoading: isWalletBalancesLoading,

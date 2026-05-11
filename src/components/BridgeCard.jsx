@@ -115,6 +115,10 @@ const SearchIcon = () => (
   </svg>
 );
 
+const ButtonSpinner = () => (
+  <span aria-hidden="true" className={styles.buttonSpinner} />
+);
+
 const createPopoverId = (prefix) => `${prefix}-popover-${Math.random().toString(36).slice(2, 10)}`;
 
 const ActivityPopover = ({ ariaLabel, className, id, lines }) => (
@@ -887,22 +891,42 @@ const BridgeCard = ({ controller }) => {
     if (isAwaitingReceiveQuote) {
       return {
         disabled: true,
+        isLoading: true,
         label: 'Estimating...'
+      };
+    }
+
+    if (controller.submitDisabledReason === 'Awaiting network fee estimate') {
+      return {
+        disabled: true,
+        isLoading: true,
+        label: 'Loading fees'
+      };
+    }
+
+    if (controller.isRefundSignaturePending) {
+      return {
+        disabled: true,
+        isLoading: true,
+        label: 'Waiting for signature'
       };
     }
 
     return {
       disabled: !controller.canSubmit || controller.isTxPending,
+      isLoading: controller.isTxPending,
       label: controller.isTxPending ? 'Submitting...' : 'Review'
     };
   }, [
     controller.canSubmit,
     controller.hasFreshReceiveQuote,
+    controller.isRefundSignaturePending,
     controller.isTxPending,
     controller.isWalletConnected,
     controller.requiresReceiveQuote,
     controller.selectedDestination,
     controller.selectedToken,
+    controller.submitDisabledReason,
     hasPositiveAmount,
     isAwaitingReceiveQuote,
     isInsufficientBalance
@@ -1041,7 +1065,8 @@ const BridgeCard = ({ controller }) => {
               disabled={!controller.canConfirmReview}
               type="submit"
             >
-              {controller.reviewConfirmLabel || 'Confirm'}
+              {controller.isTxPending ? <ButtonSpinner /> : null}
+              <span>{controller.reviewConfirmLabel || 'Confirm'}</span>
             </button>
           </>
         ) : (
@@ -1254,7 +1279,8 @@ const BridgeCard = ({ controller }) => {
               disabled={submitState.disabled}
               type="submit"
             >
-              {submitState.label}
+              {submitState.isLoading ? <ButtonSpinner /> : null}
+              <span>{submitState.label}</span>
             </button>
           </>
         )}

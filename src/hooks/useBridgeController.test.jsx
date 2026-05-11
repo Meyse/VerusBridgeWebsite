@@ -1,13 +1,24 @@
 import React from 'react';
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useWeb3React } from '@web3-react/core';
-import { utils } from 'ethers';
+import { Wallet, utils } from 'ethers';
 
 import { useToast } from 'components/Toast/ToastProvider';
-import { BLOCKCHAIN_NAME, GLOBAL_ADDRESS, GLOBAL_IADDRESS } from 'constants/contractAddress';
+import {
+  BLOCKCHAIN_NAME,
+  GLOBAL_ADDRESS,
+  GLOBAL_IADDRESS,
+  HEIGHT_LOCATION_IN_FORKS
+} from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
+import bitGoUTXO from 'utils/bitUTXO';
 import { getContract, getMaxAmount } from 'utils/contract';
+import { convertVerusAddressToEthAddress } from 'utils/convert';
+import {
+  REFUND_ADDRESS_SIGNATURE_STATUS_KEY,
+  REFUND_ADDRESS_STORAGE_KEY
+} from 'utils/refundAddress';
 
 const mockVerusd = {
   estimateConversion: jest.fn(),
@@ -46,6 +57,8 @@ const SCRVUSD_ADDRESS = '0x1111111111111111111111111111111111111111';
 const USDT_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
 const TBTC_ADDRESS = '0x18084fbA666A33d37592fA2633fD49A74dD93a88';
 const originalFetch = global.fetch;
+const REFUND_ADDRESS_MESSAGE = 'Agreeing to this will create a public key address for Verus Refunds.';
+const VALID_REFUND_ADDRESS = bitGoUTXO.address.toBase58Check(Buffer.alloc(20, 1), 60);
 
 const liveEthToken = {
   name: 'vETH',
@@ -171,15 +184,20 @@ const createLibrary = (overrides = {}) => ({
   ...overrides
 });
 
-const createDelegatorContract = (overrides = {}) => ({
-  callStatic: {
-    bestForks: jest.fn(() => new Promise(() => {})),
-    bridgeConverterActive: jest.fn().mockResolvedValue(true),
-    getTokenList: jest.fn().mockResolvedValue([liveEthToken, daiToken]),
-    verusToERC20mapping: jest.fn().mockResolvedValue({ flags: '1' }),
-    ...overrides.callStatic
-  }
-});
+const createDelegatorContract = (overrides = {}) => {
+  const { callStatic: callStaticOverrides = {}, ...contractOverrides } = overrides;
+
+  return {
+    callStatic: {
+      bestForks: jest.fn(() => new Promise(() => {})),
+      bridgeConverterActive: jest.fn().mockResolvedValue(true),
+      getTokenList: jest.fn().mockResolvedValue([liveEthToken, daiToken]),
+      verusToERC20mapping: jest.fn().mockResolvedValue({ flags: '1' }),
+      ...callStaticOverrides
+    },
+    ...contractOverrides
+  };
+};
 
 const createDeferred = () => {
   let resolve;
@@ -194,6 +212,26 @@ const createDeferred = () => {
 };
 
 const readJsonTestId = (testId) => JSON.parse(screen.getByTestId(testId).textContent || '{}');
+const createBestForksData = (height) => (
+  `${'0'.repeat(HEIGHT_LOCATION_IN_FORKS)}${height.toString(16).padStart(8, '0')}`
+);
+
+const cacheRefundAddress = (account = '0xabc') => {
+  window.localStorage.setItem(REFUND_ADDRESS_STORAGE_KEY, JSON.stringify({
+    [account]: VALID_REFUND_ADDRESS
+  }));
+};
+
+const getRefundAddressFromSignature = (signature) => {
+  const messageHash = utils.hashMessage(REFUND_ADDRESS_MESSAGE);
+  const publicKey = utils.recoverPublicKey(utils.arrayify(messageHash), signature);
+  const compressedPublicKey = utils.computePublicKey(publicKey, true);
+
+  return bitGoUTXO.address.toBase58Check(
+    bitGoUTXO.crypto.hash160(Buffer.from(compressedPublicKey.slice(2), 'hex')),
+    60
+  );
+};
 
 const HookProbe = ({ controllerOptions = {} }) => {
   const controller = useBridgeController(controllerOptions);
@@ -206,6 +244,7 @@ const HookProbe = ({ controllerOptions = {} }) => {
       <div data-testid="selected-value">{controller.selectedToken?.value || ''}</div>
       <div data-testid="allows-ethereum-destination">{controller.allowsEthereumDestination ? 'yes' : 'no'}</div>
       <div data-testid="address-hint">{controller.addressHint || ''}</div>
+      <div data-testid="alert-message">{controller.alert?.message || ''}</div>
       <div data-testid="destination-count">{controller.destinationOptions.length}</div>
       <div data-testid="source-count">{controller.sourceCurrencies.length}</div>
       <div data-testid="source-symbols">{controller.sourceCurrencies.map((currency) => currency.symbol).join(',')}</div>
@@ -226,7 +265,10 @@ const HookProbe = ({ controllerOptions = {} }) => {
       <div data-testid="price-source-map">{JSON.stringify(controller.priceSourceBySymbol || {})}</div>
       <div data-testid="usd-price-map">{JSON.stringify(controller.usdPriceBySymbol || {})}</div>
       <div data-testid="has-fresh-receive-quote">{controller.hasFreshReceiveQuote ? 'yes' : 'no'}</div>
+      <div data-testid="has-review-snapshot">{controller.hasReviewSnapshot ? 'yes' : 'no'}</div>
+      <div data-testid="can-submit">{controller.canSubmit ? 'yes' : 'no'}</div>
       <div data-testid="submit-disabled-reason">{controller.submitDisabledReason || ''}</div>
+      <div data-testid="refund-signature-pending">{controller.isRefundSignaturePending ? 'yes' : 'no'}</div>
       <div data-testid="is-reviewing">{controller.isReviewing ? 'yes' : 'no'}</div>
       <div data-testid="review-confirm-label">{controller.reviewConfirmLabel || ''}</div>
       <div data-testid="can-confirm-review">{controller.canConfirmReview ? 'yes' : 'no'}</div>
@@ -236,6 +278,9 @@ const HookProbe = ({ controllerOptions = {} }) => {
       <div data-testid="review-fees">{(controller.reviewFeeRows || []).map((row) => `${row.label}:${row.value}`).join('|')}</div>
       <div data-testid="base-fee">{controller.baseBridgeFeeValue ?? ''}</div>
       <div data-testid="bounceback-fee">{controller.bounceBackFeeValue ?? ''}</div>
+      <div data-testid="notarization-height">{controller.verusChainHeight ?? ''}</div>
+      <div data-testid="notarization-lag-seconds">{controller.notarizationLagSeconds ?? ''}</div>
+      <div data-testid="verus-tip-height">{controller.verusTipHeight ?? ''}</div>
       <div data-testid="token-balance-label">{controller.tokenBalanceLabel || ''}</div>
       <button
         onClick={() => {
@@ -278,6 +323,17 @@ const HookProbe = ({ controllerOptions = {} }) => {
         type="button"
       >
         Configure Swap
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(ETH_ADDRESS);
+          controller.selectDestination('swaptoDAI');
+          controller.setAddress('0x1111111111111111111111111111111111111111');
+          controller.setAmount('1');
+        }}
+        type="button"
+      >
+        Configure ETH Swap DAI
       </button>
       <button
         onClick={() => {
@@ -407,6 +463,7 @@ const HookProbe = ({ controllerOptions = {} }) => {
       </button>
       <button onClick={() => controller.handleMaxAmount()} type="button">Trigger Max</button>
       <button onClick={() => controller.openReview()} type="button">Open Review</button>
+      <button onClick={() => controller.handleSubmit()} type="button">Submit Transfer</button>
       <button onClick={() => controller.closeReview()} type="button">Close Review</button>
     </div>
   );
@@ -415,6 +472,8 @@ const HookProbe = ({ controllerOptions = {} }) => {
 describe('useBridgeController disconnected source bootstrap', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    window.localStorage.clear();
+    delete window.ethereum;
 
     global.fetch = jest.fn(() => new Promise(() => {}));
     useToast.mockReturnValue({ addToast: jest.fn() });
@@ -847,6 +906,53 @@ describe('useBridgeController disconnected source bootstrap', () => {
     expect(priceSourceMap.SCRVUSD).toBe('Floralis');
     expect(priceSourceMap.TBTC).toBe('Floralis');
     expect(screen.getByTestId('eth-usd-price')).toHaveTextContent('1000');
+  });
+
+  test('falls back to block distance when exact notarization block time never responds', async () => {
+    jest.useFakeTimers();
+    let unmount = () => {};
+
+    try {
+      const library = createLibrary();
+      const delegatorContract = createDelegatorContract({
+        callStatic: {
+          bestForks: jest.fn().mockResolvedValue(createBestForksData(98))
+        }
+      });
+
+      mockVerusd.getBlock.mockReturnValue(new Promise(() => {}));
+      mockVerusd.getInfo.mockResolvedValue({
+        result: {
+          longestchain: 100,
+          tiptime: 1000
+        }
+      });
+
+      useWeb3React.mockReturnValue({ account: null, library });
+      useContract.mockReturnValue(delegatorContract);
+
+      ({ unmount } = render(<HookProbe />));
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(screen.getByTestId('notarization-lag-seconds')).toBeEmptyDOMElement();
+
+      await act(async () => {
+        jest.advanceTimersByTime(8000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(screen.getByTestId('notarization-height')).toHaveTextContent('98');
+      expect(screen.getByTestId('verus-tip-height')).toHaveTextContent('100');
+      expect(screen.getByTestId('notarization-lag-seconds')).toHaveTextContent('120');
+    } finally {
+      unmount();
+      jest.useRealTimers();
+    }
   });
 
   test('uses internal spot pricing for EURC, scrvUSD, and tBTC, keeps USDT pegged, and leaves unsupported assets unpriced', async () => {
@@ -1303,6 +1409,416 @@ describe('useBridgeController disconnected source bootstrap', () => {
     expect(screen.getByTestId('receive-amount')).toHaveTextContent('Estimating...');
   });
 
+  test('defers public key signing until a bounceback review needs it', async () => {
+    const request = jest.fn().mockRejectedValue(new Error('User rejected request'));
+    window.ethereum = { request };
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1')),
+      getBlockNumber: jest.fn().mockResolvedValue(100),
+      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockResolvedValue({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    expect(request).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Direct DAI' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes');
+    });
+
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  test('marks public key signing as actionable when bounceback review signing is rejected', async () => {
+    global.fetch = jest.fn((input) => {
+      if (input === './exclude.json') {
+        return Promise.resolve({
+          json: async () => ({ ETH: [] }),
+          ok: true
+        });
+      }
+
+      return new Promise(() => {});
+    });
+    const request = jest.fn().mockRejectedValue(new Error('User rejected request'));
+    window.ethereum = { request };
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1')),
+      getBlockNumber: jest.fn().mockResolvedValue(100),
+      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockResolvedValue({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Swap' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('submit-disabled-reason')).toBeEmptyDOMElement();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(request).toHaveBeenCalledWith({
+        method: 'personal_sign',
+        params: expect.any(Array)
+      });
+    });
+
+    expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no');
+    expect(screen.getByTestId('alert-message')).toHaveTextContent('Public key signature is required');
+    expect(JSON.parse(window.localStorage.getItem(REFUND_ADDRESS_SIGNATURE_STATUS_KEY))).toEqual({
+      '0xabc': 'failed'
+    });
+  });
+
+  test('opens bounceback review after successful deferred signing and submits with the derived refund address', async () => {
+    global.fetch = jest.fn((input) => {
+      if (input === './exclude.json') {
+        return Promise.resolve({
+          json: async () => ({ ETH: [] }),
+          ok: true
+        });
+      }
+
+      return new Promise(() => {});
+    });
+    const wallet = new Wallet('0x0123456789012345678901234567890123456789012345678901234567890123');
+    const signature = await wallet.signMessage(REFUND_ADDRESS_MESSAGE);
+    const expectedRefundAddress = getRefundAddressFromSignature(signature);
+    const request = jest.fn().mockResolvedValue(signature);
+    const wait = jest.fn().mockResolvedValue({ status: 1 });
+    const sendTransfer = jest.fn().mockResolvedValue({ wait });
+    window.ethereum = { request };
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('3')),
+      getBlockNumber: jest.fn().mockResolvedValue(100),
+      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+    });
+    const delegatorContract = createDelegatorContract({ sendTransfer });
+
+    mockVerusd.estimateConversion.mockResolvedValue({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    useWeb3React.mockReturnValue({ account: wallet.address, library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Swap DAI' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('submit-disabled-reason')).toBeEmptyDOMElement();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes');
+    });
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(window.localStorage.getItem(REFUND_ADDRESS_STORAGE_KEY))).toEqual({
+      [wallet.address]: expectedRefundAddress
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    await waitFor(() => {
+      expect(sendTransfer).toHaveBeenCalledTimes(1);
+    });
+
+    const [reserveTransfer, txOptions] = sendTransfer.mock.calls[0];
+    expect(reserveTransfer.destination.destinationaddress).toContain(
+      convertVerusAddressToEthAddress(expectedRefundAddress).slice(2)
+    );
+    expect(txOptions.from).toBe(wallet.address);
+  });
+
+  test('submits bounceback with a legacy cached refund address without requesting a signature', async () => {
+    global.fetch = jest.fn((input) => {
+      if (input === './exclude.json') {
+        return Promise.resolve({
+          json: async () => ({ ETH: [] }),
+          ok: true
+        });
+      }
+
+      return new Promise(() => {});
+    });
+    const wallet = new Wallet('0x2222222222222222222222222222222222222222222222222222222222222222');
+    const request = jest.fn();
+    const wait = jest.fn().mockResolvedValue({ status: 1 });
+    const sendTransfer = jest.fn().mockResolvedValue({ wait });
+    window.ethereum = { request };
+    cacheRefundAddress(wallet.address);
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('3')),
+      getBlockNumber: jest.fn().mockResolvedValue(100),
+      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+    });
+    const delegatorContract = createDelegatorContract({ sendTransfer });
+
+    mockVerusd.estimateConversion.mockResolvedValue({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    useWeb3React.mockReturnValue({ account: wallet.address, library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Swap DAI' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('submit-disabled-reason')).toBeEmptyDOMElement();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes');
+    });
+
+    expect(request).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    await waitFor(() => {
+      expect(sendTransfer).toHaveBeenCalledTimes(1);
+    });
+
+    const [reserveTransfer] = sendTransfer.mock.calls[0];
+    expect(reserveTransfer.destination.destinationaddress).toContain(
+      convertVerusAddressToEthAddress(VALID_REFUND_ADDRESS).slice(2)
+    );
+  });
+
+  test('blocks bounceback submit when public key signing is rejected', async () => {
+    global.fetch = jest.fn((input) => {
+      if (input === './exclude.json') {
+        return Promise.resolve({
+          json: async () => ({ ETH: [] }),
+          ok: true
+        });
+      }
+
+      return new Promise(() => {});
+    });
+    const request = jest.fn().mockRejectedValue(new Error('User rejected request'));
+    const sendTransfer = jest.fn();
+    window.ethereum = { request };
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('3')),
+      getBlockNumber: jest.fn().mockResolvedValue(100),
+      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+    });
+    const delegatorContract = createDelegatorContract({ sendTransfer });
+
+    mockVerusd.estimateConversion.mockResolvedValue({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    useWeb3React.mockReturnValue({ account: '0x1234567890123456789012345678901234567890', library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Swap DAI' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('submit-disabled-reason')).toBeEmptyDOMElement();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    await waitFor(() => {
+      expect(request).toHaveBeenCalledWith({
+        method: 'personal_sign',
+        params: expect.any(Array)
+      });
+    });
+
+    expect(sendTransfer).not.toHaveBeenCalled();
+    expect(screen.getByTestId('alert-message')).toHaveTextContent('Public key signature is required');
+  });
+
+  test('reuses an in-flight public key signing request for repeated bounceback review attempts', async () => {
+    global.fetch = jest.fn((input) => {
+      if (input === './exclude.json') {
+        return Promise.resolve({
+          json: async () => ({ ETH: [] }),
+          ok: true
+        });
+      }
+
+      return new Promise(() => {});
+    });
+    const wallet = new Wallet('0x1111111111111111111111111111111111111111111111111111111111111111');
+    const signature = await wallet.signMessage(REFUND_ADDRESS_MESSAGE);
+    const signingRequest = createDeferred();
+    const request = jest.fn().mockReturnValue(signingRequest.promise);
+    window.ethereum = { request };
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('3')),
+      getBlockNumber: jest.fn().mockResolvedValue(100),
+      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockResolvedValue({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    useWeb3React.mockReturnValue({ account: wallet.address, library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Swap DAI' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('submit-disabled-reason')).toBeEmptyDOMElement();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(request).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      signingRequest.resolve(signature);
+      await signingRequest.promise;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes');
+    });
+  });
+
+  test('does not keep direct routes blocked while bounceback signing is pending', async () => {
+    global.fetch = jest.fn((input) => {
+      if (input === './exclude.json') {
+        return Promise.resolve({
+          json: async () => ({ ETH: [] }),
+          ok: true
+        });
+      }
+
+      return new Promise(() => {});
+    });
+    const wallet = new Wallet('0x3333333333333333333333333333333333333333333333333333333333333333');
+    const signature = await wallet.signMessage(REFUND_ADDRESS_MESSAGE);
+    const signingRequest = createDeferred();
+    const request = jest.fn().mockReturnValue(signingRequest.promise);
+    window.ethereum = { request };
+    const library = createLibrary({
+      getBalance: jest.fn().mockResolvedValue(utils.parseEther('3')),
+      getBlockNumber: jest.fn().mockResolvedValue(100),
+      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+    });
+    const delegatorContract = createDelegatorContract();
+
+    mockVerusd.estimateConversion.mockResolvedValue({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    useWeb3React.mockReturnValue({ account: wallet.address, library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Swap DAI' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('submit-disabled-reason')).toBeEmptyDOMElement();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(request).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByTestId('refund-signature-pending')).toHaveTextContent('yes');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Direct DAI' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('submit-disabled-reason')).toBeEmptyDOMElement();
+    });
+
+    expect(screen.getByTestId('refund-signature-pending')).toHaveTextContent('no');
+    expect(screen.getByTestId('can-submit')).toHaveTextContent('yes');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes');
+    });
+
+    await act(async () => {
+      signingRequest.resolve(signature);
+      await signingRequest.promise;
+    });
+  });
+
   test('blocks ERC20 review confirmation when native ETH is below the bridge fee', async () => {
     const library = createLibrary({
       getBalance: jest.fn().mockResolvedValue(utils.parseEther('0.0005'))
@@ -1381,6 +1897,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
     const delegatorContract = createDelegatorContract();
 
+    cacheRefundAddress();
     useWeb3React.mockReturnValue({ account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
@@ -1418,6 +1935,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
     const delegatorContract = createDelegatorContract();
 
+    cacheRefundAddress();
     useWeb3React.mockReturnValue({ account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
