@@ -3,8 +3,6 @@
 # dependencies
 /node_modules
 /.pnpm-store
-/.pnp
-.pnp.js
 
 # testing
 /coverage
@@ -21,5 +19,3 @@
 .env
 
 npm-debug.log*
-package-lock.json
-yarn.lock
