@@ -1,7 +1,7 @@
 import React from 'react'
 
 import { Card, CardContent } from '@mui/material'
-import { styled } from '@mui/system'
+import { styled } from '@mui/material/styles'
 
 const WalletCard = ({ children, isSelected, onClick }) => (
     <StyledCard isSelected={isSelected} onClick={onClick}>

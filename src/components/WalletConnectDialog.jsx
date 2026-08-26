@@ -26,7 +26,7 @@ const WalletConnectDialog = ({ isOpen, onClose, onConfirm }) => {
       <DialogContent>
         <Grid container spacing={3}>
           {Object.values(WALLET_CONFIG).map(wallet => (
-            <Grid item sm={6} key={wallet.title}>
+            <Grid size={{ sm: 6 }} key={wallet.title}>
               <WalletCard
                 onClick={() => handleClickWallet(wallet)}
                 isSelected={selectedWallet?.title === wallet.title}

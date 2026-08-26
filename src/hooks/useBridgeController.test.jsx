@@ -12,41 +12,45 @@ import {
   HEIGHT_LOCATION_IN_FORKS
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
-import bitGoUTXO from 'utils/bitUTXO';
 import { getContract, getMaxAmount } from 'utils/contract';
 import { convertVerusAddressToEthAddress } from 'utils/convert';
 import {
   REFUND_ADDRESS_SIGNATURE_STATUS_KEY,
   REFUND_ADDRESS_STORAGE_KEY
 } from 'utils/refundAddress';
+import { hash160, toBase58Check } from 'utils/verusAddress';
 
-const mockVerusd = {
-  estimateConversion: jest.fn(),
-  getBlock: jest.fn(),
-  getCurrency: jest.fn(),
-  getInfo: jest.fn()
-};
+import useBridgeController from './useBridgeController';
 
-jest.mock('@web3-react/core', () => ({
-  useWeb3React: jest.fn()
+const { mockVerusd } = vi.hoisted(() => ({
+  mockVerusd: {
+    estimateConversion: vi.fn(),
+    getBlock: vi.fn(),
+    getCurrency: vi.fn(),
+    getInfo: vi.fn()
+  }
 }));
 
-jest.mock('components/Toast/ToastProvider', () => ({
-  useToast: jest.fn()
+vi.mock('@web3-react/core', () => ({
+  useWeb3React: vi.fn()
 }));
 
-jest.mock('hooks/useContract', () => jest.fn());
-
-jest.mock('verusd-rpc-ts-client', () => ({
-  VerusdRpcInterface: jest.fn(() => mockVerusd)
+vi.mock('components/Toast/ToastProvider', () => ({
+  useToast: vi.fn()
 }));
 
-jest.mock('utils/contract', () => ({
-  getContract: jest.fn(),
-  getMaxAmount: jest.fn()
+vi.mock('hooks/useContract', () => ({ default: vi.fn() }));
+
+vi.mock('utils/verusdRpc', () => ({
+  VerusdRpcInterface: vi.fn(function MockVerusdRpcInterface() {
+    return mockVerusd;
+  })
 }));
 
-const useBridgeController = require('./useBridgeController').default;
+vi.mock('utils/contract', () => ({
+  getContract: vi.fn(),
+  getMaxAmount: vi.fn()
+}));
 
 const ETH_ADDRESS = GLOBAL_ADDRESS.ETH;
 const DAI_ADDRESS = GLOBAL_ADDRESS.DAI;
@@ -58,7 +62,7 @@ const USDT_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
 const TBTC_ADDRESS = '0x18084fbA666A33d37592fA2633fD49A74dD93a88';
 const originalFetch = global.fetch;
 const REFUND_ADDRESS_MESSAGE = 'Agreeing to this will create a public key address for Verus Refunds.';
-const VALID_REFUND_ADDRESS = bitGoUTXO.address.toBase58Check(Buffer.alloc(20, 1), 60);
+const VALID_REFUND_ADDRESS = toBase58Check(Buffer.alloc(20, 1), 60);
 
 const liveEthToken = {
   name: 'vETH',
@@ -177,10 +181,10 @@ const createNatiCurrencyResult = () => createCurrencyResult({
 });
 
 const createLibrary = (overrides = {}) => ({
-  getBalance: jest.fn().mockResolvedValue('0'),
-  getBlock: jest.fn(() => new Promise(() => {})),
-  getBlockNumber: jest.fn(() => new Promise(() => {})),
-  getTransaction: jest.fn(() => new Promise(() => {})),
+  getBalance: vi.fn().mockResolvedValue('0'),
+  getBlock: vi.fn(() => new Promise(() => {})),
+  getBlockNumber: vi.fn(() => new Promise(() => {})),
+  getTransaction: vi.fn(() => new Promise(() => {})),
   ...overrides
 });
 
@@ -189,10 +193,10 @@ const createDelegatorContract = (overrides = {}) => {
 
   return {
     callStatic: {
-      bestForks: jest.fn(() => new Promise(() => {})),
-      bridgeConverterActive: jest.fn().mockResolvedValue(true),
-      getTokenList: jest.fn().mockResolvedValue([liveEthToken, daiToken]),
-      verusToERC20mapping: jest.fn().mockResolvedValue({ flags: '1' }),
+      bestForks: vi.fn(() => new Promise(() => {})),
+      bridgeConverterActive: vi.fn().mockResolvedValue(true),
+      getTokenList: vi.fn().mockResolvedValue([liveEthToken, daiToken]),
+      verusToERC20mapping: vi.fn().mockResolvedValue({ flags: '1' }),
       ...callStaticOverrides
     },
     ...contractOverrides
@@ -227,8 +231,8 @@ const getRefundAddressFromSignature = (signature) => {
   const publicKey = utils.recoverPublicKey(utils.arrayify(messageHash), signature);
   const compressedPublicKey = utils.computePublicKey(publicKey, true);
 
-  return bitGoUTXO.address.toBase58Check(
-    bitGoUTXO.crypto.hash160(Buffer.from(compressedPublicKey.slice(2), 'hex')),
+  return toBase58Check(
+    hash160(Buffer.from(compressedPublicKey.slice(2), 'hex')),
     60
   );
 };
@@ -473,12 +477,12 @@ const HookProbe = ({ controllerOptions = {} }) => {
 
 describe('useBridgeController disconnected source bootstrap', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     window.localStorage.clear();
     delete window.ethereum;
 
-    global.fetch = jest.fn(() => new Promise(() => {}));
-    useToast.mockReturnValue({ addToast: jest.fn() });
+    global.fetch = vi.fn(() => new Promise(() => {}));
+    useToast.mockReturnValue({ addToast: vi.fn() });
     getMaxAmount.mockResolvedValue(100);
     const tokenMetadataByAddress = {
       [daiToken.erc20ContractAddress.toLowerCase()]: { decimals: 18, name: 'Dai Stablecoin', symbol: 'DAI' },
@@ -489,9 +493,9 @@ describe('useBridgeController disconnected source bootstrap', () => {
       [linkToken.erc20ContractAddress.toLowerCase()]: { decimals: 18, name: 'Chainlink', symbol: 'LINK' }
     };
     getContract.mockImplementation((address) => ({
-      decimals: jest.fn().mockResolvedValue(tokenMetadataByAddress[address?.toLowerCase()]?.decimals || 18),
-      name: jest.fn().mockResolvedValue(tokenMetadataByAddress[address?.toLowerCase()]?.name || 'Token'),
-      symbol: jest.fn().mockResolvedValue(tokenMetadataByAddress[address?.toLowerCase()]?.symbol || 'TKN')
+      decimals: vi.fn().mockResolvedValue(tokenMetadataByAddress[address?.toLowerCase()]?.decimals || 18),
+      name: vi.fn().mockResolvedValue(tokenMetadataByAddress[address?.toLowerCase()]?.name || 'Token'),
+      symbol: vi.fn().mockResolvedValue(tokenMetadataByAddress[address?.toLowerCase()]?.symbol || 'TKN')
     }));
     mockVerusd.getBlock.mockResolvedValue(null);
     mockVerusd.getCurrency.mockImplementation((currencyName) => {
@@ -523,8 +527,8 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const library = createLibrary();
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        bridgeConverterActive: jest.fn(() => new Promise(() => {})),
-        getTokenList: jest.fn(() => new Promise(() => {}))
+        bridgeConverterActive: vi.fn(() => new Promise(() => {})),
+        getTokenList: vi.fn(() => new Promise(() => {}))
       }
     });
 
@@ -542,7 +546,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('keeps source tokens available when gas estimation fails', async () => {
     const library = createLibrary({
-      getBlockNumber: jest.fn().mockRejectedValue(new Error('gas rpc down'))
+      getBlockNumber: vi.fn().mockRejectedValue(new Error('gas rpc down'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -565,8 +569,8 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('uses the minimum gateway fee floor in swap fee rows when live gas is unavailable', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1')),
-      getBlockNumber: jest.fn().mockRejectedValue(new Error('gas rpc down'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1')),
+      getBlockNumber: vi.fn().mockRejectedValue(new Error('gas rpc down'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -607,7 +611,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
   });
 
   test('retries the source catalog once and keeps seeded ETH available after repeated failures', async () => {
-    const bridgeConverterActive = jest.fn().mockRejectedValue(new Error('catalog rpc down'));
+    const bridgeConverterActive = vi.fn().mockRejectedValue(new Error('catalog rpc down'));
     const library = createLibrary();
     const delegatorContract = createDelegatorContract({
       callStatic: {
@@ -633,7 +637,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('shows DAI.vETH and a 1:1 receive amount for direct Verus sends', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -657,11 +661,11 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('auto-selects the only valid direct Verus route for mapped tokens and shows an immediate 1:1 receive amount', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        getTokenList: jest.fn().mockResolvedValue([liveEthToken, daiToken, eurcToken])
+        getTokenList: vi.fn().mockResolvedValue([liveEthToken, daiToken, eurcToken])
       }
     });
 
@@ -687,7 +691,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('keeps the receive amount blank until a receive currency is selected', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -710,7 +714,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('builds ERC20 send amount presets from the full token balance', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -739,11 +743,11 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('uses spendable ETH for max and percentage presets', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        verusToERC20mapping: jest.fn().mockResolvedValue({ flags: '0' })
+        verusToERC20mapping: vi.fn().mockResolvedValue({ flags: '0' })
       }
     });
 
@@ -778,11 +782,11 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('derives fixed-decimal send amount presets without float drift', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('5'))
     });
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        getTokenList: jest.fn().mockResolvedValue([liveEthToken, daiToken, usdtToken])
+        getTokenList: vi.fn().mockResolvedValue([liveEthToken, daiToken, usdtToken])
       }
     });
 
@@ -812,11 +816,11 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('returns no send amount presets when ETH is fully consumed by fees', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('0.003'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('0.003'))
     });
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        verusToERC20mapping: jest.fn().mockResolvedValue({ flags: '0' })
+        verusToERC20mapping: vi.fn().mockResolvedValue({ flags: '0' })
       }
     });
 
@@ -843,11 +847,11 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('exposes the one-way direct Verus route for mapped tokens before any address is entered', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        getTokenList: jest.fn().mockResolvedValue([liveEthToken, daiToken, eurcToken])
+        getTokenList: vi.fn().mockResolvedValue([liveEthToken, daiToken, eurcToken])
       }
     });
 
@@ -911,14 +915,14 @@ describe('useBridgeController disconnected source bootstrap', () => {
   });
 
   test('falls back to block distance when exact notarization block time never responds', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     let unmount = () => {};
 
     try {
       const library = createLibrary();
       const delegatorContract = createDelegatorContract({
         callStatic: {
-          bestForks: jest.fn().mockResolvedValue(createBestForksData(98))
+          bestForks: vi.fn().mockResolvedValue(createBestForksData(98))
         }
       });
 
@@ -943,7 +947,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       expect(screen.getByTestId('notarization-lag-seconds')).toBeEmptyDOMElement();
 
       await act(async () => {
-        jest.advanceTimersByTime(8000);
+        vi.advanceTimersByTime(8000);
         await Promise.resolve();
         await Promise.resolve();
       });
@@ -953,17 +957,17 @@ describe('useBridgeController disconnected source bootstrap', () => {
       expect(screen.getByTestId('notarization-lag-seconds')).toHaveTextContent('120');
     } finally {
       unmount();
-      jest.useRealTimers();
+      vi.useRealTimers();
     }
   });
 
   test('uses internal spot pricing for EURC, scrvUSD, and tBTC, keeps USDT pegged, and leaves unsupported assets unpriced', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('5'))
     });
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        getTokenList: jest.fn().mockResolvedValue([liveEthToken, daiToken, eurcToken, scrvusdToken, usdtToken, tbtcToken, linkToken])
+        getTokenList: vi.fn().mockResolvedValue([liveEthToken, daiToken, eurcToken, scrvusdToken, usdtToken, tbtcToken, linkToken])
       }
     });
 
@@ -1004,7 +1008,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('normalizes conversion quote input to Verus eight-decimal precision before requesting a quote', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1036,7 +1040,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
   });
 
   test('uses the vETH reserve target for both bridgeETH and swaptoETH quotes', async () => {
-    global.fetch = jest.fn((input) => {
+    global.fetch = vi.fn((input) => {
       if (input === './exclude.json') {
         return Promise.resolve({
           json: async () => ({ ETH: [] }),
@@ -1048,10 +1052,10 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
 
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1')),
-      getBlockNumber: jest.fn().mockResolvedValue(100),
-      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
-      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1')),
+      getBlockNumber: vi.fn().mockResolvedValue(100),
+      getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1087,7 +1091,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('preserves tiny conversion quotes with full precision instead of rounding them down', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1115,7 +1119,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('snapshots a reversible conversion exchange rate for review', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1154,7 +1158,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('does not warn when an ETH to VRSC quote stays within the 3% threshold', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('5'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1198,7 +1202,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('shows a fiat value for VRSC receive quotes using the Bridge spot price', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('5'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1236,7 +1240,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('warns when an ETH to VRSC quote is materially worse than a better available route', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('5'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1277,7 +1281,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('warns when an ETH to DAI quote falls below the current spot value', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('5'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1311,7 +1315,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('warns when an ETH to MKR quote falls below the current spot value', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('5'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('5'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1345,7 +1349,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('exposes pending and ready quote states for conversion routes', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract();
     const deferredEstimate = createDeferred();
@@ -1383,7 +1387,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('marks failed conversion quotes unavailable, keeps the estimate text non-numeric, and blocks review', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1414,7 +1418,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('invalidates a prior quote when the amount changes and waits for a fresh quote', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract();
     const deferredEstimate = createDeferred();
@@ -1451,13 +1455,13 @@ describe('useBridgeController disconnected source bootstrap', () => {
   });
 
   test('defers public key signing until a bounceback review needs it', async () => {
-    const request = jest.fn().mockRejectedValue(new Error('User rejected request'));
+    const request = vi.fn().mockRejectedValue(new Error('User rejected request'));
     window.ethereum = { request };
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1')),
-      getBlockNumber: jest.fn().mockResolvedValue(100),
-      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
-      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1')),
+      getBlockNumber: vi.fn().mockResolvedValue(100),
+      getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1487,7 +1491,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
   });
 
   test('marks public key signing as actionable when bounceback review signing is rejected', async () => {
-    global.fetch = jest.fn((input) => {
+    global.fetch = vi.fn((input) => {
       if (input === './exclude.json') {
         return Promise.resolve({
           json: async () => ({ ETH: [] }),
@@ -1497,13 +1501,13 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
       return new Promise(() => {});
     });
-    const request = jest.fn().mockRejectedValue(new Error('User rejected request'));
+    const request = vi.fn().mockRejectedValue(new Error('User rejected request'));
     window.ethereum = { request };
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1')),
-      getBlockNumber: jest.fn().mockResolvedValue(100),
-      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
-      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1')),
+      getBlockNumber: vi.fn().mockResolvedValue(100),
+      getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1543,7 +1547,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
   });
 
   test('opens bounceback review after successful deferred signing and submits with the derived refund address', async () => {
-    global.fetch = jest.fn((input) => {
+    global.fetch = vi.fn((input) => {
       if (input === './exclude.json') {
         return Promise.resolve({
           json: async () => ({ ETH: [] }),
@@ -1556,15 +1560,15 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const wallet = new Wallet('0x0123456789012345678901234567890123456789012345678901234567890123');
     const signature = await wallet.signMessage(REFUND_ADDRESS_MESSAGE);
     const expectedRefundAddress = getRefundAddressFromSignature(signature);
-    const request = jest.fn().mockResolvedValue(signature);
-    const wait = jest.fn().mockResolvedValue({ status: 1 });
-    const sendTransfer = jest.fn().mockResolvedValue({ wait });
+    const request = vi.fn().mockResolvedValue(signature);
+    const wait = vi.fn().mockResolvedValue({ status: 1 });
+    const sendTransfer = vi.fn().mockResolvedValue({ wait });
     window.ethereum = { request };
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('3')),
-      getBlockNumber: jest.fn().mockResolvedValue(100),
-      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
-      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
+      getBlockNumber: vi.fn().mockResolvedValue(100),
+      getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
     const delegatorContract = createDelegatorContract({ sendTransfer });
 
@@ -1612,7 +1616,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
   });
 
   test('submits bounceback with a legacy cached refund address without requesting a signature', async () => {
-    global.fetch = jest.fn((input) => {
+    global.fetch = vi.fn((input) => {
       if (input === './exclude.json') {
         return Promise.resolve({
           json: async () => ({ ETH: [] }),
@@ -1623,16 +1627,16 @@ describe('useBridgeController disconnected source bootstrap', () => {
       return new Promise(() => {});
     });
     const wallet = new Wallet('0x2222222222222222222222222222222222222222222222222222222222222222');
-    const request = jest.fn();
-    const wait = jest.fn().mockResolvedValue({ status: 1 });
-    const sendTransfer = jest.fn().mockResolvedValue({ wait });
+    const request = vi.fn();
+    const wait = vi.fn().mockResolvedValue({ status: 1 });
+    const sendTransfer = vi.fn().mockResolvedValue({ wait });
     window.ethereum = { request };
     cacheRefundAddress(wallet.address);
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('3')),
-      getBlockNumber: jest.fn().mockResolvedValue(100),
-      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
-      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
+      getBlockNumber: vi.fn().mockResolvedValue(100),
+      getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
     const delegatorContract = createDelegatorContract({ sendTransfer });
 
@@ -1676,7 +1680,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
   });
 
   test('blocks bounceback submit when public key signing is rejected', async () => {
-    global.fetch = jest.fn((input) => {
+    global.fetch = vi.fn((input) => {
       if (input === './exclude.json') {
         return Promise.resolve({
           json: async () => ({ ETH: [] }),
@@ -1686,14 +1690,14 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
       return new Promise(() => {});
     });
-    const request = jest.fn().mockRejectedValue(new Error('User rejected request'));
-    const sendTransfer = jest.fn();
+    const request = vi.fn().mockRejectedValue(new Error('User rejected request'));
+    const sendTransfer = vi.fn();
     window.ethereum = { request };
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('3')),
-      getBlockNumber: jest.fn().mockResolvedValue(100),
-      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
-      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
+      getBlockNumber: vi.fn().mockResolvedValue(100),
+      getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
     const delegatorContract = createDelegatorContract({ sendTransfer });
 
@@ -1730,7 +1734,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
   });
 
   test('reuses an in-flight public key signing request for repeated bounceback review attempts', async () => {
-    global.fetch = jest.fn((input) => {
+    global.fetch = vi.fn((input) => {
       if (input === './exclude.json') {
         return Promise.resolve({
           json: async () => ({ ETH: [] }),
@@ -1743,13 +1747,13 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const wallet = new Wallet('0x1111111111111111111111111111111111111111111111111111111111111111');
     const signature = await wallet.signMessage(REFUND_ADDRESS_MESSAGE);
     const signingRequest = createDeferred();
-    const request = jest.fn().mockReturnValue(signingRequest.promise);
+    const request = vi.fn().mockReturnValue(signingRequest.promise);
     window.ethereum = { request };
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('3')),
-      getBlockNumber: jest.fn().mockResolvedValue(100),
-      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
-      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
+      getBlockNumber: vi.fn().mockResolvedValue(100),
+      getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1790,7 +1794,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
   });
 
   test('does not keep direct routes blocked while bounceback signing is pending', async () => {
-    global.fetch = jest.fn((input) => {
+    global.fetch = vi.fn((input) => {
       if (input === './exclude.json') {
         return Promise.resolve({
           json: async () => ({ ETH: [] }),
@@ -1803,13 +1807,13 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const wallet = new Wallet('0x3333333333333333333333333333333333333333333333333333333333333333');
     const signature = await wallet.signMessage(REFUND_ADDRESS_MESSAGE);
     const signingRequest = createDeferred();
-    const request = jest.fn().mockReturnValue(signingRequest.promise);
+    const request = vi.fn().mockReturnValue(signingRequest.promise);
     window.ethereum = { request };
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('3')),
-      getBlockNumber: jest.fn().mockResolvedValue(100),
-      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
-      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
+      getBlockNumber: vi.fn().mockResolvedValue(100),
+      getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1862,7 +1866,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('blocks ERC20 review confirmation when native ETH is below the bridge fee', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('0.0005'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('0.0005'))
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1891,11 +1895,11 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('requires ETH senders to cover the send amount plus the bridge fee', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1.0'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1.0'))
     });
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        verusToERC20mapping: jest.fn().mockResolvedValue({ flags: '0' })
+        verusToERC20mapping: vi.fn().mockResolvedValue({ flags: '0' })
       }
     });
 
@@ -1919,7 +1923,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
   });
 
   test('adds the gateway/import fee to review rows for swap routes', async () => {
-    global.fetch = jest.fn((input) => {
+    global.fetch = vi.fn((input) => {
       if (input === './exclude.json') {
         return Promise.resolve({
           json: async () => ({ ETH: [] }),
@@ -1931,10 +1935,10 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
 
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1')),
-      getBlockNumber: jest.fn().mockResolvedValue(100),
-      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
-      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1')),
+      getBlockNumber: vi.fn().mockResolvedValue(100),
+      getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
     const delegatorContract = createDelegatorContract();
 
@@ -1957,7 +1961,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
   });
 
   test('shows the longer review time estimate for bounceback routes', async () => {
-    global.fetch = jest.fn((input) => {
+    global.fetch = vi.fn((input) => {
       if (input === './exclude.json') {
         return Promise.resolve({
           json: async () => ({ ETH: [] }),
@@ -1969,10 +1973,10 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
 
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1')),
-      getBlockNumber: jest.fn().mockResolvedValue(100),
-      getBlock: jest.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
-      getTransaction: jest.fn().mockResolvedValue({ gasPrice: '10000000000' })
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1')),
+      getBlockNumber: vi.fn().mockResolvedValue(100),
+      getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
     const delegatorContract = createDelegatorContract();
 
@@ -2001,11 +2005,11 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('calls enterReview after capturing a valid review snapshot and exits routed review when edits invalidate it', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract();
-    const enterReview = jest.fn();
-    const exitReview = jest.fn();
+    const enterReview = vi.fn();
+    const exitReview = vi.fn();
 
     useWeb3React.mockReturnValue({ account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
@@ -2054,11 +2058,11 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('calls exitReview when the routed review is explicitly closed', async () => {
     const library = createLibrary({
-      getBalance: jest.fn().mockResolvedValue(utils.parseEther('1'))
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
     });
     const delegatorContract = createDelegatorContract();
-    const enterReview = jest.fn();
-    const exitReview = jest.fn();
+    const enterReview = vi.fn();
+    const exitReview = vi.fn();
 
     useWeb3React.mockReturnValue({ account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);

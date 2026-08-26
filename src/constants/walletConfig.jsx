@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { ReactComponent as Metamask } from '../images/icons/metamask-icon.svg';
+import Metamask from '../images/icons/metamask-icon.svg?react';
 
 export const WALLET_CONFIG = {
   METAMASK: {

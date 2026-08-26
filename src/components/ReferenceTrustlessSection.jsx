@@ -3,8 +3,8 @@ import React from 'react';
 import styles from 'styles/ReferenceBridge.module.css';
 import { HOME_INFO_SECTION_ID } from 'utils/homeNavigation';
 
-import { ReactComponent as TrustFlashIcon } from '../images/icons/trust-flash-icon.svg';
-import { ReactComponent as TrustLockIcon } from '../images/icons/trust-lock-icon.svg';
+import TrustFlashIcon from '../images/icons/trust-flash-icon.svg?react';
+import TrustLockIcon from '../images/icons/trust-lock-icon.svg?react';
 
 const FAQItem = ({ children, question }) => (
   <details className={styles.faqItem}>

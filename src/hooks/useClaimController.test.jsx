@@ -5,26 +5,26 @@ import { useWeb3React } from '@web3-react/core';
 
 import { useToast } from 'components/Toast/ToastProvider';
 import useContract from 'hooks/useContract';
-import bitGoUTXO from 'utils/bitUTXO';
 import { requestRefundAddressData } from 'utils/refundAddress';
+import { toBase58Check } from 'utils/verusAddress';
 
-jest.mock('@web3-react/core', () => ({
-  useWeb3React: jest.fn()
+import useClaimController from './useClaimController';
+
+vi.mock('@web3-react/core', () => ({
+  useWeb3React: vi.fn()
 }));
 
-jest.mock('components/Toast/ToastProvider', () => ({
-  useToast: jest.fn()
+vi.mock('components/Toast/ToastProvider', () => ({
+  useToast: vi.fn()
 }));
 
-jest.mock('hooks/useContract', () => jest.fn());
+vi.mock('hooks/useContract', () => ({ default: vi.fn() }));
 
-jest.mock('utils/refundAddress', () => ({
-  requestRefundAddressData: jest.fn()
+vi.mock('utils/refundAddress', () => ({
+  requestRefundAddressData: vi.fn()
 }));
 
-const useClaimController = require('./useClaimController').default;
-
-const createAddress = (version, fill) => bitGoUTXO.address.toBase58Check(Buffer.alloc(20, fill), version);
+const createAddress = (version, fill) => toBase58Check(Buffer.alloc(20, fill), version);
 
 const VALID_I_ADDRESS = createAddress(102, 2);
 const VALID_R_ADDRESS = createAddress(60, 1);
@@ -46,14 +46,14 @@ const PARTIALLY_UNAVAILABLE_TOKEN = {
 
 const createDelegatorContract = (overrides = {}) => ({
   callStatic: {
-    claimableFees: jest.fn().mockResolvedValue('0'),
-    getTokenList: jest.fn().mockResolvedValue([]),
-    refunds: jest.fn().mockResolvedValue('0'),
-    sendfees: jest.fn().mockResolvedValue(undefined),
+    claimableFees: vi.fn().mockResolvedValue('0'),
+    getTokenList: vi.fn().mockResolvedValue([]),
+    refunds: vi.fn().mockResolvedValue('0'),
+    sendfees: vi.fn().mockResolvedValue(undefined),
     ...overrides.callStatic
   },
-  claimRefund: jest.fn(),
-  sendfees: jest.fn(),
+  claimRefund: vi.fn(),
+  sendfees: vi.fn(),
   ...overrides
 });
 
@@ -86,22 +86,22 @@ const HookProbe = () => {
 
 describe('useClaimController', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     useWeb3React.mockReturnValue({
       account: '0x1234567890abcdef1234567890abcdef12345678'
     });
 
     useToast.mockReturnValue({
-      addToast: jest.fn()
+      addToast: vi.fn()
     });
   });
 
   test('keeps earnings lookup available while refund token metadata is still loading', async () => {
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        claimableFees: jest.fn().mockResolvedValue('1000000'),
-        getTokenList: jest.fn(() => new Promise(() => {}))
+        claimableFees: vi.fn().mockResolvedValue('1000000'),
+        getTokenList: vi.fn(() => new Promise(() => {}))
       }
     });
     useContract.mockReturnValue(delegatorContract);
@@ -121,8 +121,8 @@ describe('useClaimController', () => {
   test('does not collapse refund token load failures into the empty state', async () => {
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        claimableFees: jest.fn().mockResolvedValue('0'),
-        getTokenList: jest.fn().mockRejectedValue(new Error('token list unavailable'))
+        claimableFees: vi.fn().mockResolvedValue('0'),
+        getTokenList: vi.fn().mockRejectedValue(new Error('token list unavailable'))
       }
     });
     useContract.mockReturnValue(delegatorContract);
@@ -141,9 +141,9 @@ describe('useClaimController', () => {
   test('surfaces a refund inspection error when all token refund lookups fail', async () => {
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        claimableFees: jest.fn().mockResolvedValue('0'),
-        getTokenList: jest.fn().mockResolvedValue([REFUNDABLE_TOKEN]),
-        refunds: jest.fn().mockRejectedValue(new Error('rpc unavailable'))
+        claimableFees: vi.fn().mockResolvedValue('0'),
+        getTokenList: vi.fn().mockResolvedValue([REFUNDABLE_TOKEN]),
+        refunds: vi.fn().mockRejectedValue(new Error('rpc unavailable'))
       }
     });
     useContract.mockReturnValue(delegatorContract);
@@ -162,9 +162,9 @@ describe('useClaimController', () => {
   test('keeps detected refunds visible when only some token refund lookups fail', async () => {
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        claimableFees: jest.fn().mockResolvedValue('0'),
-        getTokenList: jest.fn().mockResolvedValue([REFUNDABLE_TOKEN, PARTIALLY_UNAVAILABLE_TOKEN]),
-        refunds: jest.fn((address, currency) => {
+        claimableFees: vi.fn().mockResolvedValue('0'),
+        getTokenList: vi.fn().mockResolvedValue([REFUNDABLE_TOKEN, PARTIALLY_UNAVAILABLE_TOKEN]),
+        refunds: vi.fn((address, currency) => {
           if (currency === REFUNDABLE_TOKEN.iaddress) {
             return Promise.resolve('1000000');
           }
@@ -189,8 +189,8 @@ describe('useClaimController', () => {
   test('enables R-address claiming after the connected wallet is verified', async () => {
     const delegatorContract = createDelegatorContract({
       callStatic: {
-        claimableFees: jest.fn().mockResolvedValue('1000000'),
-        getTokenList: jest.fn().mockResolvedValue([])
+        claimableFees: vi.fn().mockResolvedValue('1000000'),
+        getTokenList: vi.fn().mockResolvedValue([])
       }
     });
     useContract.mockReturnValue(delegatorContract);

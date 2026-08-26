@@ -1,12 +1,9 @@
 import React, { useEffect, useState } from 'react';
 
-import { LoadingButton } from '@mui/lab';
-import { Alert, Typography } from '@mui/material';
+import { Alert, Box, Button, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid';
-import { Box } from '@mui/system';
 import { useWeb3React } from '@web3-react/core';
 import { useForm } from 'react-hook-form';
-import web3 from 'web3';
 
 import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import ERC1155_ABI from 'abis/ERC1155.json';
@@ -21,6 +18,7 @@ import {
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import { getContract } from 'utils/contract';
+import { BN, padLeft, toWei } from 'utils/ethereumUnits';
 import { convertVerusAddressToEthAddress } from "utils/convert";
 import { NFTAddressType } from 'utils/rules';
 
@@ -76,7 +74,7 @@ export default function NFTForm() {
     const tokenERC = nft.erc20address // await verusBridgeStorageContract.getERCMapping(GLOBAL_ADDRESS[token])
     const NFTInstContract = getContract(tokenERC, ERC721_ABI, library, account)
 
-    const tokenID = `0x${web3.utils.padLeft(nft.value.toHexString().slice(2), 64)}`
+    const tokenID = `0x${padLeft(nft.value.toHexString().slice(2), 64)}`
 
 
     // await NFTInstContract.approve(bridgeStorageAddress, tokenID, { from: account, gasLimit: maxGas2 })
@@ -110,7 +108,7 @@ export default function NFTForm() {
       nftcontract = DELEGATOR_ADD;
     }
 
-    const tokenID = `0x${web3.utils.padLeft(nft.value.toHexString().slice(2), 64)}`
+    const tokenID = `0x${padLeft(nft.value.toHexString().slice(2), 64)}`
 
     const checkApproved = await NFTInstContract.callStatic.isApprovedForAll(account, nftcontract);
     const amountOfNFTs = await NFTInstContract.callStatic.balanceOf(account, tokenID);
@@ -166,8 +164,7 @@ export default function NFTForm() {
         secondreserveid: "0x0000000000000000000000000000000000000000"    // used as return currency type on bounce back
       }
 
-      const { BN } = web3.utils;
-      const MetaMaskFee = new BN(web3.utils.toWei(ETH_FEES.ETH, 'ether'));
+      const MetaMaskFee = new BN(toWei(ETH_FEES.ETH, 'ether'));
 
       const txResult = await delegatorContract.sendTransfer(
         CReserveTransfer,
@@ -216,12 +213,12 @@ export default function NFTForm() {
           </Alert>)
         }
         <Grid container spacing={3}>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <AddressField
               control={control}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <NFTField
               control={control}
               poolAvailable={poolAvailable}
@@ -229,7 +226,7 @@ export default function NFTForm() {
           </Grid>
           { /* eslint-disable-next-line */}
           {(parseInt(selectedToken?.flags & FLAGS.MAPPING_ERC1155_ERC_DEFINITION) == FLAGS.MAPPING_ERC1155_ERC_DEFINITION) && (
-            <Grid item xs={12}>
+            <Grid size={12}>
               <NFTAmountField
                 control={control}
                 selectedToken={selectedToken}
@@ -237,7 +234,7 @@ export default function NFTForm() {
             </Grid>
           )}
           <Box mt="30px" textAlign="center" width="100%">
-            <LoadingButton loading={isTxPending} disabled={!address || !selectedToken?.value} type="submit" color="primary" variant="contained">Send</LoadingButton>
+            <Button loading={isTxPending} disabled={!address || !selectedToken?.value} type="submit" color="primary" variant="contained">Send</Button>
           </Box>
         </Grid>
       </form>

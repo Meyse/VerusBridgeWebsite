@@ -7,17 +7,17 @@ import useClaimController from 'hooks/useClaimController';
 
 import Claim from './Claim';
 
-jest.mock('components/SiteHeader', () => ({
+vi.mock('components/SiteHeader', () => ({
   __esModule: true,
   default: () => <header data-testid="site-header" />
 }));
 
-jest.mock('hooks/useClaimController', () => ({
+vi.mock('hooks/useClaimController', () => ({
   __esModule: true,
-  default: jest.fn()
+  default: vi.fn()
 }));
 
-jest.mock('utils/bridgeUi', () => ({
+vi.mock('utils/bridgeUi', () => ({
   getCurrencyIcon: () => '/icons/currencies/placeholder.svg'
 }));
 
@@ -34,9 +34,9 @@ const createController = (overrides = {}) => ({
     severity: 'info',
     message: '0.12500000 ETH is ready to claim as bridgekeeper earnings.'
   },
-  handleClaimEarnings: jest.fn(),
-  handleClaimRefund: jest.fn(),
-  handleWalletAddressAction: jest.fn(),
+  handleClaimEarnings: vi.fn(),
+  handleClaimRefund: vi.fn(),
+  handleWalletAddressAction: vi.fn(),
   hasAnyResults: true,
   hasLookup: true,
   isActionPending: false,
@@ -56,7 +56,7 @@ const createController = (overrides = {}) => ({
     severity: 'info',
     message: 'Found 1 refundable asset for this address.'
   },
-  setAddress: jest.fn(),
+  setAddress: vi.fn(),
   walletActionLabel: 'Use connected wallet',
   walletAddressStatus: null,
   ...overrides
@@ -70,7 +70,7 @@ const renderPage = () => render(
 
 describe('Claim page', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   test('renders the refunds and earnings inspection layout', () => {

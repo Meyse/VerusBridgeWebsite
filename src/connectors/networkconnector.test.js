@@ -1,13 +1,13 @@
 describe('networkConnector', () => {
   const originalEnv = process.env;
 
-  const loadConnectorModule = ({
+  const loadConnectorModule = async ({
     mainnetUrl,
     sepoliaUrl = 'https://sepolia.example',
     testnet = false,
     homesteadUrl
   } = {}) => {
-    jest.resetModules();
+    vi.resetModules();
     process.env = {
       ...originalEnv,
       REACT_APP_RPC_URL_MAINNET: mainnetUrl,
@@ -15,30 +15,26 @@ describe('networkConnector', () => {
       REACT_APP_RPC_URL_SEPOLIA: sepoliaUrl
     };
 
-    const NetworkConnector = jest.fn().mockImplementation((config) => ({ config }));
+    const NetworkConnector = vi.fn(function MockNetworkConnector(config) {
+      this.config = config;
+    });
 
-    jest.doMock('@web3-react/network-connector', () => ({
+    vi.doMock('@web3-react/network-connector', () => ({
       NetworkConnector
     }));
 
-    jest.doMock('../constants/chain', () => ({
+    vi.doMock('../constants/chain', () => ({
       NAME_ID_MAPPING: {
         HOMESTEAD: { id: 1 },
         SEPOLIA: { id: 11155111 }
       }
     }));
 
-    jest.doMock('../constants/contractAddress', () => ({
+    vi.doMock('../constants/contractAddress', () => ({
       TESTNET: testnet
     }));
 
-    let exportedModule;
-
-    jest.isolateModules(() => {
-      // Jest isolates the mocked module graph for each environment permutation.
-      // eslint-disable-next-line global-require
-      exportedModule = require('./networkconnector');
-    });
+    const exportedModule = await import('./networkconnector');
 
     return {
       NetworkConnector,
@@ -48,12 +44,12 @@ describe('networkConnector', () => {
 
   afterEach(() => {
     process.env = originalEnv;
-    jest.resetModules();
-    jest.clearAllMocks();
+    vi.resetModules();
+    vi.clearAllMocks();
   });
 
-  test('accepts the legacy homestead env var for mainnet fallback RPC', () => {
-    const { NetworkConnector, networkConnector } = loadConnectorModule({
+  test('accepts the legacy homestead env var for mainnet fallback RPC', async () => {
+    const { NetworkConnector, networkConnector } = await loadConnectorModule({
       homesteadUrl: 'https://mainnet-legacy.example'
     });
 
@@ -67,8 +63,8 @@ describe('networkConnector', () => {
     expect(networkConnector.config.urls[1]).toBe('https://mainnet-legacy.example');
   });
 
-  test('prefers the explicit mainnet env var when both names are present', () => {
-    const { networkConnector } = loadConnectorModule({
+  test('prefers the explicit mainnet env var when both names are present', async () => {
+    const { networkConnector } = await loadConnectorModule({
       homesteadUrl: 'https://mainnet-legacy.example',
       mainnetUrl: 'https://mainnet-current.example'
     });

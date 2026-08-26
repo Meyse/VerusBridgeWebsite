@@ -31,7 +31,7 @@ import {
 } from 'utils/walletConnection';
 
 import { useToast } from './Toast/ToastProvider';
-import { ReactComponent as MetaMaskIcon } from '../images/icons/metamask-icon.svg';
+import MetaMaskIcon from '../images/icons/metamask-icon.svg?react';
 import styles from '../styles/ReferenceBridge.module.css';
 
 const NAV_ITEMS = [

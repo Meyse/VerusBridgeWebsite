@@ -13,15 +13,15 @@ const mockSystemTheme = (matchesDarkMode) => {
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
     writable: true,
-    value: jest.fn().mockImplementation((query) => ({
-      addEventListener: jest.fn(),
-      addListener: jest.fn(),
-      dispatchEvent: jest.fn(),
+    value: vi.fn().mockImplementation((query) => ({
+      addEventListener: vi.fn(),
+      addListener: vi.fn(),
+      dispatchEvent: vi.fn(),
       matches: matchesDarkMode,
       media: query,
       onchange: null,
-      removeEventListener: jest.fn(),
-      removeListener: jest.fn()
+      removeEventListener: vi.fn(),
+      removeListener: vi.fn()
     }))
   });
 };

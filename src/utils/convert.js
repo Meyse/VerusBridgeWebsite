@@ -1,6 +1,6 @@
-import bitGoUTXO from './bitUTXO';
+import { fromBase58Check } from './verusAddress';
 
 export const convertVerusAddressToEthAddress = (verusAddress) => {
-  const address = bitGoUTXO.address.fromBase58Check(verusAddress, 102).hash.toString('hex')
+  const address = fromBase58Check(verusAddress).hash.toString('hex')
   return `0x${address}`
 }

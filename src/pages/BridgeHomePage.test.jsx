@@ -8,6 +8,8 @@ import {
   useLocation
 } from 'react-router-dom';
 
+import useBridgeController from 'hooks/useBridgeController';
+
 import BridgeHomePage from './BridgeHomePage';
 
 const createController = (overrides = {}) => ({
@@ -23,34 +25,34 @@ const createController = (overrides = {}) => ({
   ...overrides
 });
 
-jest.mock('components/BridgeCard', () => ({
+vi.mock('components/BridgeCard', () => ({
   __esModule: true,
   default: () => <div data-testid="bridge-card" />
 }));
 
-jest.mock('components/ReferenceInfoBar', () => ({
+vi.mock('components/ReferenceInfoBar', () => ({
   __esModule: true,
   default: () => <div data-testid="info-bar" />
 }));
 
-jest.mock('components/ReferenceTrustlessSection', () => ({
+vi.mock('components/ReferenceTrustlessSection', () => ({
   __esModule: true,
   default: () => <section data-testid="trust-section" id="info" />
 }));
 
-jest.mock('components/SiteHeader', () => ({
+vi.mock('components/SiteHeader', () => ({
   __esModule: true,
   default: () => <header data-testid="site-header" />
 }));
 
-jest.mock('components/SiteFooter', () => ({
+vi.mock('components/SiteFooter', () => ({
   __esModule: true,
   default: () => <footer data-testid="site-footer" />
 }));
 
-jest.mock('hooks/useBridgeController', () => ({
+vi.mock('hooks/useBridgeController', () => ({
   __esModule: true,
-  default: jest.fn()
+  default: vi.fn()
 }));
 
 const LocationProbe = () => {
@@ -89,16 +91,15 @@ describe('BridgeHomePage', () => {
     capturedControllerOptions = undefined;
     originalRequestAnimationFrame = window.requestAnimationFrame;
     originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    window.requestAnimationFrame = jest.fn((callback) => {
+    window.requestAnimationFrame = vi.fn((callback) => {
       callback();
       return 0;
     });
     if (!originalScrollIntoView) {
       HTMLElement.prototype.scrollIntoView = () => {};
     }
-    scrollIntoViewSpy = jest.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(jest.fn());
+    scrollIntoViewSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(vi.fn());
 
-    const useBridgeController = require('hooks/useBridgeController').default;
     useBridgeController.mockImplementation((options = {}) => {
       capturedControllerOptions = options;
       return createController({
@@ -129,7 +130,6 @@ describe('BridgeHomePage', () => {
   });
 
   test('renders hero token decor only while the landing hero is visible', () => {
-    const useBridgeController = require('hooks/useBridgeController').default;
     useBridgeController.mockImplementation((options = {}) => {
       capturedControllerOptions = options;
       return createController({ hasReviewSnapshot: false, isReviewing: false });
@@ -158,7 +158,6 @@ describe('BridgeHomePage', () => {
   });
 
   test('hides the hero heading and trust section while the review step is open', () => {
-    const useBridgeController = require('hooks/useBridgeController').default;
     useBridgeController.mockImplementation((options = {}) => {
       capturedControllerOptions = options;
       return createController({ hasReviewSnapshot: true, isReviewing: true });
@@ -220,7 +219,6 @@ describe('BridgeHomePage', () => {
   });
 
   test('normalizes an invalid review URL back to edit mode while preserving the info hash', async () => {
-    const useBridgeController = require('hooks/useBridgeController').default;
     useBridgeController.mockImplementation((options = {}) => {
       capturedControllerOptions = options;
       return createController({ hasReviewSnapshot: false, isReviewing: false });
@@ -249,7 +247,6 @@ describe('BridgeHomePage', () => {
 
   test('re-runs the info scroll when edit mode becomes renderable on the same hash', async () => {
     let isReviewing = true;
-    const useBridgeController = require('hooks/useBridgeController').default;
     useBridgeController.mockImplementation((options = {}) => {
       capturedControllerOptions = options;
       return createController({

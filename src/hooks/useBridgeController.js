@@ -4,8 +4,7 @@ import { useWeb3React } from '@web3-react/core';
 import BigNumber from 'bignumber.js';
 import { utils } from 'ethers';
 import { flushSync } from 'react-dom';
-import { VerusdRpcInterface } from 'verusd-rpc-ts-client';
-import web3 from 'web3';
+import { VerusdRpcInterface } from 'utils/verusdRpc';
 
 import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import ERC20_ABI from 'abis/ERC20Abi.json';
@@ -20,7 +19,8 @@ import {
   HEIGHT_LOCATION_IN_FORKS
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
-import bitGoUTXO from 'utils/bitUTXO';
+import { toBase58Check } from 'utils/verusAddress';
+import { BN, fromWei, toBN, toWei } from 'utils/ethereumUnits';
 import {
   buildDestinationCurrency,
   buildTokenCurrency,
@@ -482,7 +482,7 @@ const toIAddressFromHexCurrency = (currencyValue) => {
   }
 
   try {
-    return bitGoUTXO.address.toBase58Check(Buffer.from(currencyValue.slice(2), 'hex'), 102);
+    return toBase58Check(Buffer.from(currencyValue.slice(2), 'hex'), 102);
   } catch (error) {
     return null;
   }
@@ -551,7 +551,7 @@ const getBaseUnitMultiplier = (decimals) => {
     return null;
   }
 
-  return new web3.utils.BN('10').pow(new web3.utils.BN(normalizedDecimals));
+  return new BN('10').pow(new BN(normalizedDecimals));
 };
 
 const parseTokenAmountToBaseUnits = (value, decimals) => {
@@ -580,9 +580,9 @@ const parseTokenAmountToBaseUnits = (value, decimals) => {
   }
 
   const paddedFraction = `${fractionPart}${'0'.repeat(normalizedDecimals - fractionPart.length)}` || '0';
-  return new web3.utils.BN(wholePart || '0')
+  return new BN(wholePart || '0')
     .mul(baseUnitMultiplier)
-    .add(new web3.utils.BN(paddedFraction || '0'));
+    .add(new BN(paddedFraction || '0'));
 };
 
 const formatTokenAmountFromBaseUnits = (value, decimals) => {
@@ -591,7 +591,7 @@ const formatTokenAmountFromBaseUnits = (value, decimals) => {
     return '';
   }
 
-  const baseUnits = web3.utils.toBN(value);
+  const baseUnits = toBN(value);
   if (normalizedDecimals === 0) {
     return baseUnits.toString(10);
   }
@@ -683,21 +683,21 @@ const toTokenOption = (token, metadata = {}) => ({
   ...metadata
 });
 
-const getBaseBridgeFeeWei = () => new web3.utils.BN(web3.utils.toWei(ETH_FEES.ETH, 'ether'));
+const getBaseBridgeFeeWei = () => new BN(toWei(ETH_FEES.ETH, 'ether'));
 
 const getMinimumGatewayFeeWei = () => (
-  new web3.utils.BN(MINIMUM_GAS_PRICE_WEI).mul(new web3.utils.BN(GAS_TRANSACTIONIMPORTFEE))
+  new BN(MINIMUM_GAS_PRICE_WEI).mul(new BN(GAS_TRANSACTIONIMPORTFEE))
 );
 
 const hasLiveGasEstimate = (gasPrice) => Boolean(gasPrice?.WEICOST && gasPrice?.SATSCOST);
 
 const getGatewayFeeWei = (destination, gasPrice) => {
   if (!destination || !destination.startsWith('swapto')) {
-    return new web3.utils.BN('0');
+    return new BN('0');
   }
 
   return hasLiveGasEstimate(gasPrice)
-    ? new web3.utils.BN(gasPrice.WEICOST)
+    ? new BN(gasPrice.WEICOST)
     : getMinimumGatewayFeeWei();
 };
 
@@ -722,7 +722,7 @@ const formatEthFromWei = (value) => {
   }
 
   try {
-    return formatEthValue(web3.utils.fromWei(value.toString(), 'ether'));
+    return formatEthValue(fromWei(value.toString(), 'ether'));
   } catch (error) {
     return '--';
   }
@@ -749,7 +749,7 @@ const getRequiredNativeEthWei = ({ amount, destination, gasPrice, selectedToken 
 
 const getFeeEstimateValue = (destination, gasPrice) => {
   const totalFee = getFeeEstimateWei(destination, gasPrice);
-  const feeAsEth = parseFloat(web3.utils.fromWei(totalFee.toString(), 'ether'));
+  const feeAsEth = parseFloat(fromWei(totalFee.toString(), 'ether'));
 
   if (Number.isNaN(feeAsEth)) {
     return parseFloat(ETH_FEES.ETH);
@@ -803,27 +803,27 @@ const getGasEstimate = async (library) => {
   }
 
   const transaction = await library.getTransaction(block.transactions[Math.ceil(block.transactions.length / 2)]);
-  const gasPriceInWei = new web3.utils.BN(transaction.gasPrice.toString());
+  const gasPriceInWei = new BN(transaction.gasPrice.toString());
   const gasPriceWithBuffer = gasPriceInWei
-    .mul(new web3.utils.BN('12'))
-    .div(new web3.utils.BN('10'));
+    .mul(new BN('12'))
+    .div(new BN('10'));
 
-  if (gasPriceWithBuffer.lt(new web3.utils.BN(MINIMUM_GAS_PRICE_WEI))) {
+  if (gasPriceWithBuffer.lt(new BN(MINIMUM_GAS_PRICE_WEI))) {
     return {
-      SATSCOST: new web3.utils.BN(GAS_TRANSACTIONIMPORTFEE).toString(),
-      WEICOST: new web3.utils.BN(MINIMUM_GAS_PRICE_WEI)
-        .mul(new web3.utils.BN(GAS_TRANSACTIONIMPORTFEE))
+      SATSCOST: new BN(GAS_TRANSACTIONIMPORTFEE).toString(),
+      WEICOST: new BN(MINIMUM_GAS_PRICE_WEI)
+        .mul(new BN(GAS_TRANSACTIONIMPORTFEE))
         .toString()
     };
   }
 
   return {
     SATSCOST: gasPriceWithBuffer
-      .mul(new web3.utils.BN(GAS_TRANSACTIONIMPORTFEE))
-      .div(new web3.utils.BN('10000000000'))
+      .mul(new BN(GAS_TRANSACTIONIMPORTFEE))
+      .div(new BN('10000000000'))
       .toString(),
     WEICOST: gasPriceWithBuffer
-      .mul(new web3.utils.BN(GAS_TRANSACTIONIMPORTFEE))
+      .mul(new BN(GAS_TRANSACTIONIMPORTFEE))
       .toString()
   };
 };
@@ -919,7 +919,7 @@ const getSpendableTokenBalance = ({ destination, gasPrice, selectedToken, tokenB
   const feeEstimateWei = getFeeEstimateWei(destination, gasPrice);
   const spendableWei = nativeBalanceWei.gt(feeEstimateWei)
     ? nativeBalanceWei.sub(feeEstimateWei)
-    : new web3.utils.BN('0');
+    : new BN('0');
 
   return {
     baseUnits: spendableWei,
@@ -954,7 +954,7 @@ const buildSendAmountPresets = (spendableTokenBalance) => {
   const percentagePresets = SEND_AMOUNT_PRESET_FRACTIONS
     .map(({ denominator, id, label, numerator }) => ({
       amount: formatTokenAmountFromBaseUnits(
-        spendableTokenBalance.baseUnits.mul(new web3.utils.BN(`${numerator}`)).div(new web3.utils.BN(`${denominator}`)),
+        spendableTokenBalance.baseUnits.mul(new BN(`${numerator}`)).div(new BN(`${denominator}`)),
         spendableTokenBalance.decimals
       ),
       id,
@@ -1465,7 +1465,7 @@ export default function useBridgeController({
       return null;
     }
 
-    return parseFloat(web3.utils.fromWei(requiredNativeEthWei.toString(), 'ether'));
+    return parseFloat(fromWei(requiredNativeEthWei.toString(), 'ether'));
   }, [requiredNativeEthWei]);
 
   const hasEnoughNativeEth = useMemo(() => {
@@ -1762,7 +1762,7 @@ export default function useBridgeController({
       setReceiveQuote(createAsyncValueState(quoteSignature, 'pending'));
 
       try {
-        const fromIaddress = bitGoUTXO.address.toBase58Check(Buffer.from(selectedToken.value.slice(2), 'hex'), 102);
+        const fromIaddress = toBase58Check(Buffer.from(selectedToken.value.slice(2), 'hex'), 102);
         const conversionPacket = {
           currency: fromIaddress,
           convertto: convertTo,
@@ -2059,7 +2059,7 @@ export default function useBridgeController({
 
   const reviewFeeRows = useMemo(() => {
     const networkCostWei = getGatewayFeeWei(destination, gasPrice);
-    const networkCostEth = parseFloat(web3.utils.fromWei(networkCostWei.toString(), 'ether'));
+    const networkCostEth = parseFloat(fromWei(networkCostWei.toString(), 'ether'));
     const bridgeFeeEth = parseFloat(ETH_FEES.ETH);
     const rows = [
       {
@@ -2132,8 +2132,8 @@ export default function useBridgeController({
     });
 
     const tokenContract = getContract(tokenToAuthorise.erc20address, ERC20_ABI, library, account);
-    const decimals = web3.utils.toBN(await tokenContract.decimals());
-    const base = new web3.utils.BN(10).pow(new web3.utils.BN(decimals));
+    const decimals = toBN(await tokenContract.decimals());
+    const base = new BN(10).pow(new BN(decimals));
     const [wholePart = '0', fractionPart = '0'] = amountToAuthorise.split('.');
 
     if (amountToAuthorise.split('.').length > 2) {
@@ -2149,7 +2149,7 @@ export default function useBridgeController({
       fraction += '0';
     }
 
-    const bigAmount = new web3.utils.BN(wholePart).mul(base).add(new web3.utils.BN(fraction));
+    const bigAmount = new BN(wholePart).mul(base).add(new BN(fraction));
     const approval = await tokenContract.approve(DELEGATOR_ADD, bigAmount.toString(), {
       from: account,
       gasLimit: maxGas2
@@ -2240,16 +2240,16 @@ export default function useBridgeController({
         throw new Error('Cannot bounce back to the same currency.');
       }
 
-      let metaMaskFee = new web3.utils.BN(web3.utils.toWei(ETH_FEES.ETH, 'ether'));
+      let metaMaskFee = new BN(toWei(ETH_FEES.ETH, 'ether'));
       if (hasGatewayFlag(destinationtype)) {
-        metaMaskFee = metaMaskFee.add(new web3.utils.BN(gasPrice.WEICOST));
+        metaMaskFee = metaMaskFee.add(new BN(gasPrice.WEICOST));
         if (!transferRefundAddress) {
           throw new Error('No refund address is available for this wallet.');
         }
       }
 
       if (selectedToken.value === GLOBAL_ADDRESS.ETH) {
-        metaMaskFee = metaMaskFee.add(new web3.utils.BN(web3.utils.toWei(amount, 'ether')));
+        metaMaskFee = metaMaskFee.add(new BN(toWei(amount, 'ether')));
       }
 
       const reserveTransfer = {

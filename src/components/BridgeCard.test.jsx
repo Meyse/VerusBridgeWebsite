@@ -7,15 +7,15 @@ import { GLOBAL_ADDRESS } from 'constants/contractAddress';
 import BridgeCard from './BridgeCard';
 import styles from '../styles/ReferenceBridge.module.css';
 
-const createMatchMedia = (matches = false) => jest.fn().mockImplementation((query) => ({
+const createMatchMedia = (matches = false) => vi.fn().mockImplementation((query) => ({
   matches,
   media: query,
   onchange: null,
-  addEventListener: jest.fn(),
-  removeEventListener: jest.fn(),
-  addListener: jest.fn(),
-  removeListener: jest.fn(),
-  dispatchEvent: jest.fn()
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+  addListener: vi.fn(),
+  removeListener: vi.fn(),
+  dispatchEvent: vi.fn()
 }));
 
 const setMatchMedia = (matches = false) => {
@@ -36,15 +36,15 @@ const selectedToken = {
 const createController = (overrides = {}) => ({
   alert: null,
   allowsEthereumDestination: true,
-  handleSubmit: jest.fn(),
+  handleSubmit: vi.fn(),
   amount: '',
   amountFiatLabel: null,
   amountError: '',
-  setAmount: jest.fn(),
+  setAmount: vi.fn(),
   isWalletConnected: false,
   tokenBalance: '',
   tokenBalanceLabel: '',
-  handleMaxAmount: jest.fn(),
+  handleMaxAmount: vi.fn(),
   estimatedDisplayValue: '',
   estimatedFiatLabel: null,
   receiveAmountDisplay: '',
@@ -64,15 +64,15 @@ const createController = (overrides = {}) => ({
   conversionWarningGapPercent: null,
   conversionWarningKind: null,
   conversionWarningMessage: '',
-  setAddress: jest.fn(),
+  setAddress: vi.fn(),
   canSubmit: false,
-  closeReview: jest.fn(),
+  closeReview: vi.fn(),
   hasEnoughNativeEth: true,
   isReviewing: false,
   isRefundSignaturePending: false,
   isTxPending: false,
   nativeEthBalance: 0,
-  openReview: jest.fn(),
+  openReview: vi.fn(),
   requiredNativeEth: 0,
   reviewConfirmLabel: 'Confirm',
   reviewBouncebackWarningMessage: '',
@@ -93,9 +93,9 @@ const createController = (overrides = {}) => ({
   sourceCatalogError: null,
   tokenOptions: [selectedToken],
   destinationOptions: [{ value: 'DAI.vETH' }],
-  retrySourceCatalog: jest.fn(),
-  selectToken: jest.fn(),
-  selectDestination: jest.fn(),
+  retrySourceCatalog: vi.fn(),
+  selectToken: vi.fn(),
+  selectDestination: vi.fn(),
   ...overrides
 });
 
@@ -426,7 +426,7 @@ describe('BridgeCard currency selectors', () => {
   });
 
   test('clicking a desktop amount preset sets the send amount', () => {
-    const setAmount = jest.fn();
+    const setAmount = vi.fn();
 
     setMatchMedia(true);
 
@@ -475,7 +475,7 @@ describe('BridgeCard currency selectors', () => {
   });
 
   test('clicking a blocked ETH amount preset opens the fee warning popover', () => {
-    const setAmount = jest.fn();
+    const setAmount = vi.fn();
 
     setMatchMedia(true);
 
@@ -994,7 +994,7 @@ describe('BridgeCard currency selectors', () => {
   });
 
   test('shows a retry banner when the disconnected source catalog fails', () => {
-    const retrySourceCatalog = jest.fn();
+    const retrySourceCatalog = vi.fn();
 
     render(
       <BridgeCard

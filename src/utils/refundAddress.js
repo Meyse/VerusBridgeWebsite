@@ -1,5 +1,6 @@
-import { address as baddress, crypto as bcrypto } from '@bitgo/utxo-lib';
 import { utils } from 'ethers';
+
+import { hash160, toBase58Check } from './verusAddress';
 
 const REFUND_ADDRESS_MESSAGE = 'Agreeing to this will create a public key address for Verus Refunds.';
 
@@ -140,8 +141,8 @@ export const requestRefundAddressData = async (account) => {
   const messageHash = utils.hashMessage(REFUND_ADDRESS_MESSAGE);
   const publicKey = utils.recoverPublicKey(utils.arrayify(messageHash), signature);
   const compressedPublicKey = utils.computePublicKey(publicKey, true);
-  const refundAddress = baddress.toBase58Check(
-    bcrypto.hash160(Buffer.from(compressedPublicKey.slice(2), 'hex')),
+  const refundAddress = toBase58Check(
+    hash160(Buffer.from(compressedPublicKey.slice(2), 'hex')),
     60
   );
 

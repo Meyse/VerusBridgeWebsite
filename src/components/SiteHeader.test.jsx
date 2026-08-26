@@ -17,7 +17,7 @@ import { INJECTED_WALLET_AUTO_CONNECT_DISABLED_KEY } from 'utils/walletConnectio
 
 import SiteHeader from './SiteHeader';
 
-jest.mock('@web3-react/core', () => {
+vi.mock('@web3-react/core', () => {
   const createMockErrorType = (name) => {
     function MockError(message) {
       this.message = message;
@@ -32,11 +32,11 @@ jest.mock('@web3-react/core', () => {
 
   return {
     UnsupportedChainIdError: createMockErrorType('UnsupportedChainIdError'),
-    useWeb3React: jest.fn()
+    useWeb3React: vi.fn()
   };
 });
 
-jest.mock('@web3-react/injected-connector', () => {
+vi.mock('@web3-react/injected-connector', () => {
   const createMockErrorType = (name) => {
     function MockError(message) {
       this.message = message;
@@ -55,26 +55,26 @@ jest.mock('@web3-react/injected-connector', () => {
   };
 });
 
-jest.mock('config/explorerLinks', () => ({
+vi.mock('config/explorerLinks', () => ({
   getExplorerBaseUrl: () => 'https://etherscan.io'
 }));
 
-jest.mock('connectors/injectedConnector', () => ({
+vi.mock('connectors/injectedConnector', () => ({
   injectedConnector: { id: 'injected' }
 }));
 
-jest.mock('utils/refundAddress', () => {
-  const actual = jest.requireActual('utils/refundAddress');
+vi.mock('utils/refundAddress', async () => {
+  const actual = await vi.importActual('utils/refundAddress');
 
   return {
     ...actual,
-    requestAndCacheRefundAddressData: jest.fn()
+    requestAndCacheRefundAddressData: vi.fn()
   };
 });
 
-const mockAddToast = jest.fn();
+const mockAddToast = vi.fn();
 
-jest.mock('./Toast/ToastProvider', () => ({
+vi.mock('./Toast/ToastProvider', () => ({
   useToast: () => ({ addToast: mockAddToast })
 }));
 
@@ -108,16 +108,16 @@ describe('SiteHeader wallet interactions', () => {
   let offsetHeightGetter;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     window.localStorage.clear();
-    window.scrollTo = jest.fn();
+    window.scrollTo = vi.fn();
     Object.defineProperty(window, 'scrollY', {
       configurable: true,
       value: 0,
       writable: true
     });
     document.documentElement.style.removeProperty('--site-header-height');
-    offsetHeightGetter = jest.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function getOffsetHeight() {
+    offsetHeightGetter = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function getOffsetHeight() {
       return this.tagName === 'HEADER' ? 72 : 0;
     });
   });
@@ -130,8 +130,8 @@ describe('SiteHeader wallet interactions', () => {
   test('renders the updated primary navigation items', () => {
     useWeb3React.mockReturnValue({
       account: null,
-      activate: jest.fn(),
-      deactivate: jest.fn(),
+      activate: vi.fn(),
+      deactivate: vi.fn(),
       error: null
     });
 
@@ -148,8 +148,8 @@ describe('SiteHeader wallet interactions', () => {
   test('adds the scrolled header class after the page moves', () => {
     useWeb3React.mockReturnValue({
       account: null,
-      activate: jest.fn(),
-      deactivate: jest.fn(),
+      activate: vi.fn(),
+      deactivate: vi.fn(),
       error: null
     });
 
@@ -165,14 +165,14 @@ describe('SiteHeader wallet interactions', () => {
     });
     fireEvent.scroll(window);
 
-    expect(header).toHaveClass('headerScrolled');
+    expect(header.className).toMatch(/headerScrolled/);
   });
 
   test('publishes the header height as a CSS variable for viewport layout', () => {
     useWeb3React.mockReturnValue({
       account: null,
-      activate: jest.fn(),
-      deactivate: jest.fn(),
+      activate: vi.fn(),
+      deactivate: vi.fn(),
       error: null
     });
 
@@ -184,8 +184,8 @@ describe('SiteHeader wallet interactions', () => {
   test('scrolls to the top when Bridge is clicked on the home route', () => {
     useWeb3React.mockReturnValue({
       account: null,
-      activate: jest.fn(),
-      deactivate: jest.fn(),
+      activate: vi.fn(),
+      deactivate: vi.fn(),
       error: null
     });
 
@@ -205,8 +205,8 @@ describe('SiteHeader wallet interactions', () => {
   test('replaces the review route with edit mode when Bridge is clicked', async () => {
     useWeb3React.mockReturnValue({
       account: null,
-      activate: jest.fn(),
-      deactivate: jest.fn(),
+      activate: vi.fn(),
+      deactivate: vi.fn(),
       error: null
     });
 
@@ -225,8 +225,8 @@ describe('SiteHeader wallet interactions', () => {
   test('matches Bridge behavior when the title link is clicked during review', async () => {
     useWeb3React.mockReturnValue({
       account: null,
-      activate: jest.fn(),
-      deactivate: jest.fn(),
+      activate: vi.fn(),
+      deactivate: vi.fn(),
       error: null
     });
 
@@ -244,8 +244,8 @@ describe('SiteHeader wallet interactions', () => {
   test('replaces the review route with the canonical info anchor when Info is clicked', async () => {
     useWeb3React.mockReturnValue({
       account: null,
-      activate: jest.fn(),
-      deactivate: jest.fn(),
+      activate: vi.fn(),
+      deactivate: vi.fn(),
       error: null
     });
 
@@ -261,11 +261,11 @@ describe('SiteHeader wallet interactions', () => {
   });
 
   test('stores the disconnect preference before deactivating the wallet', () => {
-    const deactivate = jest.fn();
+    const deactivate = vi.fn();
 
     useWeb3React.mockReturnValue({
       account: '0x1234567890123456789012345678901234567890',
-      activate: jest.fn(),
+      activate: vi.fn(),
       deactivate,
       error: null
     });
@@ -288,8 +288,8 @@ describe('SiteHeader wallet interactions', () => {
     });
     useWeb3React.mockReturnValue({
       account,
-      activate: jest.fn(),
-      deactivate: jest.fn(),
+      activate: vi.fn(),
+      deactivate: vi.fn(),
       error: null
     });
 
@@ -316,8 +316,8 @@ describe('SiteHeader wallet interactions', () => {
   test('shows only supported wallet choices in the header menu before connecting', () => {
     useWeb3React.mockReturnValue({
       account: null,
-      activate: jest.fn(),
-      deactivate: jest.fn(),
+      activate: vi.fn(),
+      deactivate: vi.fn(),
       error: null
     });
 
@@ -330,13 +330,13 @@ describe('SiteHeader wallet interactions', () => {
   });
 
   test('clears the disconnect preference after a successful manual connect', async () => {
-    const activate = jest.fn().mockResolvedValue(undefined);
+    const activate = vi.fn().mockResolvedValue(undefined);
 
     window.localStorage.setItem(INJECTED_WALLET_AUTO_CONNECT_DISABLED_KEY, 'true');
     useWeb3React.mockReturnValue({
       account: null,
       activate,
-      deactivate: jest.fn(),
+      deactivate: vi.fn(),
       error: null
     });
 
@@ -354,12 +354,12 @@ describe('SiteHeader wallet interactions', () => {
   });
 
   test('closes the wallet menu when connector activation fails', async () => {
-    const activate = jest.fn().mockRejectedValue(new Error('Connection rejected'));
+    const activate = vi.fn().mockRejectedValue(new Error('Connection rejected'));
 
     useWeb3React.mockReturnValue({
       account: null,
       activate,
-      deactivate: jest.fn(),
+      deactivate: vi.fn(),
       error: null
     });
 

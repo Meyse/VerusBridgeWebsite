@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useWeb3React } from '@web3-react/core';
-import web3 from 'web3';
 
 import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import { useToast } from 'components/Toast/ToastProvider';
 import { DELEGATOR_ADD } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
-import bitGoUTXO from 'utils/bitUTXO';
+import { fromBase58Check } from 'utils/verusAddress';
+import { padLeft } from 'utils/ethereumUnits';
 import { getTokenOptions } from 'utils/options';
 import { requestRefundAddressData } from 'utils/refundAddress';
 import {
@@ -25,7 +25,7 @@ const MINIMUM_EARNINGS_TO_CLAIM = 0.006;
 const CONNECT_WALLET_LOOKUP_MESSAGE = 'Connect a wallet from the header to inspect earnings and refunds.';
 
 const formatHexAddress = (address, type) => {
-  const verusAddress = bitGoUTXO.address.fromBase58Check(address);
+  const verusAddress = fromBase58Check(address);
   let formatted = null;
 
   switch (verusAddress.version) {
@@ -40,13 +40,13 @@ const formatHexAddress = (address, type) => {
   }
 
   if (type === TYPE_REFUND_CHECK) {
-    const padded = Buffer.from(`${web3.utils.padLeft(formatted, 64)}`, 'hex');
+    const padded = Buffer.from(`${padLeft(formatted, 64)}`, 'hex');
     padded[1] = 16;
     return `0x${padded.toString('hex')}`;
   }
 
   if (type === TYPE_FEE || type === TYPE_PUBLICKEY) {
-    return `0x${Buffer.from(`${web3.utils.padLeft(formatted, 64)}`, 'hex').toString('hex')}`;
+    return `0x${Buffer.from(`${padLeft(formatted, 64)}`, 'hex').toString('hex')}`;
   }
 
   return `0x${formatted}`;

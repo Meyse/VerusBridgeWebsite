@@ -8,18 +8,18 @@ import { injectedConnector } from '../connectors/injectedConnector';
 import { isInjectedWalletAutoConnectSuppressed } from '../utils/walletConnection';
 import useEagerConnect from './useEagerConnect';
 
-jest.mock('@web3-react/core', () => ({
-  useWeb3React: jest.fn()
+vi.mock('@web3-react/core', () => ({
+  useWeb3React: vi.fn()
 }));
 
-jest.mock('../connectors/injectedConnector', () => ({
+vi.mock('../connectors/injectedConnector', () => ({
   injectedConnector: {
-    isAuthorized: jest.fn()
+    isAuthorized: vi.fn()
   }
 }));
 
-jest.mock('../utils/walletConnection', () => ({
-  isInjectedWalletAutoConnectSuppressed: jest.fn()
+vi.mock('../utils/walletConnection', () => ({
+  isInjectedWalletAutoConnectSuppressed: vi.fn()
 }));
 
 const HookProbe = () => {
@@ -30,11 +30,11 @@ const HookProbe = () => {
 
 describe('useEagerConnect', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   test('skips eager connection after an explicit disconnect', async () => {
-    const activate = jest.fn();
+    const activate = vi.fn();
 
     useWeb3React.mockReturnValue({
       activate,
@@ -53,7 +53,7 @@ describe('useEagerConnect', () => {
   });
 
   test('checks connector authorization when auto-connect is allowed', async () => {
-    const activate = jest.fn();
+    const activate = vi.fn();
 
     useWeb3React.mockReturnValue({
       activate,
