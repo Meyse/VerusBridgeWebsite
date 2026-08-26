@@ -12,10 +12,17 @@ const createRpcError = (id, code, message, data) => ({
 
 const getEndpoint = (baseUrl) => {
   if (!baseUrl) {
-    return '/';
+    return null;
   }
 
-  return new URL('/', baseUrl).toString();
+  try {
+    const endpoint = new URL('/', baseUrl);
+    return endpoint.protocol === 'http:' || endpoint.protocol === 'https:'
+      ? endpoint.toString()
+      : null;
+  } catch {
+    return null;
+  }
 };
 
 export class VerusdRpcInterface {
@@ -28,9 +35,14 @@ export class VerusdRpcInterface {
   async request(method, params) {
     const id = this.currentId;
     this.currentId += 1;
+    const endpoint = getEndpoint(this.baseUrl);
+
+    if (!endpoint) {
+      return createRpcError(id, -32602, 'Verus RPC URL is not configured correctly.');
+    }
 
     try {
-      const response = await fetch(getEndpoint(this.baseUrl), {
+      const response = await fetch(endpoint, {
         body: JSON.stringify({
           id,
           jsonrpc: JSON_RPC_VERSION,

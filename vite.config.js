@@ -43,9 +43,12 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), svgr()],
     resolve: {
-      alias: Object.fromEntries(
-        sourceAliases.map((directory) => [directory, path.join(sourceRoot, directory)])
-      )
+      alias: {
+        events: 'events/',
+        ...Object.fromEntries(
+          sourceAliases.map((directory) => [directory, path.join(sourceRoot, directory)])
+        )
+      }
     },
     define: {
       'process.env': JSON.stringify(processEnvironment)

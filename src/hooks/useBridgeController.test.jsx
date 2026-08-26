@@ -305,9 +305,9 @@ const HookProbe = ({ controllerOptions = {} }) => {
       <button
         onClick={() => {
           controller.selectToken(DAI_ADDRESS);
-          controller.selectDestination('bridgeETH');
           controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
           controller.setAmount('2.290298377929176');
+          controller.selectDestination('bridgeETH');
         }}
         type="button"
       >

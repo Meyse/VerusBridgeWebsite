@@ -10,4 +10,6 @@ overrides:
 verifyDepsBeforeRun: error
 strictDepBuilds: true
 allowBuilds:
+  bufferutil: false
   esbuild: true
+  utf-8-validate: false

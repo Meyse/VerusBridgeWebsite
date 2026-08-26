@@ -75,4 +75,20 @@ describe('Verus JSON-RPC client', () => {
       result: null
     });
   });
+
+  test('fails without making a request when the RPC URL is missing or invalid', async () => {
+    global.fetch = vi.fn();
+
+    await expect(new VerusdRpcInterface('VRSC', '').getInfo()).resolves.toEqual({
+      error: { code: -32602, message: 'Verus RPC URL is not configured correctly.' },
+      id: 0,
+      result: null
+    });
+    await expect(new VerusdRpcInterface('VRSC', 'file:///tmp/rpc').getInfo()).resolves.toEqual({
+      error: { code: -32602, message: 'Verus RPC URL is not configured correctly.' },
+      id: 0,
+      result: null
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
 });

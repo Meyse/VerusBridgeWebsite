@@ -1,5 +1,5 @@
 {
-  "name": "my-app",
+  "name": "verus-bridge-website",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -19,6 +19,7 @@
     "bs58check": "4.0.0",
     "buffer": "6.0.3",
     "ethers": "5.8.0",
+    "events": "3.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hook-form": "7.86.0",
@@ -44,13 +45,9 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
-    "preview": "vite preview --host localhost"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
+    "preview": "vite preview --host localhost",
+    "audit:ci": "pnpm audit --audit-level=moderate",
+    "verify": "pnpm lint && pnpm test && pnpm build && pnpm run audit:ci"
   },
   "browserslist": {
     "production": [

@@ -13,7 +13,7 @@ function Web3ConnectionProvider({ children }) {
   const triedEager = useEagerConnect();
 
   useEffect(() => {
-    if (triedEager && !active) {
+    if (triedEager && !active && networkConnector) {
       activate(networkConnector);
     }
   }, [triedEager, active, activate]);

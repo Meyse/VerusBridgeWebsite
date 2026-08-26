@@ -1,74 +1,55 @@
-## Environment Variable
-Please create .env file and copy the following code.
+# Verus Bridge Website
 
+Client-rendered Verus-Ethereum bridge website. The application prepares bridge requests and delegates every private-key operation to the connected browser wallet.
+
+## Requirements
+
+- Node.js 24.19.0
+- pnpm 11.24.0 through Corepack
+
+Both versions are pinned in `.nvmrc` and `package.json`. Yarn and npm lockfiles are intentionally unsupported.
+
+```sh
+nvm use
+corepack enable pnpm
+pnpm --version
+pnpm install --frozen-lockfile
 ```
-REACT_APP_RPC_URL_SEPOLIA=https://goerli.infura.io/v3/6e67197573904e1486999a75454b69da
-REACT_APP_RPC_URL_HOMESTEAD=https://mainnet.infura.io/v3/74934b1a6e0046c1b48f42c4ca6a9c58
-REACT_APP_TESTNET_ACTIVE=false
-REACT_APP_DELEGATOR_CONTRACT=0x71518580f36FeCEFfE0721F06bA4703218cD7F63
+
+## Environment
+
+Copy `.env.example` to `.env` and replace the placeholder RPC project identifier. Vite deliberately preserves the existing `REACT_APP_*` names so deployment environments do not need to rename variables during this migration.
+
+The values are embedded in the browser bundle. Never put secrets in these variables.
+
+- `REACT_APP_TESTNET_ACTIVE=true` selects Sepolia (chain ID 11155111); `false` selects Ethereum mainnet (chain ID 1).
+- `REACT_APP_DELEGATOR_CONTRACT` must be the bridge delegator deployed on the selected chain. Transaction submission fails closed when the wallet is on another chain, the address is invalid, or no contract code exists at that address.
+- `REACT_APP_RPC_URL_SEPOLIA` and `REACT_APP_RPC_URL_MAINNET` provide read-only Ethereum RPC access.
+- `REACT_APP_VERUS_RPC_URL` provides read-only Verus RPC access.
+- `REACT_APP_VERUS_END_BLOCK` retains the existing bridge synchronization configuration.
+
+## Commands
+
+```sh
+pnpm start       # local Vite server on http://localhost:5173
+pnpm test        # complete Vitest suite
+pnpm test:watch  # interactive test runner
+pnpm lint        # ESLint with zero warnings
+pnpm build       # production output in build/
+pnpm preview     # serve the production build locally
+pnpm verify      # lint, tests, production build, and advisory gate
 ```
 
-### `yarn install`
+CI uses `pnpm install --frozen-lockfile` and rejects moderate, high, or critical dependency advisories. See `docs/security-modernization-2026-08-27.md` for migration evidence, dependency exceptions, and the remaining low-severity advisory.
 
-### `yarn start`
+## Dependency updates
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+Dependabot checks npm packages and GitHub Actions weekly. Routine dependencies are delayed by pnpm's 24-hour minimum release age and no-downgrade trust policy. For an urgent security patch, review the exact package and provenance, update with `pnpm install --config.minimum-release-age=0`, then restore the normal policy and run a frozen install plus `pnpm verify` before committing.
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+Major upgrades to ethers or Web3 React require focused wallet-boundary regression testing; they are documented compatibility exceptions rather than unattended updates.
 
-### `yarn test`
+## Deployment
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Deploy the static contents of `build/` and configure the host to fall back to `index.html` for client-side routes such as `/claim` and `/nft`. Production security headers belong in the actual hosting configuration; this repository does not assume a specific host.
 
-### `yarn build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `yarn eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
-
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
-
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `yarn build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+The live bridge and MetaMask transaction flow are currently unavailable and must not be tested with production calls or real funds. Use the unit/integration fixtures and local browser smoke test described in the migration report.

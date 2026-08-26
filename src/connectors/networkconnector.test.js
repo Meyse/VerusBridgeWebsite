@@ -56,8 +56,7 @@ describe('networkConnector', () => {
     expect(NetworkConnector).toHaveBeenCalledWith({
       defaultChainId: 1,
       urls: {
-        1: 'https://mainnet-legacy.example',
-        11155111: 'https://sepolia.example'
+        1: 'https://mainnet-legacy.example'
       }
     });
     expect(networkConnector.config.urls[1]).toBe('https://mainnet-legacy.example');
@@ -70,5 +69,28 @@ describe('networkConnector', () => {
     });
 
     expect(networkConnector.config.urls[1]).toBe('https://mainnet-current.example');
+  });
+
+  test('configures only Sepolia for a testnet build', async () => {
+    const { networkConnector } = await loadConnectorModule({
+      mainnetUrl: 'https://mainnet.example',
+      sepoliaUrl: 'https://sepolia.example',
+      testnet: true
+    });
+
+    expect(networkConnector.config).toEqual({
+      defaultChainId: 11155111,
+      urls: { 11155111: 'https://sepolia.example' }
+    });
+  });
+
+  test('does not construct a connector from a missing or invalid selected URL', async () => {
+    const { NetworkConnector, networkConnector } = await loadConnectorModule({
+      mainnetUrl: 'not a URL',
+      sepoliaUrl: undefined
+    });
+
+    expect(networkConnector).toBeNull();
+    expect(NetworkConnector).not.toHaveBeenCalled();
   });
 });
