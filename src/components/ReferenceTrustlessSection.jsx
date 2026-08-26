@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { getExplorerResources } from 'config/explorerLinks';
 import styles from 'styles/ReferenceBridge.module.css';
 import { HOME_INFO_SECTION_ID } from 'utils/homeNavigation';
 
@@ -18,8 +19,11 @@ const FAQItem = ({ children, question }) => (
   </details>
 );
 
-const ReferenceTrustlessSection = () => (
-  <section className={styles.trustSection} id={HOME_INFO_SECTION_ID}>
+const ReferenceTrustlessSection = () => {
+  const bridgeContract = getExplorerResources().find((resource) => resource.id === 'contract');
+
+  return (
+    <section className={styles.trustSection} id={HOME_INFO_SECTION_ID}>
     <div className={styles.trustInner}>
       <div className={styles.trustHeadline}>
         <h2 className={styles.trustHeadlineLine}>You don&apos;t need to trust anyone.</h2>
@@ -119,15 +123,19 @@ const ReferenceTrustlessSection = () => (
 
           <FAQItem question="Where can I inspect the Verus-Ethereum Bridge contract?">
             <p className={styles.faqAnswerLead}>
-              You can find the contract here:{' '}
-              <a
-                className={styles.faqInlineLink}
-                href="https://etherscan.io/address/0x71518580f36FeCEFfE0721F06bA4703218cD7F63"
-                rel="noreferrer"
-                target="_blank"
-              >
-                https://etherscan.io/address/0x71518580f36FeCEFfE0721F06bA4703218cD7F63
-              </a>
+              {bridgeContract ? (
+                <>
+                  You can find the contract configured for this build here:{' '}
+                  <a
+                    className={styles.faqInlineLink}
+                    href={bridgeContract.href}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {bridgeContract.href}
+                  </a>
+                </>
+              ) : 'The bridge contract is not configured for this build.'}
             </p>
           </FAQItem>
 
@@ -160,7 +168,8 @@ const ReferenceTrustlessSection = () => (
         </div>
       </div>
     </div>
-  </section>
-);
+    </section>
+  );
+};
 
 export default ReferenceTrustlessSection;

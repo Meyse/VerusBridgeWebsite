@@ -14,6 +14,10 @@ import {
   uint64ToVerusFloat,
   validateClaimAddress
 } from 'utils/rules';
+import {
+  assertBridgeTransactionContext,
+  isExpectedWalletChain
+} from 'utils/walletNetwork';
 
 const maxGas = 800000;
 const maxGasClaim = 80000;
@@ -171,7 +175,7 @@ export default function useClaimController() {
   const [walletAddressStatus, setWalletAddressStatus] = useState(null);
   const [isWalletAddressPending, setIsWalletAddressPending] = useState(false);
   const [lookupRevision, setLookupRevision] = useState(0);
-  const { account } = useWeb3React();
+  const { account, chainId, library } = useWeb3React();
   const { addToast } = useToast();
   const delegatorContract = useContract(DELEGATOR_ADD, DELEGATOR_ABI);
 
@@ -535,6 +539,8 @@ export default function useClaimController() {
     setActionTarget('earnings');
 
     try {
+      await assertBridgeTransactionContext(library);
+
       if (isWalletVerificationRequired) {
         const nextDetails = await loadWalletAddressDetails();
 
@@ -551,6 +557,7 @@ export default function useClaimController() {
           `0x${nextDetails.publicKey.slice(68, 132)}`
         );
 
+        await assertBridgeTransactionContext(library);
         const txResult = await delegatorContract.sendfees(
           `0x${nextDetails.publicKey.slice(4, 68)}`,
           `0x${nextDetails.publicKey.slice(68, 132)}`,
@@ -569,6 +576,7 @@ export default function useClaimController() {
 
       const feeAddress = formatHexAddress(normalizedAddress, TYPE_FEE);
       await delegatorContract.callStatic.sendfees(feeAddress, `0x${Buffer.alloc(32).toString('hex')}`);
+      await assertBridgeTransactionContext(library);
       const txResult = await delegatorContract.sendfees(
         feeAddress,
         `0x${Buffer.alloc(32).toString('hex')}`,
@@ -597,6 +605,7 @@ export default function useClaimController() {
     addToast,
     delegatorContract,
     isWalletVerificationRequired,
+    library,
     loadWalletAddressDetails,
     normalizedAddress,
     refreshLookup
@@ -631,6 +640,7 @@ export default function useClaimController() {
     setActionTarget(`refund:${currency}`);
 
     try {
+      await assertBridgeTransactionContext(library);
       const refundAddress = formatHexAddress(normalizedAddress, TYPE_REFUND);
       const previewClaim = await delegatorContract.callStatic.claimRefund(refundAddress, currency);
 
@@ -642,6 +652,7 @@ export default function useClaimController() {
         return;
       }
 
+      await assertBridgeTransactionContext(library);
       const txResult = await delegatorContract.claimRefund(refundAddress, currency, {
         from: account,
         gasLimit: maxGas
@@ -663,7 +674,7 @@ export default function useClaimController() {
     } finally {
       setActionTarget('');
     }
-  }, [account, addressError, addToast, delegatorContract, normalizedAddress, refundEntries, refreshLookup]);
+  }, [account, addressError, addToast, delegatorContract, library, normalizedAddress, refundEntries, refreshLookup]);
 
   let walletActionLabel = 'Use connected wallet';
   if (isWalletVerificationRequired) {
@@ -688,8 +699,10 @@ export default function useClaimController() {
     }
   }
 
+  const canSubmitWalletTransactions = Boolean(account && isExpectedWalletChain(chainId));
+
   const canClaimEarnings = Boolean(
-    account
+    canSubmitWalletTransactions
     && normalizedAddress
     && !addressError
     && hasPositiveAmount(earningsAmount)
@@ -718,6 +731,7 @@ export default function useClaimController() {
   return {
     account,
     actionTarget,
+    canSubmitWalletTransactions,
     address,
     addressError,
     canClaimEarnings,

@@ -6,6 +6,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getExplorerBaseUrl } from 'config/explorerLinks';
 import { injectedConnector } from 'connectors/injectedConnector';
+import { ETHEREUM_BLOCKCHAIN_NAME } from 'constants/contractAddress';
 import { formatCompactAddress } from 'utils/bridgeUi';
 import {
   HOME_INFO_HASH,
@@ -130,7 +131,7 @@ const SiteHeader = () => {
     } else if (error instanceof UserRejectedRequestError) {
       addToast({ type: 'error', description: 'Wallet connection request rejected.' });
     } else if (error instanceof UnsupportedChainIdError) {
-      addToast({ type: 'error', description: 'Switch MetaMask to Ethereum mainnet or Sepolia.' });
+      addToast({ type: 'error', description: `Switch MetaMask to ${ETHEREUM_BLOCKCHAIN_NAME}.` });
     }
   }, [addToast, error]);
 

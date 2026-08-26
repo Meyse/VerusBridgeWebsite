@@ -32,8 +32,12 @@ const legacyEnvironmentKeys = [
 
 export default defineConfig(({ mode }) => {
   const environment = loadEnv(mode, projectRoot, 'REACT_APP_');
+  const testEnvironment = mode === 'test' ? {
+    REACT_APP_DELEGATOR_CONTRACT: '0x71518580f36FeCEFfE0721F06bA4703218cD7F63',
+    REACT_APP_TESTNET_ACTIVE: 'false'
+  } : {};
   const processEnvironment = Object.fromEntries(
-    legacyEnvironmentKeys.map((key) => [key, environment[key] || ''])
+    legacyEnvironmentKeys.map((key) => [key, environment[key] || testEnvironment[key] || ''])
   );
 
   return {
@@ -53,6 +57,7 @@ export default defineConfig(({ mode }) => {
       host: 'localhost'
     },
     test: {
+      env: testEnvironment,
       environment: 'jsdom',
       globals: true,
       maxWorkers: 2,

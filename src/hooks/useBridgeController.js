@@ -45,6 +45,10 @@ import {
 } from 'utils/refundAddress';
 import { coinsToSats, isETHAddress, uint64ToVerusFloat, validateAddress } from 'utils/rules';
 import { getConfigOptions } from 'utils/txConfig';
+import {
+  assertBridgeTransactionContext,
+  isExpectedWalletChain
+} from 'utils/walletNetwork';
 
 const maxGas = 1000000;
 const maxGas2 = 100000;
@@ -1079,7 +1083,7 @@ export default function useBridgeController({
   const [notarizationLagSeconds, setNotarizationLagSeconds] = useState(null);
   const [verusChainHeight, setVerusChainHeight] = useState(null);
   const [verusTipHeight, setVerusTipHeight] = useState(null);
-  const { account, library } = useWeb3React();
+  const { account, chainId, library } = useWeb3React();
   const { addToast } = useToast();
   const delegatorContract = useContract(DELEGATOR_ADD, DELEGATOR_ABI);
 
@@ -1121,11 +1125,12 @@ export default function useBridgeController({
 
   const editSignature = useMemo(() => [
     account || '',
+    chainId || '',
     address || '',
     amount || '',
     destination || '',
     selectedToken?.value || ''
-  ].join('|'), [account, address, amount, destination, selectedToken]);
+  ].join('|'), [account, address, amount, chainId, destination, selectedToken]);
   const editSignatureRef = useRef(editSignature);
 
   useEffect(() => {
@@ -2093,6 +2098,14 @@ export default function useBridgeController({
       return false;
     }
 
+    if (!isExpectedWalletChain(chainId)) {
+      setAlert({
+        severity: 'warning',
+        message: `Switch MetaMask to ${ETHEREUM_BLOCKCHAIN_NAME} before bridging assets.`
+      });
+      return false;
+    }
+
     if (!selectedToken || !destination) {
       setAlert({
         severity: 'warning',
@@ -2121,9 +2134,10 @@ export default function useBridgeController({
     }
 
     return true;
-  }, [account, address, amount, delegatorContract, destination, library, selectedToken]);
+  }, [account, address, amount, chainId, delegatorContract, destination, library, selectedToken]);
 
   const authoriseOneTokenAmount = async (tokenToAuthorise, amountToAuthorise) => {
+    await assertBridgeTransactionContext(library);
     const tokenLabel = getTokenLabel(tokenToAuthorise);
 
     setAlert({
@@ -2150,6 +2164,7 @@ export default function useBridgeController({
     }
 
     const bigAmount = new BN(wholePart).mul(base).add(new BN(fraction));
+    await assertBridgeTransactionContext(library);
     const approval = await tokenContract.approve(DELEGATOR_ADD, bigAmount.toString(), {
       from: account,
       gasLimit: maxGas2
@@ -2208,6 +2223,8 @@ export default function useBridgeController({
     setIsTxPending(true);
 
     try {
+      await assertBridgeTransactionContext(library);
+
       if (selectedToken.value !== GLOBAL_ADDRESS.ETH) {
         await authoriseOneTokenAmount(selectedToken, amount);
       }
@@ -2276,6 +2293,7 @@ export default function useBridgeController({
         }, 240000);
       });
 
+      await assertBridgeTransactionContext(library);
       const txResult = await delegatorContract.sendTransfer(reserveTransfer, {
         from: account,
         gasLimit: maxGas,
@@ -2299,6 +2317,10 @@ export default function useBridgeController({
   const submitDisabledReason = useMemo(() => {
     if (!account) {
       return 'Connect wallet in header';
+    }
+
+    if (!isExpectedWalletChain(chainId)) {
+      return `Switch wallet to ${ETHEREUM_BLOCKCHAIN_NAME}`;
     }
 
     if (!selectedToken) {
@@ -2339,6 +2361,7 @@ export default function useBridgeController({
     addressError,
     amount,
     amountError,
+    chainId,
     destination,
     gasPrice,
     hasFreshReceiveQuote,
@@ -2457,8 +2480,12 @@ export default function useBridgeController({
       return 'Submitting...';
     }
 
+    if (!isExpectedWalletChain(chainId)) {
+      return `Switch to ${ETHEREUM_BLOCKCHAIN_NAME}`;
+    }
+
     return hasEnoughNativeEth ? 'Confirm' : 'Not enough ETH';
-  }, [hasEnoughNativeEth, isTxPending]);
+  }, [chainId, hasEnoughNativeEth, isTxPending]);
 
   const retrySourceCatalog = useCallback(() => {
     setSourceCatalogRetryNonce((currentValue) => currentValue + 1);

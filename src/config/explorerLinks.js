@@ -3,11 +3,12 @@ import {
   GLOBAL_ADDRESS,
   TESTNET
 } from 'constants/contractAddress';
+import { isAddress } from 'utils/contract';
 
 const ETHERSCAN_BASE_URL = TESTNET ? 'https://sepolia.etherscan.io' : 'https://etherscan.io';
 
-const buildAddressUrl = (address) => (address ? `${ETHERSCAN_BASE_URL}/address/${address}` : null);
-const buildTokenUrl = (address) => (address ? `${ETHERSCAN_BASE_URL}/token/${address}` : null);
+const buildAddressUrl = (address) => (isAddress(address) ? `${ETHERSCAN_BASE_URL}/address/${address}` : null);
+const buildTokenUrl = (address) => (isAddress(address) ? `${ETHERSCAN_BASE_URL}/token/${address}` : null);
 
 export const getExplorerResources = () => (
   [

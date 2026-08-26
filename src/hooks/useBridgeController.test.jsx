@@ -7,6 +7,7 @@ import { Wallet, utils } from 'ethers';
 import { useToast } from 'components/Toast/ToastProvider';
 import {
   BLOCKCHAIN_NAME,
+  EXPECTED_ETHEREUM_CHAIN_ID,
   GLOBAL_ADDRESS,
   GLOBAL_IADDRESS,
   HEIGHT_LOCATION_IN_FORKS
@@ -184,6 +185,8 @@ const createLibrary = (overrides = {}) => ({
   getBalance: vi.fn().mockResolvedValue('0'),
   getBlock: vi.fn(() => new Promise(() => {})),
   getBlockNumber: vi.fn(() => new Promise(() => {})),
+  getCode: vi.fn().mockResolvedValue('0x60006000'),
+  getNetwork: vi.fn().mockResolvedValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID }),
   getTransaction: vi.fn(() => new Promise(() => {})),
   ...overrides
 });
@@ -523,6 +526,24 @@ describe('useBridgeController disconnected source bootstrap', () => {
     global.fetch = originalFetch;
   });
 
+  test('blocks review when the connected wallet is on a different chain', async () => {
+    const wrongChainId = EXPECTED_ETHEREUM_CHAIN_ID === 1 ? 11155111 : 1;
+    const library = createLibrary();
+
+    useWeb3React.mockReturnValue({ account: '0xabc', chainId: wrongChainId, library });
+    useContract.mockReturnValue(createDelegatorContract());
+
+    render(<HookProbe />);
+
+    expect(screen.getByTestId('submit-disabled-reason')).toHaveTextContent('Switch wallet');
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('alert-message')).toHaveTextContent('Switch MetaMask');
+    });
+    expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no');
+  });
+
   test('seeds ETH immediately before async source bootstrap completes', () => {
     const library = createLibrary();
     const delegatorContract = createDelegatorContract({
@@ -533,7 +554,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
 
     mockVerusd.getCurrency.mockImplementation(() => new Promise(() => {}));
-    useWeb3React.mockReturnValue({ account: null, library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: null, library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -550,7 +571,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
     const delegatorContract = createDelegatorContract();
 
-    useWeb3React.mockReturnValue({ account: null, library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: null, library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -574,7 +595,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
     const delegatorContract = createDelegatorContract();
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -596,7 +617,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const library = createLibrary();
     const delegatorContract = createDelegatorContract();
 
-    useWeb3React.mockReturnValue({ account: null, library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: null, library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -619,7 +640,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       }
     });
 
-    useWeb3React.mockReturnValue({ account: null, library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: null, library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -641,7 +662,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
     const delegatorContract = createDelegatorContract();
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -669,7 +690,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       }
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -695,7 +716,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
     const delegatorContract = createDelegatorContract();
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -718,7 +739,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
     const delegatorContract = createDelegatorContract();
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -751,7 +772,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       }
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -791,7 +812,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
 
     getMaxAmount.mockResolvedValue('1.000003');
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -824,7 +845,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       }
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -855,7 +876,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       }
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -880,7 +901,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const library = createLibrary();
     const delegatorContract = createDelegatorContract();
 
-    useWeb3React.mockReturnValue({ account: null, library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: null, library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -934,7 +955,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
         }
       });
 
-      useWeb3React.mockReturnValue({ account: null, library });
+      useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: null, library });
       useContract.mockReturnValue(delegatorContract);
 
       ({ unmount } = render(<HookProbe />));
@@ -971,7 +992,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       }
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1016,7 +1037,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       result: { estimatedcurrencyout: 0.00107949 }
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1063,7 +1084,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       result: { estimatedcurrencyout: 0.00107949 }
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1099,7 +1120,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       result: { estimatedcurrencyout: 0.00107949 }
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1127,7 +1148,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       result: { estimatedcurrencyout: 0.00107949 }
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1178,7 +1199,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       return Promise.resolve({});
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1222,7 +1243,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       return Promise.resolve({});
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1260,7 +1281,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       return Promise.resolve({});
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1295,7 +1316,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       return Promise.resolve({});
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1329,7 +1350,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       return Promise.resolve({});
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1356,7 +1377,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
     mockVerusd.estimateConversion.mockReturnValue(deferredEstimate.promise);
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1393,7 +1414,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
     mockVerusd.estimateConversion.mockRejectedValue(new Error('quote rpc down'));
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1429,7 +1450,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       })
       .mockReturnValueOnce(deferredEstimate.promise);
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1469,7 +1490,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       result: { estimatedcurrencyout: 0.00107949 }
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1515,7 +1536,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       result: { estimatedcurrencyout: 0.00107949 }
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1576,7 +1597,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       result: { estimatedcurrencyout: 0.00107949 }
     });
 
-    useWeb3React.mockReturnValue({ account: wallet.address, library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: wallet.address, library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1607,6 +1628,9 @@ describe('useBridgeController disconnected source bootstrap', () => {
     await waitFor(() => {
       expect(sendTransfer).toHaveBeenCalledTimes(1);
     });
+
+    expect(library.getNetwork).toHaveBeenCalled();
+    expect(library.getCode).toHaveBeenCalled();
 
     const [reserveTransfer, txOptions] = sendTransfer.mock.calls[0];
     expect(reserveTransfer.destination.destinationaddress).toContain(
@@ -1644,7 +1668,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       result: { estimatedcurrencyout: 0.00107949 }
     });
 
-    useWeb3React.mockReturnValue({ account: wallet.address, library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: wallet.address, library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1705,7 +1729,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       result: { estimatedcurrencyout: 0.00107949 }
     });
 
-    useWeb3React.mockReturnValue({ account: '0x1234567890123456789012345678901234567890', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0x1234567890123456789012345678901234567890', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1761,7 +1785,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       result: { estimatedcurrencyout: 0.00107949 }
     });
 
-    useWeb3React.mockReturnValue({ account: wallet.address, library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: wallet.address, library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1821,7 +1845,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       result: { estimatedcurrencyout: 0.00107949 }
     });
 
-    useWeb3React.mockReturnValue({ account: wallet.address, library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: wallet.address, library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1870,7 +1894,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
     const delegatorContract = createDelegatorContract();
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1903,7 +1927,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       }
     });
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1943,7 +1967,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const delegatorContract = createDelegatorContract();
 
     cacheRefundAddress();
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -1981,7 +2005,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const delegatorContract = createDelegatorContract();
 
     cacheRefundAddress();
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     render(<HookProbe />);
@@ -2011,7 +2035,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const enterReview = vi.fn();
     const exitReview = vi.fn();
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     const { rerender } = render(
@@ -2064,7 +2088,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const enterReview = vi.fn();
     const exitReview = vi.fn();
 
-    useWeb3React.mockReturnValue({ account: '0xabc', library });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
     useContract.mockReturnValue(delegatorContract);
 
     const { rerender } = render(

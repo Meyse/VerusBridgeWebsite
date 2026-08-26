@@ -21,6 +21,10 @@ import { getContract } from 'utils/contract';
 import { BN, padLeft, toWei } from 'utils/ethereumUnits';
 import { convertVerusAddressToEthAddress } from "utils/convert";
 import { NFTAddressType } from 'utils/rules';
+import {
+  assertBridgeTransactionContext,
+  isExpectedWalletChain
+} from 'utils/walletNetwork';
 
 import AddressField from './NFTAddressField';
 import NFTAmountField from './NFTAmountField';
@@ -36,7 +40,7 @@ export default function NFTForm() {
   const [alert, setAlert] = useState(null);
   const [verusChainHeight, setverusChainHeight] = useState(null);
   const { addToast } = useToast();
-  const { account, library } = useWeb3React();
+  const { account, chainId, library } = useWeb3React();
   const delegatorContract = useContract(DELEGATOR_ADD, DELEGATOR_ABI);
 
   const { handleSubmit, control, watch } = useForm({
@@ -69,6 +73,7 @@ export default function NFTForm() {
 
 
   const authorise721NFT = async (nft) => {
+    await assertBridgeTransactionContext(library);
     setAlert(`Metamask will now pop up to allow the Verus Bridge Contract to transfer (${nft.name}) from your wallet.`);
 
     const tokenERC = nft.erc20address // await verusBridgeStorageContract.getERCMapping(GLOBAL_ADDRESS[token])
@@ -78,6 +83,7 @@ export default function NFTForm() {
 
 
     // await NFTInstContract.approve(bridgeStorageAddress, tokenID, { from: account, gasLimit: maxGas2 })
+    await assertBridgeTransactionContext(library);
     const approve = await NFTInstContract.approve(DELEGATOR_ADD, tokenID, { from: account, gasLimit: maxGas2 })
     setAlert(`Authorising, please wait... (${nft.name})`);
     const reply = await approve.wait();
@@ -92,21 +98,13 @@ export default function NFTForm() {
   }
 
   const authorise1155NFT = async (nft, amount) => {
+    await assertBridgeTransactionContext(library);
     setAlert(`Metamask will now pop up to allow the Verus Bridge Contract to transfer (${nft.name}) from your wallet.`);
 
     const tokenERC = nft.erc20address
     const NFTInstContract = getContract(tokenERC, ERC1155_ABI, library, account)
 
-    let nftcontract;
-
-    try {
-
-      nftcontract = await delegatorContract.callStatic.contracts(11);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(err)
-      nftcontract = DELEGATOR_ADD;
-    }
+    const nftcontract = DELEGATOR_ADD;
 
     const tokenID = `0x${padLeft(nft.value.toHexString().slice(2), 64)}`
 
@@ -120,6 +118,7 @@ export default function NFTForm() {
     // await NFTInstContract.approve(bridgeStorageAddress, tokenID, { from: account, gasLimit: maxGas2 })
 
     if (!checkApproved) {
+      await assertBridgeTransactionContext(library);
       const approve = await NFTInstContract.setApprovalForAll(nftcontract, true, { from: account, gasLimit: maxGas2 })
       setAlert(`Authorising, please wait... (${nft.name})`);
       const reply = await approve.wait();
@@ -142,6 +141,7 @@ export default function NFTForm() {
     let amountToSend;
 
     try {
+      await assertBridgeTransactionContext(library);
       // eslint-disable-next-line
       if (parseInt(nft.flags & FLAGS.MAPPING_ERC721_NFT_DEFINITION) == FLAGS.MAPPING_ERC721_NFT_DEFINITION) {
         await authorise721NFT(nft)
@@ -166,6 +166,7 @@ export default function NFTForm() {
 
       const MetaMaskFee = new BN(toWei(ETH_FEES.ETH, 'ether'));
 
+      await assertBridgeTransactionContext(library);
       const txResult = await delegatorContract.sendTransfer(
         CReserveTransfer,
         { from: account, gasLimit: maxGas, value: MetaMaskFee.toString() }
@@ -234,7 +235,15 @@ export default function NFTForm() {
             </Grid>
           )}
           <Box mt="30px" textAlign="center" width="100%">
-            <Button loading={isTxPending} disabled={!address || !selectedToken?.value} type="submit" color="primary" variant="contained">Send</Button>
+            <Button
+              color="primary"
+              disabled={!address || !selectedToken?.value || !isExpectedWalletChain(chainId)}
+              loading={isTxPending}
+              type="submit"
+              variant="contained"
+            >
+              Send
+            </Button>
           </Box>
         </Grid>
       </form>

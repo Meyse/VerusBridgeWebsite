@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useWeb3React } from '@web3-react/core';
 
 import { useToast } from 'components/Toast/ToastProvider';
+import { EXPECTED_ETHEREUM_CHAIN_ID } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import { requestRefundAddressData } from 'utils/refundAddress';
 import { toBase58Check } from 'utils/verusAddress';
@@ -43,6 +44,10 @@ const PARTIALLY_UNAVAILABLE_TOKEN = {
   name: 'USDC',
   ticker: 'USDC'
 };
+const library = {
+  getCode: vi.fn().mockResolvedValue('0x60006000'),
+  getNetwork: vi.fn().mockResolvedValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID })
+};
 
 const createDelegatorContract = (overrides = {}) => ({
   callStatic: {
@@ -80,6 +85,9 @@ const HookProbe = () => {
       <button onClick={controller.handleWalletAddressAction} type="button">
         Verify wallet
       </button>
+      <button onClick={controller.handleClaimEarnings} type="button">
+        Claim earnings
+      </button>
     </div>
   );
 };
@@ -89,7 +97,9 @@ describe('useClaimController', () => {
     vi.clearAllMocks();
 
     useWeb3React.mockReturnValue({
-      account: '0x1234567890abcdef1234567890abcdef12345678'
+      account: '0x1234567890abcdef1234567890abcdef12345678',
+      chainId: EXPECTED_ETHEREUM_CHAIN_ID,
+      library
     });
 
     useToast.mockReturnValue({
@@ -214,5 +224,50 @@ describe('useClaimController', () => {
     });
 
     expect(screen.getByTestId('wallet-status')).toHaveTextContent('Connected wallet verified for this payout address.');
+  });
+
+  test('rechecks the live chain before submitting an earnings transaction', async () => {
+    const wrongChainId = EXPECTED_ETHEREUM_CHAIN_ID === 1 ? 11155111 : 1;
+    const changingLibrary = {
+      getCode: vi.fn().mockResolvedValue('0x60006000'),
+      getNetwork: vi.fn()
+        .mockResolvedValueOnce({ chainId: EXPECTED_ETHEREUM_CHAIN_ID })
+        .mockResolvedValueOnce({ chainId: wrongChainId })
+    };
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        claimableFees: vi.fn().mockResolvedValue('1000000'),
+        sendfees: vi.fn().mockResolvedValue(undefined)
+      },
+      sendfees: vi.fn()
+    });
+    const addToast = vi.fn();
+
+    useWeb3React.mockReturnValue({
+      account: '0x1234567890abcdef1234567890abcdef12345678',
+      chainId: EXPECTED_ETHEREUM_CHAIN_ID,
+      library: changingLibrary
+    });
+    useToast.mockReturnValue({ addToast });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect i-address' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('can-claim-earnings')).toHaveTextContent('yes');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claim earnings' }));
+
+    await waitFor(() => {
+      expect(delegatorContract.callStatic.sendfees).toHaveBeenCalledTimes(1);
+    });
+
+    expect(delegatorContract.sendfees).not.toHaveBeenCalled();
+    expect(addToast).toHaveBeenCalledWith(expect.objectContaining({
+      description: expect.stringMatching(/Switch MetaMask/),
+      type: 'error'
+    }));
   });
 });

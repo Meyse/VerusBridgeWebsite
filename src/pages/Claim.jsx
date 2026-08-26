@@ -368,7 +368,7 @@ const Claim = () => {
                               </div>
 
                               <ClaimActionButton
-                                disabled={!controller.account || controller.isActionPending}
+                                disabled={!controller.canSubmitWalletTransactions || controller.isActionPending}
                                 loading={controller.actionTarget === `refund:${entry.value}`}
                                 onClick={() => controller.handleClaimRefund(entry.value)}
                                 tone="soft"
