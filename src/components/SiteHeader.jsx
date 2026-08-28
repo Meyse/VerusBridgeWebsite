@@ -6,7 +6,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getExplorerBaseUrl } from 'config/explorerLinks';
 import { injectedConnector } from 'connectors/injectedConnector';
-import { ETHEREUM_BLOCKCHAIN_NAME } from 'constants/contractAddress';
+import { ETHEREUM_BLOCKCHAIN_NAME, TESTNET } from 'constants/contractAddress';
 import { formatCompactAddress } from 'utils/bridgeUi';
 import {
   HOME_INFO_HASH,
@@ -30,6 +30,7 @@ import {
   clearInjectedWalletAutoConnectSuppression,
   suppressInjectedWalletAutoConnect
 } from 'utils/walletConnection';
+import { requestExpectedWalletChain } from 'utils/walletNetwork';
 
 import { useToast } from './Toast/ToastProvider';
 import MetaMaskIcon from '../images/icons/metamask-icon.svg?react';
@@ -115,6 +116,7 @@ const SiteHeader = () => {
   const [copied, setCopied] = useState(false);
   const [isRetryingRefundSignature, setIsRetryingRefundSignature] = useState(false);
   const [isScrolled, setIsScrolled] = useState(() => (typeof window !== 'undefined' ? window.scrollY > 0 : false));
+  const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [refundSignatureStatus, setRefundSignatureStatus] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -124,6 +126,7 @@ const SiteHeader = () => {
   const navigate = useNavigate();
   const { account, activate, deactivate, error } = useWeb3React();
   const { addToast } = useToast();
+  const isWrongNetwork = error instanceof UnsupportedChainIdError;
 
   useEffect(() => {
     if (error instanceof NoEthereumProviderError) {
@@ -238,6 +241,26 @@ const SiteHeader = () => {
       // The connector error is surfaced through the web3-react context.
     } finally {
       setShowDropdown(false);
+    }
+  };
+
+  const handleSwitchNetwork = async () => {
+    setIsSwitchingNetwork(true);
+
+    try {
+      await requestExpectedWalletChain(window.ethereum);
+      await activate(injectedConnector, undefined, true);
+      clearInjectedWalletAutoConnectSuppression();
+      addToast({ type: 'success', description: `MetaMask switched to ${ETHEREUM_BLOCKCHAIN_NAME}.` });
+    } catch (switchError) {
+      addToast({
+        type: 'error',
+        description: switchError?.code === 4001
+          ? 'Network switch request rejected.'
+          : switchError?.message || `Could not switch MetaMask to ${ETHEREUM_BLOCKCHAIN_NAME}.`
+      });
+    } finally {
+      setIsSwitchingNetwork(false);
     }
   };
 
@@ -490,6 +513,27 @@ const SiteHeader = () => {
           </button>
         </div>
       </div>
+
+      {TESTNET ? (
+        <div aria-label="Testnet environment" className={styles.testnetNotice} role="status">
+          <strong>TESTNET</strong>
+          <span>Sepolia ↔ VRSCTEST · Test assets have no real-world value</span>
+        </div>
+      ) : null}
+
+      {isWrongNetwork ? (
+        <div className={styles.networkNotice} role="alert">
+          <span>MetaMask is on the wrong network for this bridge.</span>
+          <button
+            className={styles.networkSwitchButton}
+            disabled={isSwitchingNetwork}
+            onClick={handleSwitchNetwork}
+            type="button"
+          >
+            {isSwitchingNetwork ? 'Switching...' : `Switch to ${ETHEREUM_BLOCKCHAIN_NAME}`}
+          </button>
+        </div>
+      ) : null}
 
       {mobileMenuOpen ? (
         <div className={styles.mobileNavPanel}>

@@ -16,7 +16,8 @@ import {
   ETH_FEES,
   GLOBAL_ADDRESS,
   GLOBAL_IADDRESS,
-  HEIGHT_LOCATION_IN_FORKS
+  HEIGHT_LOCATION_IN_FORKS,
+  VERUS_RPC_URL
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import { toBase58Check } from 'utils/verusAddress';
@@ -98,7 +99,7 @@ const BRIDGE_WARNING_DESTINATION_SYMBOL_BY_VALUE = {
   swaptoVRSC: 'VRSC'
 };
 const { GAS_TRANSACTIONIMPORTFEE, MINIMUM_GAS_PRICE_WEI } = ETH_FEES;
-const verusd = new VerusdRpcInterface(GLOBAL_IADDRESS.VRSC, process.env.REACT_APP_VERUS_RPC_URL);
+const verusd = new VerusdRpcInterface(GLOBAL_IADDRESS.VRSC, VERUS_RPC_URL);
 const hasGatewayFlag = (value) => Math.floor(Number(value) / FLAG_DEST_GATEWAY) % 2 === 1;
 const BALANCE_SORT_EPSILON = 0.000001;
 const ETH_SOURCE_TOKEN_VALUE = GLOBAL_ADDRESS.ETH.toLowerCase();

@@ -1,6 +1,4 @@
 describe('networkConnector', () => {
-  const originalEnv = process.env;
-
   const loadConnectorModule = async ({
     mainnetUrl,
     sepoliaUrl = 'https://sepolia.example',
@@ -8,12 +6,6 @@ describe('networkConnector', () => {
     homesteadUrl
   } = {}) => {
     vi.resetModules();
-    process.env = {
-      ...originalEnv,
-      REACT_APP_RPC_URL_MAINNET: mainnetUrl,
-      REACT_APP_RPC_URL_HOMESTEAD: homesteadUrl,
-      REACT_APP_RPC_URL_SEPOLIA: sepoliaUrl
-    };
 
     const NetworkConnector = vi.fn(function MockNetworkConnector(config) {
       this.config = config;
@@ -23,15 +15,13 @@ describe('networkConnector', () => {
       NetworkConnector
     }));
 
-    vi.doMock('../constants/chain', () => ({
-      NAME_ID_MAPPING: {
-        HOMESTEAD: { id: 1 },
-        SEPOLIA: { id: 11155111 }
+    vi.doMock('../config/bridgeDeployment', () => ({
+      BRIDGE_DEPLOYMENT: {
+        ethereumChainId: testnet ? 11155111 : 1,
+        ethereumRpcUrl: testnet
+          ? sepoliaUrl
+          : mainnetUrl || homesteadUrl
       }
-    }));
-
-    vi.doMock('../constants/contractAddress', () => ({
-      TESTNET: testnet
     }));
 
     const exportedModule = await import('./networkconnector');
@@ -43,7 +33,6 @@ describe('networkConnector', () => {
   };
 
   afterEach(() => {
-    process.env = originalEnv;
     vi.resetModules();
     vi.clearAllMocks();
   });

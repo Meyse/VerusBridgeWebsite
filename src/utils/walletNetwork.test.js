@@ -2,7 +2,8 @@ import {
   assertBridgeTransactionContext,
   assertExpectedWalletChain,
   isExpectedWalletChain,
-  normalizeChainId
+  normalizeChainId,
+  requestExpectedWalletChain
 } from './walletNetwork';
 
 import {
@@ -33,6 +34,22 @@ describe('wallet transaction network checks', () => {
     await expect(assertExpectedWalletChain({
       send: vi.fn().mockResolvedValue('0x5')
     })).rejects.toThrow(/Switch MetaMask/);
+  });
+
+  test('asks MetaMask to switch to the exact chain selected for this build', async () => {
+    const provider = {
+      request: vi.fn().mockResolvedValue(null)
+    };
+
+    await expect(requestExpectedWalletChain(provider)).resolves.toBe(EXPECTED_ETHEREUM_CHAIN_ID);
+    expect(provider.request).toHaveBeenCalledWith({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: expectedHexChainId }]
+    });
+  });
+
+  test('fails clearly when no injected wallet can switch networks', async () => {
+    await expect(requestExpectedWalletChain(null)).rejects.toThrow(/MetaMask is not available/);
   });
 
   test('requires deployed code at the configured bridge address', async () => {

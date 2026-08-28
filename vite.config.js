@@ -25,20 +25,29 @@ const legacyEnvironmentKeys = [
   'REACT_APP_RPC_URL_HOMESTEAD',
   'REACT_APP_RPC_URL_MAINNET',
   'REACT_APP_RPC_URL_SEPOLIA',
-  'REACT_APP_TESTNET_ACTIVE',
   'REACT_APP_VERUS_END_BLOCK',
   'REACT_APP_VERUS_RPC_URL'
 ];
 
 export default defineConfig(({ mode }) => {
+  const bridgeEnvironment = mode === 'test' ? 'mainnet' : mode;
+  if (!['mainnet', 'testnet'].includes(bridgeEnvironment)) {
+    throw new Error(`Use the explicit mainnet or testnet Vite mode, not "${mode}".`);
+  }
+
   const environment = loadEnv(mode, projectRoot, 'REACT_APP_');
-  const testEnvironment = mode === 'test' ? {
-    REACT_APP_DELEGATOR_CONTRACT: '0x71518580f36FeCEFfE0721F06bA4703218cD7F63',
-    REACT_APP_TESTNET_ACTIVE: 'false'
-  } : {};
-  const processEnvironment = Object.fromEntries(
-    legacyEnvironmentKeys.map((key) => [key, environment[key] || testEnvironment[key] || ''])
-  );
+  const testEnvironment = {
+    ...(mode === 'test' ? {
+      REACT_APP_DELEGATOR_CONTRACT: '0x71518580f36FeCEFfE0721F06bA4703218cD7F63'
+    } : {}),
+    REACT_APP_BRIDGE_ENV: bridgeEnvironment
+  };
+  const processEnvironment = {
+    ...Object.fromEntries(
+      legacyEnvironmentKeys.map((key) => [key, environment[key] || testEnvironment[key] || ''])
+    ),
+    REACT_APP_BRIDGE_ENV: bridgeEnvironment
+  };
 
   return {
     plugins: [react(), svgr()],

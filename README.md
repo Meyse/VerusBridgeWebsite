@@ -22,22 +22,24 @@ Copy `.env.example` to `.env` and replace the placeholder RPC project identifier
 
 The values are embedded in the browser bundle. Never put secrets in these variables.
 
-- `REACT_APP_TESTNET_ACTIVE=true` selects Sepolia (chain ID 11155111); `false` selects Ethereum mainnet (chain ID 1).
-- `REACT_APP_DELEGATOR_CONTRACT` must be the bridge delegator deployed on the selected chain. Transaction submission fails closed when the wallet is on another chain, the address is invalid, or no contract code exists at that address.
-- `REACT_APP_RPC_URL_SEPOLIA` and `REACT_APP_RPC_URL_MAINNET` provide read-only Ethereum RPC access.
-- `REACT_APP_VERUS_RPC_URL` provides read-only Verus RPC access.
+- The command selects an explicit `mainnet` or `testnet` build profile. Network selection is not a runtime toggle.
+- The testnet profile is pinned to Sepolia chain ID `11155111`, delegator `0xCaA98A4eC79dAC8A06Cb3BfDcF5351b6576d939f`, and `https://api.verustest.net` for VRSCTEST.
+- `REACT_APP_RPC_URL_SEPOLIA` provides read-only Sepolia access for the testnet build. `REACT_APP_RPC_URL_MAINNET` provides read-only Ethereum access for mainnet.
+- `REACT_APP_DELEGATOR_CONTRACT` and `REACT_APP_VERUS_RPC_URL` configure only the mainnet profile. Transaction submission fails closed when the wallet is on another chain, the address is invalid, or no contract code exists at that address.
 - `REACT_APP_VERUS_END_BLOCK` retains the existing bridge synchronization configuration.
 
 ## Commands
 
 ```sh
-pnpm start       # local Vite server on http://localhost:5173
-pnpm test        # complete Vitest suite
-pnpm test:watch  # interactive test runner
-pnpm lint        # ESLint with zero warnings
-pnpm build       # production output in build/
-pnpm preview     # serve the production build locally
-pnpm verify      # lint, tests, production build, and advisory gate
+pnpm start          # mainnet Vite server on http://localhost:5173
+pnpm start:testnet  # Sepolia/VRSCTEST Vite server on http://localhost:5173
+pnpm test           # complete Vitest suite
+pnpm test:watch     # interactive test runner
+pnpm lint           # ESLint with zero warnings
+pnpm build          # mainnet production output in build/
+pnpm build:testnet  # Sepolia/VRSCTEST production output in build/
+pnpm preview        # serve the production build locally
+pnpm verify         # lint, tests, both production builds, and advisory gate
 ```
 
 CI uses `pnpm install --frozen-lockfile` and rejects moderate, high, or critical dependency advisories. See `docs/security-modernization-2026-08-27.md` for migration evidence, dependency exceptions, and the remaining low-severity advisory.
@@ -52,4 +54,4 @@ Major upgrades to ethers or Web3 React require focused wallet-boundary regressio
 
 Deploy the static contents of `build/` and configure the host to fall back to `index.html` for client-side routes such as `/claim` and `/nft`. Production security headers belong in the actual hosting configuration; this repository does not assume a specific host.
 
-The live bridge and MetaMask transaction flow are currently unavailable and must not be tested with production calls or real funds. Use the unit/integration fixtures and local browser smoke test described in the migration report.
+The testnet build is for test assets only. Its final transaction path must be verified by a user-controlled MetaMask wallet on Sepolia; local checks do not prove a cross-chain transfer completed.

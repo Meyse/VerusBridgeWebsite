@@ -1,12 +1,9 @@
 import { NetworkConnector } from '@web3-react/network-connector';
 
-import { NAME_ID_MAPPING } from '../constants/chain';
-import { TESTNET } from '../constants/contractAddress';
+import { BRIDGE_DEPLOYMENT } from '../config/bridgeDeployment';
 
-const defaultChainId = TESTNET ? NAME_ID_MAPPING.SEPOLIA.id : NAME_ID_MAPPING.HOMESTEAD.id;
-const configuredRpcUrl = TESTNET
-  ? process.env.REACT_APP_RPC_URL_SEPOLIA
-  : process.env.REACT_APP_RPC_URL_MAINNET || process.env.REACT_APP_RPC_URL_HOMESTEAD;
+const defaultChainId = BRIDGE_DEPLOYMENT.ethereumChainId;
+const configuredRpcUrl = BRIDGE_DEPLOYMENT.ethereumRpcUrl;
 
 const isHttpUrl = (value) => {
   try {

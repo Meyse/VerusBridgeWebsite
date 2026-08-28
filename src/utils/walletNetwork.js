@@ -44,6 +44,19 @@ export const assertExpectedWalletChain = async (library) => {
   return chainId;
 };
 
+export const requestExpectedWalletChain = async (provider) => {
+  if (!provider || typeof provider.request !== 'function') {
+    throw new Error('MetaMask is not available in this browser.');
+  }
+
+  await provider.request({
+    method: 'wallet_switchEthereumChain',
+    params: [{ chainId: `0x${EXPECTED_ETHEREUM_CHAIN_ID.toString(16)}` }]
+  });
+
+  return EXPECTED_ETHEREUM_CHAIN_ID;
+};
+
 export const assertBridgeTransactionContext = async (library) => {
   await assertExpectedWalletChain(library);
 

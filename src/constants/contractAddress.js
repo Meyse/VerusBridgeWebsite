@@ -1,9 +1,12 @@
-export const DELEGATOR_ADD = process.env.REACT_APP_DELEGATOR_CONTRACT
-export const TESTNET = process.env.REACT_APP_TESTNET_ACTIVE === "true";
-export const ETHEREUM_BLOCKCHAIN_NAME = TESTNET ? "Sepolia" : "Ethereum";
-export const EXPECTED_ETHEREUM_CHAIN_ID = TESTNET ? 11155111 : 1;
+import { BRIDGE_DEPLOYMENT } from 'config/bridgeDeployment';
 
-export const BLOCKCHAIN_NAME = (TESTNET ? "vrsctest" : "vrsc").toUpperCase();
+export const DELEGATOR_ADD = BRIDGE_DEPLOYMENT.delegatorAddress;
+export const TESTNET = BRIDGE_DEPLOYMENT.isTestnet;
+export const ETHEREUM_BLOCKCHAIN_NAME = BRIDGE_DEPLOYMENT.ethereumBlockchainName;
+export const EXPECTED_ETHEREUM_CHAIN_ID = BRIDGE_DEPLOYMENT.ethereumChainId;
+export const VERUS_RPC_URL = BRIDGE_DEPLOYMENT.verusRpcUrl;
+
+export const BLOCKCHAIN_NAME = BRIDGE_DEPLOYMENT.verusBlockchainName;
 
 
 export const GLOBAL_ADDRESS = TESTNET ? { // vrsctest hex 'id' names of currencies must be checksummed i.e. mixture of capitals

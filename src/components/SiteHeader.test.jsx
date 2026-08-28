@@ -1,13 +1,18 @@
 import React from 'react';
 
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { useWeb3React } from '@web3-react/core';
+import { UnsupportedChainIdError, useWeb3React } from '@web3-react/core';
 import {
   RouterProvider,
   createMemoryRouter,
   useLocation
 } from 'react-router-dom';
 
+import {
+  ETHEREUM_BLOCKCHAIN_NAME,
+  EXPECTED_ETHEREUM_CHAIN_ID,
+  TESTNET
+} from 'constants/contractAddress';
 import {
   REFUND_ADDRESS_STATUS_FAILED,
   requestAndCacheRefundAddressData,
@@ -111,6 +116,11 @@ describe('SiteHeader wallet interactions', () => {
     vi.clearAllMocks();
     window.localStorage.clear();
     window.scrollTo = vi.fn();
+    Object.defineProperty(window, 'ethereum', {
+      configurable: true,
+      value: undefined,
+      writable: true
+    });
     Object.defineProperty(window, 'scrollY', {
       configurable: true,
       value: 0,
@@ -143,6 +153,56 @@ describe('SiteHeader wallet interactions', () => {
     expect(within(navigation).getByRole('link', { name: 'Info' })).toHaveAttribute('href', '/#info');
     expect(within(navigation).queryByRole('link', { name: 'Transactions' })).toBeNull();
     expect(within(navigation).getByRole('link', { name: 'Refunds & earnings' })).toHaveAttribute('href', '/claim');
+  });
+
+  test('shows the persistent testnet boundary only for the testnet build', () => {
+    useWeb3React.mockReturnValue({
+      account: null,
+      activate: vi.fn(),
+      deactivate: vi.fn(),
+      error: null
+    });
+
+    renderHeader();
+
+    const testnetNotice = screen.queryByRole('status', { name: /testnet environment/i });
+    if (TESTNET) {
+      expect(testnetNotice).toHaveTextContent(
+        'TESTNETSepolia ↔ VRSCTEST · Test assets have no real-world value'
+      );
+    } else {
+      expect(testnetNotice).not.toBeInTheDocument();
+    }
+  });
+
+  test('keeps a wrong-network action visible and switches MetaMask before reconnecting', async () => {
+    const activate = vi.fn().mockResolvedValue(undefined);
+    const request = vi.fn().mockResolvedValue(null);
+
+    window.ethereum = { request };
+    useWeb3React.mockReturnValue({
+      account: null,
+      activate,
+      deactivate: vi.fn(),
+      error: new UnsupportedChainIdError('Unsupported chain')
+    });
+
+    renderHeader();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/wrong network/i);
+    fireEvent.click(screen.getByRole('button', { name: `Switch to ${ETHEREUM_BLOCKCHAIN_NAME}` }));
+
+    await waitFor(() => {
+      expect(request).toHaveBeenCalledWith({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: `0x${EXPECTED_ETHEREUM_CHAIN_ID.toString(16)}` }]
+      });
+    });
+    expect(activate).toHaveBeenCalledWith({ id: 'injected' }, undefined, true);
+    expect(mockAddToast).toHaveBeenCalledWith({
+      type: 'success',
+      description: `MetaMask switched to ${ETHEREUM_BLOCKCHAIN_NAME}.`
+    });
   });
 
   test('adds the scrolled header class after the page moves', () => {

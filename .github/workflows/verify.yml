@@ -40,8 +40,11 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Build
+      - name: Build mainnet
         run: pnpm build
+
+      - name: Build testnet
+        run: pnpm build:testnet
 
       - name: Audit dependencies
         run: pnpm run audit:ci
