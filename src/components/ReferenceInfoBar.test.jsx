@@ -2,10 +2,12 @@ import React from 'react';
 
 import { fireEvent, render, screen } from '@testing-library/react';
 
+import { TESTNET } from 'constants/contractAddress';
+
 import ReferenceInfoBar from './ReferenceInfoBar';
 
 describe('ReferenceInfoBar', () => {
-  test('renders fiat before ETH without parentheses', () => {
+  test('shows mainnet fiat before ETH and hides testnet fiat', () => {
     render(
       <ReferenceInfoBar
         baseBridgeFee={0.003}
@@ -17,11 +19,19 @@ describe('ReferenceInfoBar', () => {
       />
     );
 
-    const feeValue = screen.getByText('$6.30').parentElement;
-
     expect(screen.queryByText('($6.30)')).not.toBeInTheDocument();
-    expect(feeValue).not.toBeNull();
-    expect(feeValue.textContent.indexOf('$6.30')).toBeLessThan(feeValue.textContent.indexOf('0.0030 ETH'));
+
+    if (TESTNET) {
+      expect(screen.queryByText('$6.30')).not.toBeInTheDocument();
+      expect(screen.queryByText('$27.30')).not.toBeInTheDocument();
+      expect(screen.getByText('0.0030 ETH')).toBeInTheDocument();
+      expect(screen.getByText('0.013 ETH')).toBeInTheDocument();
+    } else {
+      const feeValue = screen.getByText('$6.30').parentElement;
+
+      expect(feeValue).not.toBeNull();
+      expect(feeValue.textContent.indexOf('$6.30')).toBeLessThan(feeValue.textContent.indexOf('0.0030 ETH'));
+    }
   });
 
   test('opens notarization details from the info button instead of hover metadata', () => {

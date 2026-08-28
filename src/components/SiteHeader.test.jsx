@@ -21,6 +21,7 @@ import {
 import { INJECTED_WALLET_AUTO_CONNECT_DISABLED_KEY } from 'utils/walletConnection';
 
 import SiteHeader from './SiteHeader';
+import styles from '../styles/ReferenceBridge.module.css';
 
 vi.mock('@web3-react/core', () => {
   const createMockErrorType = (name) => {
@@ -189,8 +190,22 @@ describe('SiteHeader wallet interactions', () => {
 
     renderHeader();
 
-    expect(screen.getByRole('alert')).toHaveTextContent(/wrong network/i);
-    fireEvent.click(screen.getByRole('button', { name: `Switch to ${ETHEREUM_BLOCKCHAIN_NAME}` }));
+    const networkAlert = screen.getByRole('alert');
+    const switchButton = screen.getByRole('button', { name: `Switch to ${ETHEREUM_BLOCKCHAIN_NAME}` });
+    const walletControls = networkAlert.parentElement;
+
+    expect(networkAlert).toHaveTextContent(/wrong network/i);
+    expect(walletControls).toHaveClass(styles.headerRight);
+    expect(walletControls.firstElementChild).toBe(networkAlert);
+    expect(networkAlert).not.toContainElement(switchButton);
+    expect(networkAlert.nextElementSibling).toContainElement(switchButton);
+    expect(screen.queryByRole('button', { name: /connect wallet/i })).not.toBeInTheDocument();
+    expect(mockAddToast).not.toHaveBeenCalledWith({
+      type: 'error',
+      description: `Switch MetaMask to ${ETHEREUM_BLOCKCHAIN_NAME}.`
+    });
+
+    fireEvent.click(switchButton);
 
     await waitFor(() => {
       expect(request).toHaveBeenCalledWith({

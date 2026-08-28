@@ -115,8 +115,7 @@
   line-height: 1;
 }
 
-.testnetNotice,
-.networkNotice {
+.testnetNotice {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -140,30 +139,18 @@
 }
 
 .networkNotice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
   border: 1px solid var(--theme-danger-text);
+  border-radius: 999px;
   background: var(--theme-danger-bg);
   color: var(--theme-danger-text);
-}
-
-.networkSwitchButton {
-  min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
   font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.networkSwitchButton:hover:not(:disabled) {
-  background: rgba(180, 35, 24, 0.08);
-}
-
-.networkSwitchButton:disabled {
-  cursor: wait;
-  opacity: 0.72;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .headerNav {
@@ -205,11 +192,17 @@
   font-weight: 700;
   cursor: pointer;
   box-shadow: none;
+  white-space: nowrap;
   transition: background-color 200ms ease;
 }
 
 .connectButton:hover {
   background: var(--theme-accent-hover);
+}
+
+.connectButton:disabled {
+  cursor: wait;
+  opacity: 0.72;
 }
 
 .connectedButton {
@@ -2522,8 +2515,7 @@
     padding: 0 24px;
   }
 
-  .testnetNotice,
-  .networkNotice {
+  .testnetNotice {
     margin-right: 24px;
     margin-left: 24px;
   }
@@ -2667,8 +2659,7 @@
     max-width: 170px;
   }
 
-  .testnetNotice,
-  .networkNotice {
+  .testnetNotice {
     align-items: stretch;
     flex-direction: column;
   }

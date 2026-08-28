@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-import { BLOCKCHAIN_NAME } from 'constants/contractAddress';
+import { BLOCKCHAIN_NAME, TESTNET } from 'constants/contractAddress';
 import styles from 'styles/ReferenceBridge.module.css';
 import { getCurrencyIcon } from 'utils/bridgeUi';
 
@@ -20,7 +20,9 @@ const renderFeeValue = (amount, ethUsdPrice) => {
   }
 
   const formattedAmount = `${amount.toFixed(amount < 0.01 ? 4 : 3)} ETH`;
-  const formattedFiat = Number.isFinite(ethUsdPrice) ? usdFormatter.format(amount * ethUsdPrice) : null;
+  const formattedFiat = !TESTNET && Number.isFinite(ethUsdPrice)
+    ? usdFormatter.format(amount * ethUsdPrice)
+    : null;
 
   return (
     <>

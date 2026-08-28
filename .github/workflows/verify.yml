@@ -40,6 +40,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Test testnet profile
+        run: pnpm test:testnet
+
       - name: Build mainnet
         run: pnpm build
 

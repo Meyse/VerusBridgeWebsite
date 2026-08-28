@@ -6,7 +6,7 @@ import { injectedConnector } from '../connectors/injectedConnector';
 import { isInjectedWalletAutoConnectSuppressed } from '../utils/walletConnection';
 
 const useEagerConnect = () => {
-  const { activate, active } = useWeb3React();
+  const { activate, active, setError } = useWeb3React();
 
   const [tried, setTried] = useState(false);
 
@@ -24,8 +24,9 @@ const useEagerConnect = () => {
       }
 
       if (isAuthorized) {
-        activate(injectedConnector, undefined, true).catch(() => {
+        activate(injectedConnector, undefined, true).catch((activationError) => {
           if (!stale) {
+            setError(activationError);
             setTried(true);
           }
         });
@@ -37,7 +38,7 @@ const useEagerConnect = () => {
     return () => {
       stale = true;
     };
-  }, [activate]); // intentionally only running on mount (make sure it's only mounted once :))
+  }, [activate, setError]); // intentionally only running on mount (make sure it's only mounted once :))
 
   // if the connection worked, wait until we get confirmation of that to flip the flag
   useEffect(() => {

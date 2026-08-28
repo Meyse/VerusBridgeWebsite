@@ -133,8 +133,6 @@ const SiteHeader = () => {
       addToast({ type: 'error', description: 'Ethereum provider not found.' });
     } else if (error instanceof UserRejectedRequestError) {
       addToast({ type: 'error', description: 'Wallet connection request rejected.' });
-    } else if (error instanceof UnsupportedChainIdError) {
-      addToast({ type: 'error', description: `Switch MetaMask to ${ETHEREUM_BLOCKCHAIN_NAME}.` });
     }
   }, [addToast, error]);
 
@@ -395,8 +393,26 @@ const SiteHeader = () => {
         </div>
 
         <div className={styles.headerRight}>
+          {isWrongNetwork ? (
+            <div aria-label="Wallet network status" className={styles.networkNotice} role="alert">
+              <AlertIcon />
+              <span>Wrong network</span>
+            </div>
+          ) : null}
+
           <div className={styles.walletGroup} ref={dropdownRef}>
-            {!account ? (
+            {isWrongNetwork ? (
+              <button
+                className={styles.connectButton}
+                disabled={isSwitchingNetwork}
+                onClick={handleSwitchNetwork}
+                type="button"
+              >
+                {isSwitchingNetwork ? 'Switching...' : `Switch to ${ETHEREUM_BLOCKCHAIN_NAME}`}
+              </button>
+            ) : null}
+
+            {!isWrongNetwork && !account ? (
               <>
                 <button
                   aria-expanded={showDropdown}
@@ -425,7 +441,9 @@ const SiteHeader = () => {
                   </div>
                 ) : null}
               </>
-            ) : (
+            ) : null}
+
+            {!isWrongNetwork && account ? (
               <>
                 <button
                   aria-expanded={showDropdown}
@@ -500,7 +518,7 @@ const SiteHeader = () => {
                   </div>
                 ) : null}
               </>
-            )}
+            ) : null}
           </div>
 
           <button
@@ -518,20 +536,6 @@ const SiteHeader = () => {
         <div aria-label="Testnet environment" className={styles.testnetNotice} role="status">
           <strong>TESTNET</strong>
           <span>Sepolia ↔ VRSCTEST · Test assets have no real-world value</span>
-        </div>
-      ) : null}
-
-      {isWrongNetwork ? (
-        <div className={styles.networkNotice} role="alert">
-          <span>MetaMask is on the wrong network for this bridge.</span>
-          <button
-            className={styles.networkSwitchButton}
-            disabled={isSwitchingNetwork}
-            onClick={handleSwitchNetwork}
-            type="button"
-          >
-            {isSwitchingNetwork ? 'Switching...' : `Switch to ${ETHEREUM_BLOCKCHAIN_NAME}`}
-          </button>
         </div>
       ) : null}
 
