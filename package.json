@@ -46,7 +46,7 @@
     "build:testnet": "vite build --mode testnet",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
-    "test:testnet": "vitest run src/components/ReferenceInfoBar.test.jsx src/components/SiteHeader.test.jsx --mode testnet",
+    "test:testnet": "vitest run src/components/ReferenceInfoBar.test.jsx src/components/SiteHeader.test.jsx src/hooks/useClaimController.test.jsx src/pages/Claim.test.jsx src/pages/NFT.test.jsx --mode testnet",
     "test:watch": "vitest",
     "preview": "vite preview --host localhost --mode mainnet",
     "audit:ci": "pnpm audit --audit-level=moderate",

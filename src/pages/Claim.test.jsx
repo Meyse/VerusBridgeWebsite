@@ -3,6 +3,7 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
+import { TESTNET } from 'constants/contractAddress';
 import useClaimController from 'hooks/useClaimController';
 
 import Claim from './Claim';
@@ -68,12 +69,14 @@ const renderPage = () => render(
   </MemoryRouter>
 );
 
+const mainnetTest = TESTNET ? test.skip : test;
+
 describe('Claim page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  test('renders the refunds and earnings inspection layout', () => {
+  test('renders the claim experience for the active bridge profile', () => {
     const controller = createController();
     useClaimController.mockReturnValue(controller);
 
@@ -82,9 +85,7 @@ describe('Claim page', () => {
     expect(screen.queryByRole('heading', { name: 'Refunds & earnings' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Paste address' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Use connected wallet' })).toBeInTheDocument();
-    expect(screen.getByText('Bridgekeeper earnings', { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByText('Refunded assets', { selector: 'span' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Claim back to this Verus address' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Claim VRSC to this address' })).toBeInTheDocument();
     expect(screen.queryByText('How this page works')).not.toBeInTheDocument();
     expect(screen.queryByText('Advanced payout options')).not.toBeInTheDocument();
@@ -96,9 +97,19 @@ describe('Claim page', () => {
     expect(screen.queryByText('Use your public key to claim')).not.toBeInTheDocument();
     expect(screen.queryByText('Claim a refund balance')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'FAQ' })).not.toBeInTheDocument();
-    expect(screen.getByText('How can I earn money with the Verus-Ethereum Bridge?')).toBeInTheDocument();
-    expect(screen.getByText('How can I claim bridge earnings?')).toBeInTheDocument();
     expect(screen.getByText('How can I claim funds that are stuck?')).toBeInTheDocument();
+
+    if (TESTNET) {
+      expect(screen.queryByText('Bridgekeeper earnings', { selector: 'span' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Claim back to this Verus address' })).not.toBeInTheDocument();
+      expect(screen.queryByText('How can I earn money with the Verus-Ethereum Bridge?')).not.toBeInTheDocument();
+      expect(screen.queryByText('How can I claim bridge earnings?')).not.toBeInTheDocument();
+    } else {
+      expect(screen.getByText('Bridgekeeper earnings', { selector: 'span' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Claim back to this Verus address' })).toBeInTheDocument();
+      expect(screen.getByText('How can I earn money with the Verus-Ethereum Bridge?')).toBeInTheDocument();
+      expect(screen.getByText('How can I claim bridge earnings?')).toBeInTheDocument();
+    }
 
     fireEvent.change(screen.getByPlaceholderText(/enter your verus i-address or r-address/i), {
       target: { value: 'iNextAddress1234567890123456789012345' }
@@ -130,8 +141,11 @@ describe('Claim page', () => {
     renderPage();
 
     expect(screen.getByText('Nothing ready for this address')).toBeInTheDocument();
-    expect(screen.getByText('No bridgekeeper earnings or refunded assets are available to claim right now.'))
-      .toBeInTheDocument();
+    expect(screen.getByText(
+      TESTNET
+        ? 'No refunded assets are available to claim right now.'
+        : 'No bridgekeeper earnings or refunded assets are available to claim right now.'
+    )).toBeInTheDocument();
     expect(screen.queryByText('Bridgekeeper earnings', { selector: 'span' })).not.toBeInTheDocument();
     expect(screen.queryByText('Refunded assets', { selector: 'span' })).not.toBeInTheDocument();
     expect(screen.queryByText(/No bridgekeeper earnings detected for this address yet/i))
@@ -163,7 +177,7 @@ describe('Claim page', () => {
     expect(screen.getByText('Refunded assets are temporarily unavailable to inspect.')).toBeInTheDocument();
   });
 
-  test('keeps R-address earnings disabled until the connected wallet is verified', () => {
+  mainnetTest('keeps R-address earnings disabled until the connected wallet is verified', () => {
     useClaimController.mockReturnValue(createController({
       address: 'RRandomPayoutAddress1234567890123456789',
       canClaimEarnings: false,
@@ -180,7 +194,7 @@ describe('Claim page', () => {
     expect(screen.getByRole('button', { name: 'Verify connected wallet to claim' })).toBeDisabled();
   });
 
-  test('hides the verification action once the connected wallet matches the R-address', () => {
+  mainnetTest('hides the verification action once the connected wallet matches the R-address', () => {
     useClaimController.mockReturnValue(createController({
       address: 'RVerifiedPayoutAddress12345678901234567',
       canClaimEarnings: true,

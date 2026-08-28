@@ -153,7 +153,12 @@ describe('SiteHeader wallet interactions', () => {
     expect(within(navigation).getByRole('link', { name: 'Bridge' })).toHaveAttribute('href', '/');
     expect(within(navigation).getByRole('link', { name: 'Info' })).toHaveAttribute('href', '/#info');
     expect(within(navigation).queryByRole('link', { name: 'Transactions' })).toBeNull();
-    expect(within(navigation).getByRole('link', { name: 'Refunds & earnings' })).toHaveAttribute('href', '/claim');
+    const claimLabel = TESTNET ? 'Refunds' : 'Refunds & earnings';
+
+    expect(within(navigation).getByRole('link', { name: claimLabel })).toHaveAttribute('href', '/claim');
+    expect(within(navigation).queryByRole('link', {
+      name: TESTNET ? 'Refunds & earnings' : 'Refunds'
+    })).not.toBeInTheDocument();
   });
 
   test('shows the persistent testnet boundary only for the testnet build', () => {

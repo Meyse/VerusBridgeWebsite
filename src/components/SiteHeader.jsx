@@ -39,7 +39,7 @@ import styles from '../styles/ReferenceBridge.module.css';
 const NAV_ITEMS = [
   { id: 'bridge', label: 'Bridge' },
   { id: 'info', label: 'Info' },
-  { id: 'claim', label: 'Refunds & earnings', to: '/claim' }
+  { id: 'claim', label: TESTNET ? 'Refunds' : 'Refunds & earnings', to: '/claim' }
 ];
 
 const CopyIcon = ({ copied }) => (

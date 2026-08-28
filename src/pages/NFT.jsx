@@ -5,8 +5,11 @@ import { Link } from 'react-router-dom';
 import NFTForm from 'components/NFTForm/NFTForm';
 import SiteFooter from 'components/SiteFooter';
 import SiteHeader from 'components/SiteHeader';
+import { TESTNET } from 'constants/contractAddress';
 
 import styles from '../styles/ReferenceBridge.module.css';
+
+const CLAIM_LINK_LABEL = TESTNET ? 'Refunds' : 'Refunds & earnings';
 
 const NFT = () => (
   <div className={styles.page}>
@@ -31,7 +34,7 @@ const NFT = () => (
               Back to bridge
             </Link>
             <Link className={styles.secondaryLink} to="/claim">
-              Refunds & earnings
+              {CLAIM_LINK_LABEL}
             </Link>
           </div>
         </div>

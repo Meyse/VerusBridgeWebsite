@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useWeb3React } from '@web3-react/core';
 
 import { useToast } from 'components/Toast/ToastProvider';
-import { EXPECTED_ETHEREUM_CHAIN_ID } from 'constants/contractAddress';
+import { EXPECTED_ETHEREUM_CHAIN_ID, TESTNET } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import { requestRefundAddressData } from 'utils/refundAddress';
 import { toBase58Check } from 'utils/verusAddress';
@@ -74,6 +74,10 @@ const HookProbe = () => {
       <div data-testid="refund-pending">{controller.isRefundLookupPending ? 'pending' : 'ready'}</div>
       <div data-testid="can-claim-earnings">{controller.canClaimEarnings ? 'yes' : 'no'}</div>
       <div data-testid="is-empty-lookup">{controller.isEmptyLookup ? 'yes' : 'no'}</div>
+      <div data-testid="wallet-verification-required">
+        {controller.isWalletVerificationRequired ? 'yes' : 'no'}
+      </div>
+      <div data-testid="action-target">{controller.actionTarget}</div>
       <div data-testid="wallet-status">{controller.walletAddressStatus?.message || ''}</div>
 
       <button onClick={() => controller.setAddress(VALID_I_ADDRESS)} type="button">
@@ -92,6 +96,9 @@ const HookProbe = () => {
   );
 };
 
+const mainnetTest = TESTNET ? test.skip : test;
+const testnetTest = TESTNET ? test : test.skip;
+
 describe('useClaimController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -107,7 +114,7 @@ describe('useClaimController', () => {
     });
   });
 
-  test('keeps earnings lookup available while refund token metadata is still loading', async () => {
+  mainnetTest('keeps earnings lookup available while refund token metadata is still loading', async () => {
     const delegatorContract = createDelegatorContract({
       callStatic: {
         claimableFees: vi.fn().mockResolvedValue('1000000'),
@@ -196,7 +203,7 @@ describe('useClaimController', () => {
     });
   });
 
-  test('enables R-address claiming after the connected wallet is verified', async () => {
+  mainnetTest('enables R-address claiming after the connected wallet is verified', async () => {
     const delegatorContract = createDelegatorContract({
       callStatic: {
         claimableFees: vi.fn().mockResolvedValue('1000000'),
@@ -226,7 +233,7 @@ describe('useClaimController', () => {
     expect(screen.getByTestId('wallet-status')).toHaveTextContent('Connected wallet verified for this payout address.');
   });
 
-  test('rechecks the live chain before submitting an earnings transaction', async () => {
+  mainnetTest('rechecks the live chain before submitting an earnings transaction', async () => {
     const wrongChainId = EXPECTED_ETHEREUM_CHAIN_ID === 1 ? 11155111 : 1;
     const changingLibrary = {
       getCode: vi.fn().mockResolvedValue('0x60006000'),
@@ -269,5 +276,69 @@ describe('useClaimController', () => {
       description: expect.stringMatching(/Switch MetaMask/),
       type: 'error'
     }));
+  });
+
+  testnetTest('uses refund-only lookup state and never inspects or claims earnings', async () => {
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        claimableFees: vi.fn().mockResolvedValue('1000000'),
+        getTokenList: vi.fn().mockResolvedValue([REFUNDABLE_TOKEN]),
+        refunds: vi.fn().mockResolvedValue('0'),
+        sendfees: vi.fn().mockResolvedValue(undefined)
+      },
+      sendfees: vi.fn()
+    });
+
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect i-address' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('refund-status')).toHaveTextContent(
+        'No refunded assets detected for this address.'
+      );
+    });
+
+    expect(screen.getByTestId('is-empty-lookup')).toHaveTextContent('yes');
+    expect(screen.getByTestId('earnings-amount')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('earnings-status')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('can-claim-earnings')).toHaveTextContent('no');
+    expect(delegatorContract.callStatic.claimableFees).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claim earnings' }));
+
+    expect(screen.getByTestId('action-target')).toBeEmptyDOMElement();
+    expect(delegatorContract.callStatic.sendfees).not.toHaveBeenCalled();
+    expect(delegatorContract.sendfees).not.toHaveBeenCalled();
+  });
+
+  testnetTest('inspects R-address refunds without wallet verification or earnings calls', async () => {
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        claimableFees: vi.fn().mockResolvedValue('1000000'),
+        getTokenList: vi.fn().mockResolvedValue([REFUNDABLE_TOKEN]),
+        refunds: vi.fn().mockResolvedValue('250000000')
+      }
+    });
+
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect R-address' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('refund-status')).toHaveTextContent(
+        'Found 1 refundable asset for this address.'
+      );
+    });
+
+    expect(delegatorContract.callStatic.refunds).toHaveBeenCalledTimes(1);
+    expect(delegatorContract.callStatic.claimableFees).not.toHaveBeenCalled();
+    expect(requestRefundAddressData).not.toHaveBeenCalled();
+    expect(screen.getByTestId('wallet-verification-required')).toHaveTextContent('no');
+    expect(screen.getByTestId('earnings-amount')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('earnings-status')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('can-claim-earnings')).toHaveTextContent('no');
   });
 });

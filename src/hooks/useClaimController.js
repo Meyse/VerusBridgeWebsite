@@ -4,7 +4,7 @@ import { useWeb3React } from '@web3-react/core';
 
 import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import { useToast } from 'components/Toast/ToastProvider';
-import { DELEGATOR_ADD } from 'constants/contractAddress';
+import { DELEGATOR_ADD, TESTNET } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import { fromBase58Check } from 'utils/verusAddress';
 import { padLeft } from 'utils/ethereumUnits';
@@ -26,7 +26,9 @@ const TYPE_REFUND = 2;
 const TYPE_REFUND_CHECK = 3;
 const TYPE_PUBLICKEY = 4;
 const MINIMUM_EARNINGS_TO_CLAIM = 0.006;
-const CONNECT_WALLET_LOOKUP_MESSAGE = 'Connect a wallet from the header to inspect earnings and refunds.';
+const CONNECT_WALLET_LOOKUP_MESSAGE = TESTNET
+  ? 'Connect a wallet from the header to inspect refunds.'
+  : 'Connect a wallet from the header to inspect earnings and refunds.';
 
 const formatHexAddress = (address, type) => {
   const verusAddress = fromBase58Check(address);
@@ -181,7 +183,7 @@ export default function useClaimController() {
 
   const normalizedAddress = address.trim();
   const addressError = getAddressError(normalizedAddress);
-  const isWalletVerificationRequired = normalizedAddress.startsWith('R');
+  const isWalletVerificationRequired = !TESTNET && normalizedAddress.startsWith('R');
   const isWalletLinkedAddress = Boolean(
     normalizedAddress
     && walletAddressDetails
@@ -288,6 +290,14 @@ export default function useClaimController() {
 
   useEffect(() => {
     let ignore = false;
+
+    if (TESTNET) {
+      setHasLookup(Boolean(normalizedAddress && !addressError && delegatorContract));
+      clearEarningsLookup();
+      return () => {
+        ignore = true;
+      };
+    }
 
     if (!normalizedAddress) {
       setHasLookup(false);
@@ -516,6 +526,10 @@ export default function useClaimController() {
   }, [account, isWalletVerificationRequired, loadWalletAddressDetails, normalizedAddress]);
 
   const handleClaimEarnings = useCallback(async () => {
+    if (TESTNET) {
+      return;
+    }
+
     if (!normalizedAddress || addressError) {
       return;
     }
@@ -701,7 +715,7 @@ export default function useClaimController() {
 
   const canSubmitWalletTransactions = Boolean(account && isExpectedWalletChain(chainId));
 
-  const canClaimEarnings = Boolean(
+  const canClaimEarnings = !TESTNET && Boolean(
     canSubmitWalletTransactions
     && normalizedAddress
     && !addressError
@@ -714,18 +728,19 @@ export default function useClaimController() {
     )
   );
 
-  const hasAnyResults = hasPositiveAmount(earningsAmount) || refundEntries.length > 0;
+  const hasAnyResults = refundEntries.length > 0 || (!TESTNET && hasPositiveAmount(earningsAmount));
 
-  const isLookupPending = isEarningsLookupPending || isRefundLookupPending;
-  const hasLookupIssue = [earningsStatus, refundStatus].some((status) => status && status.severity !== 'info');
+  const isLookupPending = isRefundLookupPending || (!TESTNET && isEarningsLookupPending);
+  const lookupStatuses = TESTNET ? [refundStatus] : [earningsStatus, refundStatus];
+  const hasLookupIssue = lookupStatuses.some((status) => status && status.severity !== 'info');
+  const hasCompletedLookup = Boolean(refundStatus) && (TESTNET || Boolean(earningsStatus));
   const isEmptyLookup = Boolean(
     hasLookup
     && !isLookupPending
     && !hasAnyResults
     && !addressError
     && !hasLookupIssue
-    && Boolean(earningsStatus)
-    && Boolean(refundStatus)
+    && hasCompletedLookup
   );
 
   return {

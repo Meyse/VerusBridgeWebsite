@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 
 import SiteHeader from 'components/SiteHeader';
+import { TESTNET } from 'constants/contractAddress';
 import useClaimController from 'hooks/useClaimController';
 import { getCurrencyIcon } from 'utils/bridgeUi';
 
@@ -110,6 +111,23 @@ const FAQItem = ({ children, question }) => (
   </details>
 );
 
+const REFUND_FAQ_ITEM = {
+  question: 'How can I claim funds that are stuck?',
+  content: (
+    <>
+      <p className={styles.faqAnswerLead}>
+        Paste the Verus refund address tied to that bridge transfer.
+      </p>
+      <div className={styles.faqAnswerCopy}>
+        <p className={styles.faqBulletCopy}>
+          The page checks supported tokens for refundable balances stored for that address and shows any assets
+          available to claim. Refund claims are exported back to that Verus address.
+        </p>
+      </div>
+    </>
+  )
+};
+
 const CLAIM_FAQ_ITEMS = [
   {
     question: 'How can I earn money with the Verus-Ethereum Bridge?',
@@ -175,23 +193,10 @@ const CLAIM_FAQ_ITEMS = [
       </>
     )
   },
-  {
-    question: 'How can I claim funds that are stuck?',
-    content: (
-      <>
-        <p className={styles.faqAnswerLead}>
-          Paste the Verus refund address tied to that bridge transfer.
-        </p>
-        <div className={styles.faqAnswerCopy}>
-          <p className={styles.faqBulletCopy}>
-            The page checks supported tokens for refundable balances stored for that address and shows any assets
-            available to claim. Refund claims are exported back to that Verus address.
-          </p>
-        </div>
-      </>
-    )
-  }
+  REFUND_FAQ_ITEM
 ];
+
+const ACTIVE_CLAIM_FAQ_ITEMS = TESTNET ? [REFUND_FAQ_ITEM] : CLAIM_FAQ_ITEMS;
 
 const Claim = () => {
   const controller = useClaimController();
@@ -205,7 +210,7 @@ const Claim = () => {
     controller.addressError ? styles.addressInputInvalid : '',
     hasValidLookupAddress ? styles.addressInputValid : ''
   ].filter(Boolean).join(' ');
-  const earningsPanelStatus = buildPanelStatus({
+  const earningsPanelStatus = TESTNET ? null : buildPanelStatus({
     hasAddress: Boolean(trimmedAddress),
     idleMessage: 'Enter a Verus address to inspect bridgekeeper earnings.',
     isPending: controller.isEarningsLookupPending,
@@ -231,7 +236,8 @@ const Claim = () => {
   const hasRefundsPanelContent = controller.isRefundLookupPending
     || controller.refundEntries.length > 0
     || Boolean(refundPanelStatus);
-  const showEarningsPanel = hasValidLookupAddress
+  const showEarningsPanel = !TESTNET
+    && hasValidLookupAddress
     && !showEmptyLookupState
     && hasEarningsPanelContent;
   const showRefundsPanel = hasValidLookupAddress
@@ -304,7 +310,9 @@ const Claim = () => {
                     <section className={styles.claimEmptyState}>
                       <h2 className={styles.claimEmptyStateTitle}>Nothing ready for this address</h2>
                       <p className={styles.claimEmptyStateCopy}>
-                        No bridgekeeper earnings or refunded assets are available to claim right now.
+                        {TESTNET
+                          ? 'No refunded assets are available to claim right now.'
+                          : 'No bridgekeeper earnings or refunded assets are available to claim right now.'}
                       </p>
                     </section>
                   ) : null}
@@ -386,7 +394,7 @@ const Claim = () => {
 
               <section className={styles.claimFaqSection}>
                 <div className={`${styles.faqList} ${styles.claimFaqList}`}>
-                  {CLAIM_FAQ_ITEMS.map((item) => (
+                  {ACTIVE_CLAIM_FAQ_ITEMS.map((item) => (
                     <FAQItem key={item.question} question={item.question}>
                       {item.content}
                     </FAQItem>
