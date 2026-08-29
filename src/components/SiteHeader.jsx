@@ -42,6 +42,10 @@ const NAV_ITEMS = [
   { id: 'claim', label: TESTNET ? 'Refunds' : 'Refunds & earnings', to: '/claim' }
 ];
 
+const ALTERNATE_BRIDGE = TESTNET
+  ? { label: 'Switch to Mainnet', origin: 'https://bridge.vaultalert.net' }
+  : { label: 'Switch to Testnet', origin: 'https://testbridge.vaultalert.net' };
+
 const CopyIcon = ({ copied }) => (
   <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
     {copied ? (
@@ -204,6 +208,7 @@ const SiteHeader = () => {
   const isReviewRequested = homeStep === HOME_REVIEW_STEP;
   const bridgeHref = useMemo(() => buildHomeHref(), []);
   const infoHref = useMemo(() => buildHomeHref({ hash: HOME_INFO_HASH }), []);
+  const alternateBridgeHref = `${ALTERNATE_BRIDGE.origin}${location.pathname}`;
   const needsRefundSignatureAction = Boolean(
     account
     && !getCachedRefundAddress(account)
@@ -389,6 +394,9 @@ const SiteHeader = () => {
                 {item.label}
               </Link>
             ))}
+            <a className={styles.headerNavLink} href={alternateBridgeHref}>
+              {ALTERNATE_BRIDGE.label}
+            </a>
           </nav>
         </div>
 
@@ -554,6 +562,9 @@ const SiteHeader = () => {
           <Link className={styles.mobileNavLink} to="/nft">
             NFT bridge
           </Link>
+          <a className={styles.mobileNavLink} href={alternateBridgeHref}>
+            {ALTERNATE_BRIDGE.label}
+          </a>
         </div>
       ) : null}
     </header>

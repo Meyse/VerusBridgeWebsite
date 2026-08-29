@@ -181,6 +181,36 @@ describe('SiteHeader wallet interactions', () => {
     }
   });
 
+  test('links to the other deployment without carrying transaction state', () => {
+    useWeb3React.mockReturnValue({
+      account: null,
+      activate: vi.fn(),
+      deactivate: vi.fn(),
+      error: null
+    });
+
+    renderHeader(['/claim?step=review#bridge-interface']);
+
+    const targetLabel = TESTNET ? 'Switch to Mainnet' : 'Switch to Testnet';
+    const targetOrigin = TESTNET
+      ? 'https://bridge.vaultalert.net'
+      : 'https://testbridge.vaultalert.net';
+    const navigation = screen.getByRole('navigation', { name: /primary/i });
+
+    expect(within(navigation).getByRole('link', { name: targetLabel })).toHaveAttribute(
+      'href',
+      `${targetOrigin}/claim`
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /open navigation/i }));
+
+    expect(screen.getAllByRole('link', { name: targetLabel })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: targetLabel })[1]).toHaveAttribute(
+      'href',
+      `${targetOrigin}/claim`
+    );
+  });
+
   test('keeps a wrong-network action visible and switches MetaMask before reconnecting', async () => {
     const activate = vi.fn().mockResolvedValue(undefined);
     const request = vi.fn().mockResolvedValue(null);
