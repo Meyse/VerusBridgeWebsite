@@ -193,8 +193,8 @@ describe('SiteHeader wallet interactions', () => {
 
     const targetLabel = TESTNET ? 'Switch to Mainnet' : 'Switch to Testnet';
     const targetOrigin = TESTNET
-      ? 'https://bridge.vaultalert.net'
-      : 'https://testbridge.vaultalert.net';
+      ? 'https://bridge.antafri.com'
+      : 'https://testbridge.antafri.com';
     const navigation = screen.getByRole('navigation', { name: /primary/i });
 
     expect(within(navigation).getByRole('link', { name: targetLabel })).toHaveAttribute(
