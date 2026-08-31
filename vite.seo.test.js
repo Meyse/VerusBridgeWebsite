@@ -51,7 +51,7 @@ describe('search publishing policy', () => {
       REACT_APP_SEARCH_INDEXING_ENABLED: 'true'
     })).toThrow(/mainnet/);
     expect(() => resolveSearchPublishingPolicy('mainnet', {
-      REACT_APP_PUBLIC_SITE_URL: 'https://bridge.antafri.com',
+      REACT_APP_PUBLIC_SITE_URL: 'https://community-preview.example',
       REACT_APP_SEARCH_INDEXING_ENABLED: 'true'
     })).toThrow(/official site/);
     expect(() => resolveSearchPublishingPolicy('mainnet', {

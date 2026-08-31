@@ -1,6 +1,7 @@
 import { BRIDGE_DEPLOYMENT } from 'config/bridgeDeployment';
 
 export const DELEGATOR_ADD = BRIDGE_DEPLOYMENT.delegatorAddress;
+export const ALTERNATE_BRIDGE_SITE_URL = BRIDGE_DEPLOYMENT.alternateSiteUrl;
 export const TESTNET = BRIDGE_DEPLOYMENT.isTestnet;
 export const ETHEREUM_BLOCKCHAIN_NAME = BRIDGE_DEPLOYMENT.ethereumBlockchainName;
 export const EXPECTED_ETHEREUM_CHAIN_ID = BRIDGE_DEPLOYMENT.ethereumChainId;

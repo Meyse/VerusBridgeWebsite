@@ -90,12 +90,18 @@ const LocationProbe = () => {
   return <div data-testid="location-display">{`${location.pathname}${location.search}${location.hash}`}</div>;
 };
 
-const renderHeader = (initialEntries = ['/']) => {
+const TEST_ALTERNATE_BRIDGE = {
+  label: TESTNET ? 'Switch to Mainnet' : 'Switch to Testnet',
+  origin: TESTNET ? 'https://mainnet.example/' : 'https://testnet.example/',
+  target: TESTNET ? 'Mainnet' : 'Testnet'
+};
+
+const renderHeader = (initialEntries = ['/'], headerProps = {}) => {
   const router = createMemoryRouter(
     [{
       element: (
         <>
-          <SiteHeader />
+          <SiteHeader {...headerProps} />
           <LocationProbe />
         </>
       ),
@@ -189,26 +195,37 @@ describe('SiteHeader wallet interactions', () => {
       error: null
     });
 
-    renderHeader(['/claim?step=review#bridge-interface']);
+    renderHeader(['/claim?step=review#bridge-interface'], {
+      alternateBridge: TEST_ALTERNATE_BRIDGE
+    });
 
-    const targetLabel = TESTNET ? 'Switch to Mainnet' : 'Switch to Testnet';
-    const targetOrigin = TESTNET
-      ? 'https://bridge.antafri.com'
-      : 'https://testbridge.antafri.com';
     const navigation = screen.getByRole('navigation', { name: /primary/i });
-    const switchLink = screen.getByRole('link', { name: targetLabel });
+    const switchLink = screen.getByRole('link', { name: TEST_ALTERNATE_BRIDGE.label });
     const connectButton = screen.getByRole('button', { name: /connect wallet/i });
 
-    expect(within(navigation).queryByRole('link', { name: targetLabel })).not.toBeInTheDocument();
+    expect(within(navigation).queryByRole('link', { name: TEST_ALTERNATE_BRIDGE.label })).not.toBeInTheDocument();
     expect(switchLink).toHaveAttribute(
       'href',
-      `${targetOrigin}/claim`
+      TESTNET ? 'https://mainnet.example/claim' : 'https://testnet.example/claim'
     );
     expect(switchLink.compareDocumentPosition(connectButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /open navigation/i }));
 
-    expect(screen.getAllByRole('link', { name: targetLabel })).toHaveLength(1);
+    expect(screen.getAllByRole('link', { name: TEST_ALTERNATE_BRIDGE.label })).toHaveLength(1);
+  });
+
+  test('omits the deployment switch when no counterpart site is configured', () => {
+    useWeb3React.mockReturnValue({
+      account: null,
+      activate: vi.fn(),
+      deactivate: vi.fn(),
+      error: null
+    });
+
+    renderHeader(['/'], { alternateBridge: null });
+
+    expect(screen.queryByRole('link', { name: /switch to (mainnet|testnet)/i })).not.toBeInTheDocument();
   });
 
   test('keeps a wrong-network action visible and switches MetaMask before reconnecting', async () => {
@@ -371,8 +388,6 @@ describe('SiteHeader wallet interactions', () => {
 
   test('stores the disconnect preference before deactivating the wallet', () => {
     const deactivate = vi.fn();
-    const targetLabel = TESTNET ? 'Switch to Mainnet' : 'Switch to Testnet';
-
     useWeb3React.mockReturnValue({
       account: '0x1234567890123456789012345678901234567890',
       activate: vi.fn(),
@@ -380,9 +395,9 @@ describe('SiteHeader wallet interactions', () => {
       error: null
     });
 
-    renderHeader();
+    renderHeader(['/'], { alternateBridge: TEST_ALTERNATE_BRIDGE });
 
-    const switchLink = screen.getByRole('link', { name: targetLabel });
+    const switchLink = screen.getByRole('link', { name: TEST_ALTERNATE_BRIDGE.label });
     const connectedWalletButton = screen.getByRole('button', { name: /0x1234/i });
 
     expect(switchLink.compareDocumentPosition(connectedWalletButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

@@ -27,7 +27,8 @@ The values are embedded in the browser bundle. Never put secrets in these variab
 - `REACT_APP_RPC_URL_SEPOLIA` provides read-only Sepolia access for the testnet build. `REACT_APP_RPC_URL_MAINNET` provides read-only Ethereum access for mainnet.
 - `REACT_APP_DELEGATOR_CONTRACT` and `REACT_APP_VERUS_RPC_URL` configure only the mainnet profile. Transaction submission fails closed when the wallet is on another chain, the address is invalid, or no contract code exists at that address.
 - `REACT_APP_VERUS_END_BLOCK` retains the existing bridge synchronization configuration.
-- `REACT_APP_SEARCH_INDEXING_ENABLED` defaults to `false`. Local, Antafri community-review, and testnet builds must keep it disabled.
+- `REACT_APP_MAINNET_SITE_URL` and `REACT_APP_TESTNET_SITE_URL` optionally configure the counterpart deployment used by the header's Mainnet/Testnet switch. Leave the relevant value empty when no counterpart site should be linked.
+- `REACT_APP_SEARCH_INDEXING_ENABLED` defaults to `false`. Local, community-review, and testnet builds must keep it disabled.
 - `REACT_APP_PUBLIC_SITE_URL` is used only by an explicitly indexable official build. The build rejects indexing for testnet or any origin other than `https://eth.verusbridge.io`.
 
 ## Commands
@@ -65,7 +66,7 @@ pnpm build
 pnpm build:testnet
 ```
 
-Both builds emit `noindex, nofollow` metadata, a crawlable `robots.txt` without a sitemap, and no `sitemap.xml`. This is the intended configuration for `bridge.antafri.com`, `testbridge.antafri.com`, local previews, and any other non-official host.
+Both builds emit `noindex, nofollow` metadata, a crawlable `robots.txt` without a sitemap, and no `sitemap.xml`. This is the intended configuration for local previews, community-review deployments, and any other non-official host.
 
 Do not add `Disallow: /` to `robots.txt`: crawlers must be able to fetch the HTML to see `noindex`. As a hosting-level defense in depth, non-official HTML responses may also send:
 

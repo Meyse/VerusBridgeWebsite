@@ -6,7 +6,11 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getExplorerBaseUrl } from 'config/explorerLinks';
 import { injectedConnector } from 'connectors/injectedConnector';
-import { ETHEREUM_BLOCKCHAIN_NAME, TESTNET } from 'constants/contractAddress';
+import {
+  ALTERNATE_BRIDGE_SITE_URL,
+  ETHEREUM_BLOCKCHAIN_NAME,
+  TESTNET
+} from 'constants/contractAddress';
 import { formatCompactAddress } from 'utils/bridgeUi';
 import {
   HOME_INFO_HASH,
@@ -42,9 +46,13 @@ const NAV_ITEMS = [
   { id: 'claim', label: TESTNET ? 'Refunds' : 'Refunds & earnings', to: '/claim' }
 ];
 
-const ALTERNATE_BRIDGE = TESTNET
-  ? { label: 'Switch to Mainnet', origin: 'https://bridge.antafri.com', target: 'Mainnet' }
-  : { label: 'Switch to Testnet', origin: 'https://testbridge.antafri.com', target: 'Testnet' };
+const ALTERNATE_BRIDGE = ALTERNATE_BRIDGE_SITE_URL
+  ? {
+    label: TESTNET ? 'Switch to Mainnet' : 'Switch to Testnet',
+    origin: ALTERNATE_BRIDGE_SITE_URL,
+    target: TESTNET ? 'Mainnet' : 'Testnet'
+  }
+  : null;
 
 const CopyIcon = ({ copied }) => (
   <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
@@ -128,7 +136,7 @@ const WALLET_OPTIONS = [
   }
 ];
 
-const SiteHeader = () => {
+const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
   const [copied, setCopied] = useState(false);
   const [isRetryingRefundSignature, setIsRetryingRefundSignature] = useState(false);
   const [isScrolled, setIsScrolled] = useState(() => (typeof window !== 'undefined' ? window.scrollY > 0 : false));
@@ -220,7 +228,9 @@ const SiteHeader = () => {
   const isReviewRequested = homeStep === HOME_REVIEW_STEP;
   const bridgeHref = useMemo(() => buildHomeHref(), []);
   const infoHref = useMemo(() => buildHomeHref({ hash: HOME_INFO_HASH }), []);
-  const alternateBridgeHref = `${ALTERNATE_BRIDGE.origin}${location.pathname}`;
+  const alternateBridgeHref = alternateBridge
+    ? new URL(location.pathname, alternateBridge.origin).toString()
+    : '';
   const needsRefundSignatureAction = Boolean(
     account
     && !getCachedRefundAddress(account)
@@ -410,15 +420,17 @@ const SiteHeader = () => {
         </div>
 
         <div className={styles.headerRight}>
-          <a
-            aria-label={ALTERNATE_BRIDGE.label}
-            className={styles.deploymentSwitch}
-            href={alternateBridgeHref}
-            title={ALTERNATE_BRIDGE.label}
-          >
-            <NetworkSwitchIcon />
-            <span>{ALTERNATE_BRIDGE.target}</span>
-          </a>
+          {alternateBridge ? (
+            <a
+              aria-label={alternateBridge.label}
+              className={styles.deploymentSwitch}
+              href={alternateBridgeHref}
+              title={alternateBridge.label}
+            >
+              <NetworkSwitchIcon />
+              <span>{alternateBridge.target}</span>
+            </a>
+          ) : null}
 
           {isWrongNetwork ? (
             <div aria-label="Wallet network status" className={styles.networkNotice} role="alert">
