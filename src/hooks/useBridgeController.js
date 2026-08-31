@@ -23,6 +23,7 @@ import {
   VERUS_RPC_URL
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
+import { useVerusDestinationResolution } from 'hooks/useVerusDestinationResolution';
 import { toBase58Check } from 'utils/verusAddress';
 import { BN, fromWei, toBN, toWei } from 'utils/ethereumUnits';
 import {
@@ -49,6 +50,7 @@ import {
 } from 'utils/refundAddress';
 import { coinsToSats, isETHAddress, uint64ToVerusFloat, validateAddress } from 'utils/rules';
 import { getConfigOptions } from 'utils/txConfig';
+import { resolveVerusDestination } from 'utils/verusDestination';
 import {
   assertBridgeTransactionContext,
   isExpectedWalletChain
@@ -1090,10 +1092,19 @@ export default function useBridgeController({
   const { account, chainId, library } = useWeb3React();
   const { addToast } = useToast();
   const delegatorContract = useContract(DELEGATOR_ADD, DELEGATOR_ABI);
+  const {
+    address: resolvedAddress,
+    error: addressResolutionError,
+    identityName: resolvedIdentityName,
+    isIdentity: isIdentityDestination,
+    isResolving: isAddressResolving,
+    message: addressResolutionMessage
+  } = useVerusDestinationResolution(address, verusd, BLOCKCHAIN_NAME);
+  const displayAddressError = addressResolutionError || addressError;
 
   const destinationOptions = useMemo(
-    () => getDestinationOptions(poolAvailable, address, selectedToken?.value, selectedToken?.name),
-    [address, poolAvailable, selectedToken]
+    () => getDestinationOptions(poolAvailable, resolvedAddress, selectedToken?.value, selectedToken?.name),
+    [poolAvailable, resolvedAddress, selectedToken]
   );
   const allowsEthereumDestination = useMemo(
     () => !supportsOnlyDirectVerusDestination(poolAvailable, selectedToken?.value),
@@ -1131,10 +1142,11 @@ export default function useBridgeController({
     account || '',
     chainId || '',
     address || '',
+    resolvedAddress || '',
     amount || '',
     destination || '',
     selectedToken?.value || ''
-  ].join('|'), [account, address, amount, chainId, destination, selectedToken]);
+  ].join('|'), [account, address, amount, chainId, destination, resolvedAddress, selectedToken]);
   const editSignatureRef = useRef(editSignature);
 
   useEffect(() => {
@@ -1286,25 +1298,31 @@ export default function useBridgeController({
   const reviewReceiveAmountDisplay = reviewSnapshot?.receiveAmountDisplay || '';
   const reviewReceiveFiatLabel = reviewSnapshot?.receiveFiatLabel || null;
   const reviewExchangeRate = reviewSnapshot?.exchangeRate || null;
+  const reviewDestinationAddress = reviewSnapshot?.destinationAddress || resolvedAddress;
+  const reviewDestinationIdentityName = reviewSnapshot?.destinationIdentityName || '';
   const addressHint = useMemo(
     () => (
       allowsEthereumDestination
-        ? 'Enter a Verus address (R-address or i-address) or Ethereum address'
-        : 'Enter a Verus address (R-address or i-address)'
+        ? 'Enter a VerusID (such as Max@), R-address, i-address, or Ethereum address.'
+        : 'Enter a VerusID (such as Max@), R-address, or i-address.'
     ),
     [allowsEthereumDestination]
   );
   const addressPlaceholder = useMemo(
-    () => (allowsEthereumDestination ? 'Enter receiving address' : 'Enter Verus receiving address'),
+    () => (
+      allowsEthereumDestination
+        ? 'VerusID or receiving address'
+        : 'VerusID or Verus address'
+    ),
     [allowsEthereumDestination]
   );
   const destinationEmptyStateMessage = useMemo(() => {
-    if (!allowsEthereumDestination && isETHAddress(address)) {
+    if (!allowsEthereumDestination && isETHAddress(resolvedAddress)) {
       return 'This asset can only be received at a Verus address.';
     }
 
     return 'No currencies available yet. Enter a valid destination address to unlock receive options.';
-  }, [address, allowsEthereumDestination]);
+  }, [allowsEthereumDestination, resolvedAddress]);
   const requiresLiveGasEstimate = useMemo(
     () => Boolean(destination && destination.startsWith('swapto')),
     [destination]
@@ -1873,13 +1891,13 @@ export default function useBridgeController({
   useEffect(() => {
     let ignore = false;
 
-    const checkAddress = async () => {
-      if (!address) {
-        setAddressError('');
-        return;
-      }
+    if (!address || isAddressResolving || addressResolutionError) {
+      setAddressError('');
+      return undefined;
+    }
 
-      const result = await validateAddress(address);
+    const checkAddress = async () => {
+      const result = await validateAddress(resolvedAddress);
       if (!ignore) {
         setAddressError(result === true ? '' : result);
       }
@@ -1893,7 +1911,7 @@ export default function useBridgeController({
       ignore = true;
       clearTimeout(timeoutId);
     };
-  }, [address]);
+  }, [address, addressResolutionError, isAddressResolving, resolvedAddress]);
 
   useEffect(() => {
     let ignore = false;
@@ -2005,8 +2023,8 @@ export default function useBridgeController({
     [account, pubkey]
   );
   const needsRefundAddressSignature = useMemo(
-    () => routeNeedsRefundAddressSignature({ address, destination }),
-    [address, destination]
+    () => routeNeedsRefundAddressSignature({ address: resolvedAddress, destination }),
+    [destination, resolvedAddress]
   );
   const isRefundSignaturePending = useMemo(() => (
     Boolean(
@@ -2118,7 +2136,11 @@ export default function useBridgeController({
       return false;
     }
 
-    const validDestination = await validateAddress(address);
+    if (isAddressResolving || addressResolutionError) {
+      return false;
+    }
+
+    const validDestination = await validateAddress(resolvedAddress);
     if (validDestination !== true) {
       setAddressError(validDestination);
       return false;
@@ -2138,7 +2160,18 @@ export default function useBridgeController({
     }
 
     return true;
-  }, [account, address, amount, chainId, delegatorContract, destination, library, selectedToken]);
+  }, [
+    account,
+    addressResolutionError,
+    amount,
+    chainId,
+    delegatorContract,
+    destination,
+    isAddressResolving,
+    library,
+    resolvedAddress,
+    selectedToken
+  ]);
 
   const authoriseOneTokenAmount = async (tokenToAuthorise, amountToAuthorise) => {
     await assertBridgeTransactionContext(library);
@@ -2227,6 +2260,18 @@ export default function useBridgeController({
     setIsTxPending(true);
 
     try {
+      const transactionDestination = await resolveVerusDestination(address, verusd, BLOCKCHAIN_NAME);
+
+      if (
+        currentReviewSnapshot?.destinationIdentityName
+        && transactionDestination.address !== currentReviewSnapshot.destinationAddress
+      ) {
+        clearReview(true, { hash: '' });
+        throw new Error(
+          `${currentReviewSnapshot.destinationIdentityName} now resolves to a different address. Review the destination again before continuing.`
+        );
+      }
+
       await assertBridgeTransactionContext(library);
 
       if (selectedToken.value !== GLOBAL_ADDRESS.ETH) {
@@ -2234,7 +2279,7 @@ export default function useBridgeController({
       }
 
       const result = getConfigOptions({
-        address,
+        address: transactionDestination.address,
         amount,
         destination,
         poolAvailable,
@@ -2343,7 +2388,11 @@ export default function useBridgeController({
       return 'Enter destination';
     }
 
-    if (addressError) {
+    if (isAddressResolving) {
+      return 'Resolving VerusID';
+    }
+
+    if (displayAddressError) {
       return 'Fix destination';
     }
 
@@ -2362,13 +2411,15 @@ export default function useBridgeController({
     return '';
   }, [
     account,
-    addressError,
+    address,
     amount,
     amountError,
     chainId,
     destination,
     gasPrice,
     hasFreshReceiveQuote,
+    displayAddressError,
+    isAddressResolving,
     requiresLiveGasEstimate,
     requiresReceiveQuote,
     selectedToken
@@ -2428,6 +2479,8 @@ export default function useBridgeController({
     }
 
     const nextReviewSnapshot = {
+      destinationAddress: resolvedAddress,
+      destinationIdentityName: isIdentityDestination ? resolvedIdentityName : '',
       editSignature: requestedEditSignature,
       exchangeRate: conversionExchangeRate,
       refundAddress: needsRefundAddressSignature ? getCachedRefundAddress(account) || refundAddress : '',
@@ -2458,12 +2511,15 @@ export default function useBridgeController({
     editSignature,
     gasPrice,
     hasFreshReceiveQuote,
+    isIdentityDestination,
     ensureRefundAddressSignature,
     needsRefundAddressSignature,
     library,
     receiveAmountDisplay,
     receiveFiatLabel,
     refundAddress,
+    resolvedAddress,
+    resolvedIdentityName,
     enterReview,
     requiresLiveGasEstimate,
     requiresReceiveQuote,
@@ -2499,8 +2555,9 @@ export default function useBridgeController({
     account,
     address,
     addressHint,
-    addressError,
+    addressError: displayAddressError,
     addressPlaceholder,
+    addressResolutionMessage,
     alert,
     allowsEthereumDestination,
     amount,
@@ -2533,6 +2590,7 @@ export default function useBridgeController({
     hasReviewSnapshot,
     hasEnoughNativeEth,
     isRefundSignaturePending,
+    isAddressResolving,
     isReviewing,
     isSourceCatalogLoading,
     isSourceCurrenciesLoading: isWalletBalancesLoading,
@@ -2552,6 +2610,8 @@ export default function useBridgeController({
     requiresReceiveQuote,
     reviewReceiveAmountDisplay,
     reviewReceiveFiatLabel,
+    reviewDestinationAddress,
+    reviewDestinationIdentityName,
     routeLabel: getRouteLabel(destination),
     reviewConfirmLabel,
     reviewBouncebackWarningMessage,

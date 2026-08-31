@@ -30,6 +30,7 @@ const { mockVerusd } = vi.hoisted(() => ({
     estimateConversion: vi.fn(),
     getBlock: vi.fn(),
     getCurrency: vi.fn(),
+    getIdentity: vi.fn(),
     getInfo: vi.fn()
   }
 }));
@@ -255,6 +256,8 @@ const HookProbe = ({ controllerOptions = {} }) => {
       <div data-testid="selected-value">{controller.selectedToken?.value || ''}</div>
       <div data-testid="allows-ethereum-destination">{controller.allowsEthereumDestination ? 'yes' : 'no'}</div>
       <div data-testid="address-hint">{controller.addressHint || ''}</div>
+      <div data-testid="address-error">{controller.addressError || ''}</div>
+      <div data-testid="address-resolution">{controller.addressResolutionMessage || ''}</div>
       <div data-testid="alert-message">{controller.alert?.message || ''}</div>
       <div data-testid="destination-count">{controller.destinationOptions.length}</div>
       <div data-testid="source-count">{controller.sourceCurrencies.length}</div>
@@ -288,6 +291,8 @@ const HookProbe = ({ controllerOptions = {} }) => {
       <div data-testid="review-exchange-rate-inverse">{controller.reviewExchangeRate?.inverse ? `${controller.reviewExchangeRate.inverse.label}|${controller.reviewExchangeRate.inverse.fiatLabel || ''}` : ''}</div>
       <div data-testid="review-route-label">{controller.reviewRouteLabel || ''}</div>
       <div data-testid="review-time-estimate">{controller.reviewTimeEstimate || ''}</div>
+      <div data-testid="review-destination-address">{controller.reviewDestinationAddress || ''}</div>
+      <div data-testid="review-destination-identity">{controller.reviewDestinationIdentityName || ''}</div>
       <div data-testid="review-fees">{(controller.reviewFeeRows || []).map((row) => `${row.label}:${row.value}`).join('|')}</div>
       <div data-testid="base-fee">{controller.baseBridgeFeeValue ?? ''}</div>
       <div data-testid="bounceback-fee">{controller.bounceBackFeeValue ?? ''}</div>
@@ -358,6 +363,29 @@ const HookProbe = ({ controllerOptions = {} }) => {
         type="button"
       >
         Configure ETH Direct
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(ETH_ADDRESS);
+          controller.setAddress('Max@');
+          controller.setAmount('1');
+        }}
+        type="button"
+      >
+        Configure VerusID Direct
+      </button>
+      <button
+        onClick={() => {
+          controller.selectToken(DAI_ADDRESS);
+          controller.setAddress('Max@');
+          controller.setAmount('1');
+        }}
+        type="button"
+      >
+        Configure VerusID ERC20 Direct
+      </button>
+      <button onClick={() => controller.selectDestination(BLOCKCHAIN_NAME)} type="button">
+        Select Verus Destination
       </button>
       <button
         onClick={() => {
@@ -523,6 +551,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
         tiptime: 1000
       }
     });
+    mockVerusd.getIdentity.mockResolvedValue({});
     mockVerusd.estimateConversion.mockResolvedValue({});
   });
 
@@ -899,7 +928,136 @@ describe('useBridgeController disconnected source bootstrap', () => {
     expect(screen.getByTestId('destination-count')).toHaveTextContent('1');
     expect(screen.getByTestId('receive-amount')).toHaveTextContent('5');
     expect(screen.getByTestId('allows-ethereum-destination')).toHaveTextContent('no');
-    expect(screen.getByTestId('address-hint')).toHaveTextContent('Enter a Verus address (R-address or i-address)');
+    expect(screen.getByTestId('address-hint')).toHaveTextContent('Enter a VerusID (such as Max@), R-address, or i-address.');
+  });
+
+  test('resolves a VerusID before enabling review and pins its i-address in the review snapshot', async () => {
+    const identityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
+    const library = createLibrary({
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('10'))
+    });
+
+    mockVerusd.getIdentity.mockResolvedValue({
+      result: {
+        fullyqualifiedname: 'Max.VRSC@',
+        identity: { identityaddress: identityAddress },
+        status: 'active'
+      }
+    });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
+    useContract.mockReturnValue(createDelegatorContract());
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Configure VerusID Direct' }));
+
+    expect(screen.getByTestId('submit-disabled-reason')).toHaveTextContent('Resolving VerusID');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('address-resolution')).toHaveTextContent(
+        `Max.VRSC@ resolves to ${identityAddress}.`
+      );
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
+    await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes'));
+    expect(screen.getByTestId('review-destination-identity')).toHaveTextContent('Max.VRSC@');
+    expect(screen.getByTestId('review-destination-address')).toHaveTextContent(identityAddress);
+  });
+
+  test('re-resolves a VerusID before submitting a transfer to its canonical i-address', async () => {
+    const identityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
+    const sendTransfer = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ status: 1 })
+    });
+    const library = createLibrary({
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('10'))
+    });
+
+    mockVerusd.getIdentity.mockResolvedValue({
+      result: {
+        fullyqualifiedname: 'Max.VRSC@',
+        identity: { identityaddress: identityAddress },
+        status: 'active'
+      }
+    });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
+    useContract.mockReturnValue(createDelegatorContract({ sendTransfer }));
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Configure VerusID Direct' }));
+    await waitFor(() => expect(screen.getByTestId('address-resolution')).toHaveTextContent('Max.VRSC@'));
+    fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
+    await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    await waitFor(() => expect(sendTransfer).toHaveBeenCalledTimes(1));
+    expect(sendTransfer.mock.calls[0][0].destination).toEqual({
+      destinationaddress: convertVerusAddressToEthAddress(identityAddress),
+      destinationtype: 4
+    });
+    expect(mockVerusd.getIdentity).toHaveBeenCalledTimes(2);
+    expect(mockVerusd.getIdentity.mock.invocationCallOrder[1])
+      .toBeLessThan(sendTransfer.mock.invocationCallOrder[0]);
+  });
+
+  test('requires a fresh review when a VerusID resolves to a different address before submission', async () => {
+    const reviewedIdentityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
+    const changedIdentityAddress = toBase58Check(Buffer.alloc(20, 2), 102);
+    const approve = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ status: 1 })
+    });
+    const sendTransfer = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ status: 1 })
+    });
+    const library = createLibrary({
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('10'))
+    });
+
+    getContract.mockImplementation(() => ({
+      approve,
+      decimals: vi.fn().mockResolvedValue(18),
+      name: vi.fn().mockResolvedValue('Dai Stablecoin'),
+      symbol: vi.fn().mockResolvedValue('DAI')
+    }));
+    mockVerusd.getIdentity
+      .mockResolvedValueOnce({
+        result: {
+          fullyqualifiedname: 'Max.VRSC@',
+          identity: { identityaddress: reviewedIdentityAddress },
+          status: 'active'
+        }
+      })
+      .mockResolvedValueOnce({
+        result: {
+          fullyqualifiedname: 'Max.VRSC@',
+          identity: { identityaddress: changedIdentityAddress },
+          status: 'active'
+        }
+      });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
+    useContract.mockReturnValue(createDelegatorContract({ sendTransfer }));
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Configure VerusID ERC20 Direct' }));
+    await waitFor(() => expect(screen.getByTestId('address-resolution')).toHaveTextContent('Max.VRSC@'));
+    fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
+    await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+    await waitFor(() => expect(screen.getByTestId('review-destination-address')).toHaveTextContent(
+      reviewedIdentityAddress
+    ));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no'));
+    expect(approve).not.toHaveBeenCalled();
+    expect(sendTransfer).not.toHaveBeenCalled();
   });
 
   test('derives internal Bridge and Floralis USD prices while keeping DAI, USDT, and USDC pegged', async () => {

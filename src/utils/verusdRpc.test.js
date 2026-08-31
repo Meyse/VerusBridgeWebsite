@@ -47,6 +47,7 @@ describe('Verus JSON-RPC client', () => {
 
     await client.getBlock('100', 1);
     await client.estimateConversion(conversion);
+    await client.getIdentity('Max@');
 
     expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({
       method: 'getblock',
@@ -55,6 +56,10 @@ describe('Verus JSON-RPC client', () => {
     expect(JSON.parse(global.fetch.mock.calls[1][1].body)).toMatchObject({
       method: 'estimateconversion',
       params: [conversion]
+    });
+    expect(JSON.parse(global.fetch.mock.calls[2][1].body)).toMatchObject({
+      method: 'getidentity',
+      params: ['Max@']
     });
   });
 

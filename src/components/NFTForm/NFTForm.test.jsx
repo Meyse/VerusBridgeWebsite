@@ -13,20 +13,32 @@ import {
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import { getContract } from 'utils/contract';
+import { convertVerusAddressToEthAddress } from 'utils/convert';
+import { toBase58Check } from 'utils/verusAddress';
 
 import NFTForm from './NFTForm';
+
+const { mockVerusd } = vi.hoisted(() => ({
+  mockVerusd: { getIdentity: vi.fn() }
+}));
 
 vi.mock('@web3-react/core', () => ({ useWeb3React: vi.fn() }));
 vi.mock('components/Toast/ToastProvider', () => ({ useToast: vi.fn() }));
 vi.mock('hooks/useContract', () => ({ default: vi.fn() }));
 vi.mock('react-hook-form', () => ({ useForm: vi.fn() }));
 vi.mock('utils/contract', () => ({ getContract: vi.fn() }));
+vi.mock('utils/verusdRpc', () => ({
+  VerusdRpcInterface: vi.fn(function MockVerusdRpcInterface() {
+    return mockVerusd;
+  })
+}));
 vi.mock('./NFTAddressField', () => ({ default: () => null }));
 vi.mock('./NFTAmountField', () => ({ default: () => null }));
 vi.mock('./NFTField', () => ({ default: () => null }));
 
 describe('NFT bridge transaction boundaries', () => {
-  test('grants ERC-1155 approval only to the configured delegator', async () => {
+  test('resolves a VerusID before granting ERC-1155 approval and building the transfer', async () => {
+    const identityAddress = toBase58Check(Buffer.alloc(20, 4), 102);
     const selectedNft = {
       erc20address: '0x0000000000000000000000000000000000000011',
       flags: FLAGS.MAPPING_ERC1155_ERC_DEFINITION,
@@ -35,7 +47,7 @@ describe('NFT bridge transaction boundaries', () => {
       value: BigNumber.from(1)
     };
     const values = {
-      address: 'R9NVxTj2ewfiTUzAfn7FSsq9kxNt6fjaaZ',
+      address: 'Max@',
       amount: 1,
       nft: selectedNft
     };
@@ -69,6 +81,13 @@ describe('NFT bridge transaction boundaries', () => {
     useToast.mockReturnValue({ addToast: vi.fn() });
     useContract.mockReturnValue(delegatorContract);
     getContract.mockReturnValue(nftContract);
+    mockVerusd.getIdentity.mockResolvedValue({
+      result: {
+        fullyqualifiedname: 'Max.VRSC@',
+        identity: { identityaddress: identityAddress },
+        status: 'active'
+      }
+    });
     useForm.mockReturnValue({
       control: {},
       handleSubmit: (handler) => (event) => {
@@ -79,6 +98,7 @@ describe('NFT bridge transaction boundaries', () => {
     });
 
     render(<NFTForm />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
     await waitFor(() => {
@@ -91,6 +111,13 @@ describe('NFT bridge transaction boundaries', () => {
       expect.objectContaining({ from: '0x1234567890abcdef1234567890abcdef12345678' })
     );
     expect(delegatorContract.sendTransfer).toHaveBeenCalledTimes(1);
+    expect(delegatorContract.sendTransfer.mock.calls[0][0].destination).toEqual({
+      destinationaddress: convertVerusAddressToEthAddress(identityAddress),
+      destinationtype: '04'
+    });
+    expect(mockVerusd.getIdentity).toHaveBeenCalledWith('Max@');
+    expect(mockVerusd.getIdentity.mock.invocationCallOrder.at(-1))
+      .toBeLessThan(setApprovalForAll.mock.invocationCallOrder[0]);
     expect(delegatorContract.callStatic.contracts).toBeUndefined();
   });
 });

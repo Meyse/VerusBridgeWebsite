@@ -27,6 +27,7 @@ const createController = (overrides = {}) => ({
   actionTarget: '',
   address: 'iAddress123456789012345678901234567890',
   addressError: '',
+  addressResolutionMessage: '',
   canClaimEarnings: true,
   earningsAmount: '0.12500000',
   earningsActionLabel: 'Claim back to this Verus address',
@@ -41,6 +42,7 @@ const createController = (overrides = {}) => ({
   hasAnyResults: true,
   hasLookup: true,
   isActionPending: false,
+  isAddressResolving: false,
   isEarningsLookupPending: false,
   isEmptyLookup: false,
   isLookupPending: false,
@@ -111,7 +113,7 @@ describe('Claim page', () => {
       expect(screen.getByText('How can I claim bridge earnings?')).toBeInTheDocument();
     }
 
-    fireEvent.change(screen.getByPlaceholderText(/enter your verus i-address or r-address/i), {
+    fireEvent.change(screen.getByPlaceholderText(/verusid, i-address, or r-address/i), {
       target: { value: 'iNextAddress1234567890123456789012345' }
     });
 
@@ -120,6 +122,19 @@ describe('Claim page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use connected wallet' }));
 
     expect(controller.handleWalletAddressAction).toHaveBeenCalled();
+  });
+
+  test('shows VerusID resolution feedback below the lookup field', () => {
+    useClaimController.mockReturnValue(createController({
+      address: 'Max@',
+      addressResolutionMessage: 'Max.VRSC@ resolves to iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX.'
+    }));
+
+    renderPage();
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Max.VRSC@ resolves to iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX.'
+    );
   });
 
   test('renders the empty-state panel when nothing is ready to recover', () => {

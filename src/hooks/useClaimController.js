@@ -4,8 +4,15 @@ import { useWeb3React } from '@web3-react/core';
 
 import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import { useToast } from 'components/Toast/ToastProvider';
-import { DELEGATOR_ADD, TESTNET } from 'constants/contractAddress';
+import {
+  BLOCKCHAIN_NAME,
+  DELEGATOR_ADD,
+  GLOBAL_IADDRESS,
+  TESTNET,
+  VERUS_RPC_URL
+} from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
+import { useVerusDestinationResolution } from 'hooks/useVerusDestinationResolution';
 import { fromBase58Check } from 'utils/verusAddress';
 import { padLeft } from 'utils/ethereumUnits';
 import { getTokenOptions } from 'utils/options';
@@ -18,6 +25,8 @@ import {
   assertBridgeTransactionContext,
   isExpectedWalletChain
 } from 'utils/walletNetwork';
+import { resolveVerusDestination } from 'utils/verusDestination';
+import { VerusdRpcInterface } from 'utils/verusdRpc';
 
 const maxGas = 800000;
 const maxGasClaim = 80000;
@@ -29,6 +38,7 @@ const MINIMUM_EARNINGS_TO_CLAIM = 0.006;
 const CONNECT_WALLET_LOOKUP_MESSAGE = TESTNET
   ? 'Connect a wallet from the header to inspect refunds.'
   : 'Connect a wallet from the header to inspect earnings and refunds.';
+const verusd = new VerusdRpcInterface(GLOBAL_IADDRESS.VRSC, VERUS_RPC_URL);
 
 const formatHexAddress = (address, type) => {
   const verusAddress = fromBase58Check(address);
@@ -181,13 +191,21 @@ export default function useClaimController() {
   const { addToast } = useToast();
   const delegatorContract = useContract(DELEGATOR_ADD, DELEGATOR_ABI);
 
-  const normalizedAddress = address.trim();
-  const addressError = getAddressError(normalizedAddress);
-  const isWalletVerificationRequired = !TESTNET && normalizedAddress.startsWith('R');
+  const inputAddress = address.trim();
+  const {
+    address: lookupAddress,
+    error: addressResolutionError,
+    isResolving: isAddressResolving,
+    message: addressResolutionMessage
+  } = useVerusDestinationResolution(inputAddress, verusd, BLOCKCHAIN_NAME);
+  const addressError = addressResolutionError || (
+    isAddressResolving ? '' : getAddressError(lookupAddress)
+  );
+  const isWalletVerificationRequired = !TESTNET && lookupAddress.startsWith('R');
   const isWalletLinkedAddress = Boolean(
-    normalizedAddress
+    lookupAddress
     && walletAddressDetails
-    && walletAddressDetails.refundAddress === normalizedAddress
+    && walletAddressDetails.refundAddress === lookupAddress
   );
 
   const clearEarningsLookup = useCallback(() => {
@@ -292,14 +310,14 @@ export default function useClaimController() {
     let ignore = false;
 
     if (TESTNET) {
-      setHasLookup(Boolean(normalizedAddress && !addressError && delegatorContract));
+      setHasLookup(Boolean(lookupAddress && !isAddressResolving && !addressError && delegatorContract));
       clearEarningsLookup();
       return () => {
         ignore = true;
       };
     }
 
-    if (!normalizedAddress) {
+    if (!lookupAddress || isAddressResolving) {
       setHasLookup(false);
       clearEarningsLookup();
       clearRefundLookup();
@@ -332,7 +350,7 @@ export default function useClaimController() {
 
     const loadEarnings = async () => {
       try {
-        const inspection = await inspectClaimableEarnings(normalizedAddress);
+        const inspection = await inspectClaimableEarnings(lookupAddress);
         if (!ignore) {
           setEarningsAmount(inspection.earningsAmount);
           setEarningsStatus(inspection.earningsStatus);
@@ -363,14 +381,15 @@ export default function useClaimController() {
     clearRefundLookup,
     delegatorContract,
     inspectClaimableEarnings,
+    isAddressResolving,
     lookupRevision,
-    normalizedAddress
+    lookupAddress
   ]);
 
   useEffect(() => {
     let ignore = false;
 
-    if (!normalizedAddress) {
+    if (!lookupAddress || isAddressResolving) {
       clearRefundLookup();
       return () => {
         ignore = true;
@@ -418,7 +437,7 @@ export default function useClaimController() {
 
     const loadRefunds = async () => {
       try {
-        const inspection = await inspectRefundEntries(normalizedAddress);
+        const inspection = await inspectRefundEntries(lookupAddress);
         if (!ignore) {
           setRefundEntries(inspection.refundEntries);
           setRefundStatus(inspection.refundStatus);
@@ -449,8 +468,9 @@ export default function useClaimController() {
     delegatorContract,
     hasLoadedRefundTokens,
     inspectRefundEntries,
+    isAddressResolving,
     lookupRevision,
-    normalizedAddress,
+    lookupAddress,
     refundTokenLoadError
   ]);
 
@@ -462,7 +482,7 @@ export default function useClaimController() {
 
   useEffect(() => {
     setWalletAddressStatus(null);
-  }, [normalizedAddress]);
+  }, [inputAddress]);
 
   const refreshLookup = useCallback(() => {
     setLookupRevision((value) => value + 1);
@@ -501,7 +521,7 @@ export default function useClaimController() {
 
       if (isWalletVerificationRequired) {
         setWalletAddressStatus(
-          nextDetails.refundAddress === normalizedAddress
+          nextDetails.refundAddress === lookupAddress
             ? {
               severity: 'success',
               message: 'Connected wallet verified for this payout address.'
@@ -523,14 +543,14 @@ export default function useClaimController() {
     } finally {
       setIsWalletAddressPending(false);
     }
-  }, [account, isWalletVerificationRequired, loadWalletAddressDetails, normalizedAddress]);
+  }, [account, isWalletVerificationRequired, loadWalletAddressDetails, lookupAddress]);
 
   const handleClaimEarnings = useCallback(async () => {
     if (TESTNET) {
       return;
     }
 
-    if (!normalizedAddress || addressError) {
+    if (!lookupAddress || isAddressResolving || addressError) {
       return;
     }
 
@@ -553,15 +573,17 @@ export default function useClaimController() {
     setActionTarget('earnings');
 
     try {
+      const transactionDestination = await resolveVerusDestination(inputAddress, verusd, BLOCKCHAIN_NAME);
+      const transactionAddress = transactionDestination.address;
       await assertBridgeTransactionContext(library);
 
       if (isWalletVerificationRequired) {
         const nextDetails = await loadWalletAddressDetails();
 
-        if (nextDetails.refundAddress !== normalizedAddress) {
+        if (nextDetails.refundAddress !== transactionAddress) {
           setEarningsStatus({
             severity: 'warning',
-            message: `${normalizedAddress} is not derived from the connected wallet. Switch to the matching wallet or use the connected wallet action above.`
+            message: `${transactionAddress} is not derived from the connected wallet. Switch to the matching wallet or use the connected wallet action above.`
           });
           return;
         }
@@ -588,7 +610,7 @@ export default function useClaimController() {
         return;
       }
 
-      const feeAddress = formatHexAddress(normalizedAddress, TYPE_FEE);
+      const feeAddress = formatHexAddress(transactionAddress, TYPE_FEE);
       await delegatorContract.callStatic.sendfees(feeAddress, `0x${Buffer.alloc(32).toString('hex')}`);
       await assertBridgeTransactionContext(library);
       const txResult = await delegatorContract.sendfees(
@@ -618,15 +640,17 @@ export default function useClaimController() {
     addressError,
     addToast,
     delegatorContract,
+    inputAddress,
+    isAddressResolving,
     isWalletVerificationRequired,
     library,
     loadWalletAddressDetails,
-    normalizedAddress,
+    lookupAddress,
     refreshLookup
   ]);
 
   const handleClaimRefund = useCallback(async (currency) => {
-    if (!normalizedAddress || addressError) {
+    if (!lookupAddress || isAddressResolving || addressError) {
       return;
     }
 
@@ -654,8 +678,9 @@ export default function useClaimController() {
     setActionTarget(`refund:${currency}`);
 
     try {
+      const transactionDestination = await resolveVerusDestination(inputAddress, verusd, BLOCKCHAIN_NAME);
       await assertBridgeTransactionContext(library);
-      const refundAddress = formatHexAddress(normalizedAddress, TYPE_REFUND);
+      const refundAddress = formatHexAddress(transactionDestination.address, TYPE_REFUND);
       const previewClaim = await delegatorContract.callStatic.claimRefund(refundAddress, currency);
 
       if (previewClaim === '0x') {
@@ -688,7 +713,18 @@ export default function useClaimController() {
     } finally {
       setActionTarget('');
     }
-  }, [account, addressError, addToast, delegatorContract, library, normalizedAddress, refundEntries, refreshLookup]);
+  }, [
+    account,
+    addressError,
+    addToast,
+    delegatorContract,
+    inputAddress,
+    isAddressResolving,
+    library,
+    lookupAddress,
+    refundEntries,
+    refreshLookup
+  ]);
 
   let walletActionLabel = 'Use connected wallet';
   if (isWalletVerificationRequired) {
@@ -703,7 +739,7 @@ export default function useClaimController() {
   }
 
   let earningsClaimHelp = '';
-  if (normalizedAddress && !addressError && isWalletVerificationRequired) {
+  if (lookupAddress && !addressError && isWalletVerificationRequired) {
     if (isWalletLinkedAddress) {
       earningsClaimHelp = 'This payout address matches the connected wallet.';
     } else if (walletAddressDetails) {
@@ -717,7 +753,8 @@ export default function useClaimController() {
 
   const canClaimEarnings = !TESTNET && Boolean(
     canSubmitWalletTransactions
-    && normalizedAddress
+    && lookupAddress
+    && !isAddressResolving
     && !addressError
     && hasPositiveAmount(earningsAmount)
     && !actionTarget
@@ -749,6 +786,7 @@ export default function useClaimController() {
     canSubmitWalletTransactions,
     address,
     addressError,
+    addressResolutionMessage,
     canClaimEarnings,
     earningsAmount,
     earningsActionLabel,
@@ -760,6 +798,7 @@ export default function useClaimController() {
     hasAnyResults,
     hasLookup,
     isActionPending: Boolean(actionTarget),
+    isAddressResolving,
     isEarningsLookupPending,
     isEmptyLookup,
     isLookupPending,

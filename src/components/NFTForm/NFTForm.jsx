@@ -9,18 +9,24 @@ import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import ERC1155_ABI from 'abis/ERC1155.json';
 import ERC721_ABI from 'abis/ERC721Abi.json';
 import {
+  BLOCKCHAIN_NAME,
   DELEGATOR_ADD,
-  ETH_FEES,
-  GLOBAL_ADDRESS,
-  FLAGS,
   ETHEREUM_BLOCKCHAIN_NAME,
-  HEIGHT_LOCATION_IN_FORKS
+  ETH_FEES,
+  FLAGS,
+  GLOBAL_ADDRESS,
+  GLOBAL_IADDRESS,
+  HEIGHT_LOCATION_IN_FORKS,
+  VERUS_RPC_URL
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
+import { useVerusDestinationResolution } from 'hooks/useVerusDestinationResolution';
 import { getContract } from 'utils/contract';
 import { BN, padLeft, toWei } from 'utils/ethereumUnits';
-import { convertVerusAddressToEthAddress } from "utils/convert";
+import { convertVerusAddressToEthAddress } from 'utils/convert';
 import { NFTAddressType } from 'utils/rules';
+import { resolveVerusDestination } from 'utils/verusDestination';
+import { VerusdRpcInterface } from 'utils/verusdRpc';
 import {
   assertBridgeTransactionContext,
   isExpectedWalletChain
@@ -33,6 +39,7 @@ import { useToast } from '../Toast/ToastProvider';
 
 const maxGas = 6000000;
 const maxGas2 = 100000;
+const verusd = new VerusdRpcInterface(GLOBAL_IADDRESS.VRSC, VERUS_RPC_URL);
 
 export default function NFTForm() {
   const [poolAvailable, setPoolAvailable] = useState(false);
@@ -48,6 +55,12 @@ export default function NFTForm() {
   });
   const selectedToken = watch('nft');
   const address = watch('address');
+  const {
+    address: resolvedAddress,
+    error: addressResolutionError,
+    isResolving: isAddressResolving,
+    message: addressResolutionMessage
+  } = useVerusDestinationResolution(address, verusd, BLOCKCHAIN_NAME);
 
   const checkBridgeLaunched = async (contract) => {
     try {
@@ -141,6 +154,8 @@ export default function NFTForm() {
     let amountToSend;
 
     try {
+      const transactionDestination = await resolveVerusDestination(address, verusd, BLOCKCHAIN_NAME);
+      const transactionAddress = transactionDestination.address;
       await assertBridgeTransactionContext(library);
       // eslint-disable-next-line
       if (parseInt(nft.flags & FLAGS.MAPPING_ERC721_NFT_DEFINITION) == FLAGS.MAPPING_ERC721_NFT_DEFINITION) {
@@ -150,8 +165,8 @@ export default function NFTForm() {
         await authorise1155NFT(nft, amount);
         amountToSend = amount || 1;
       }
-      const addressType = NFTAddressType(address);
-      const hexID = convertVerusAddressToEthAddress(address);
+      const addressType = NFTAddressType(transactionAddress);
+      const hexID = convertVerusAddressToEthAddress(transactionAddress);
       const CReserveTransfer = {
         version: 1,
         currencyvalue: { currency: nft.iaddress, amount: amountToSend }, // currency sending from ethereum
@@ -216,6 +231,8 @@ export default function NFTForm() {
         <Grid container spacing={3}>
           <Grid size={12}>
             <AddressField
+              addressResolutionError={addressResolutionError}
+              addressResolutionMessage={addressResolutionMessage}
               control={control}
             />
           </Grid>
@@ -237,7 +254,13 @@ export default function NFTForm() {
           <Box mt="30px" textAlign="center" width="100%">
             <Button
               color="primary"
-              disabled={!address || !selectedToken?.value || !isExpectedWalletChain(chainId)}
+              disabled={
+                !resolvedAddress
+                || isAddressResolving
+                || Boolean(addressResolutionError)
+                || !selectedToken?.value
+                || !isExpectedWalletChain(chainId)
+              }
               loading={isTxPending}
               type="submit"
               variant="contained"

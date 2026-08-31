@@ -116,7 +116,7 @@ const REFUND_FAQ_ITEM = {
   content: (
     <>
       <p className={styles.faqAnswerLead}>
-        Paste the Verus refund address tied to that bridge transfer.
+        Paste the VerusID or Verus refund address tied to that bridge transfer.
       </p>
       <div className={styles.faqAnswerCopy}>
         <p className={styles.faqBulletCopy}>
@@ -171,7 +171,7 @@ const CLAIM_FAQ_ITEMS = [
     content: (
       <>
         <p className={styles.faqAnswerLead}>
-          Paste the Verus i-address or R-address you want to inspect.
+          Paste the VerusID, i-address, or R-address you want to inspect.
         </p>
         <div className={styles.faqAnswerCopy}>
           <p className={styles.faqBulletCopy}>
@@ -181,9 +181,9 @@ const CLAIM_FAQ_ITEMS = [
             wallet.
           </p>
           <p className={styles.faqBulletCopy}>
-            When you are using a VerusID (i-address), you can submit the claim from this website with a connected
-            Ethereum wallet. The earnings are exported back to that i-address on Verus rather than paid to the
-            connected Ethereum wallet.
+            When you enter a VerusID name ending in @, the site resolves it to its active i-address on the selected
+            Verus network. You can then submit the claim with a connected Ethereum wallet, and the earnings are
+            exported back to that i-address rather than paid to the connected Ethereum wallet.
           </p>
           <p className={styles.faqBulletCopy}>
             The current site only enables i-address claims once at least 0.006 ETH is available. R-address claims do
@@ -202,7 +202,10 @@ const Claim = () => {
   const controller = useClaimController();
   const trimmedAddress = controller.address.trim();
   const setLookupAddress = controller.setAddress;
-  const hasValidLookupAddress = Boolean(trimmedAddress) && !controller.addressError;
+  const hasValidLookupAddress = Boolean(trimmedAddress)
+    && !controller.isAddressResolving
+    && !controller.addressError;
+  const addressFeedback = controller.addressError || controller.addressResolutionMessage || '';
   const addressInputClassName = [
     styles.addressInput,
     styles.claimAddressInput,
@@ -272,8 +275,10 @@ const Claim = () => {
                   <div className={`${styles.addressWrapper} ${styles.claimAddressField}`}>
                     <input
                       className={addressInputClassName}
+                      aria-describedby={addressFeedback ? 'claim-address-feedback' : undefined}
+                      aria-invalid={Boolean(controller.addressError) || undefined}
                       onChange={(event) => controller.setAddress(event.target.value)}
-                      placeholder="Enter your Verus i-address or R-address"
+                      placeholder="Enter a VerusID, i-address, or R-address"
                       type="text"
                       value={controller.address}
                     />
@@ -300,7 +305,15 @@ const Claim = () => {
                     </button>
                   ) : null}
                 </div>
-                {controller.addressError ? <p className={styles.claimInlineHelp}>{controller.addressError}</p> : null}
+                {addressFeedback ? (
+                  <p
+                    className={`${styles.claimInlineHelp} ${controller.addressError ? styles.addressStatusError : ''}`}
+                    id="claim-address-feedback"
+                    role={controller.addressError ? 'alert' : 'status'}
+                  >
+                    {addressFeedback}
+                  </p>
+                ) : null}
                 <StatusMessage status={controller.walletAddressStatus} />
               </div>
 

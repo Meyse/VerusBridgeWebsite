@@ -11,6 +11,10 @@ import { toBase58Check } from 'utils/verusAddress';
 
 import useClaimController from './useClaimController';
 
+const { mockVerusd } = vi.hoisted(() => ({
+  mockVerusd: { getIdentity: vi.fn() }
+}));
+
 vi.mock('@web3-react/core', () => ({
   useWeb3React: vi.fn()
 }));
@@ -23,6 +27,12 @@ vi.mock('hooks/useContract', () => ({ default: vi.fn() }));
 
 vi.mock('utils/refundAddress', () => ({
   requestRefundAddressData: vi.fn()
+}));
+
+vi.mock('utils/verusdRpc', () => ({
+  VerusdRpcInterface: vi.fn(function MockVerusdRpcInterface() {
+    return mockVerusd;
+  })
 }));
 
 const createAddress = (version, fill) => toBase58Check(Buffer.alloc(20, fill), version);
@@ -79,12 +89,17 @@ const HookProbe = () => {
       </div>
       <div data-testid="action-target">{controller.actionTarget}</div>
       <div data-testid="wallet-status">{controller.walletAddressStatus?.message || ''}</div>
+      <div data-testid="address-error">{controller.addressError || ''}</div>
+      <div data-testid="address-resolution">{controller.addressResolutionMessage || ''}</div>
 
       <button onClick={() => controller.setAddress(VALID_I_ADDRESS)} type="button">
         Inspect i-address
       </button>
       <button onClick={() => controller.setAddress(VALID_R_ADDRESS)} type="button">
         Inspect R-address
+      </button>
+      <button onClick={() => controller.setAddress('Max@')} type="button">
+        Inspect VerusID
       </button>
       <button onClick={controller.handleWalletAddressAction} type="button">
         Verify wallet
@@ -112,6 +127,70 @@ describe('useClaimController', () => {
     useToast.mockReturnValue({
       addToast: vi.fn()
     });
+    mockVerusd.getIdentity.mockResolvedValue({});
+  });
+
+  test('resolves a VerusID before inspecting claimable balances', async () => {
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        claimableFees: vi.fn().mockResolvedValue('1000000'),
+        getTokenList: vi.fn().mockResolvedValue([])
+      }
+    });
+    mockVerusd.getIdentity.mockResolvedValue({
+      result: {
+        fullyqualifiedname: 'Max.VRSC@',
+        identity: { identityaddress: VALID_I_ADDRESS },
+        status: 'active'
+      }
+    });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect VerusID' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('address-resolution')).toHaveTextContent(
+        `Max.VRSC@ resolves to ${VALID_I_ADDRESS}.`
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId(TESTNET ? 'refund-status' : 'earnings-amount')).not.toBeEmptyDOMElement();
+    });
+
+    expect(screen.getByTestId('address-error')).toBeEmptyDOMElement();
+    expect(mockVerusd.getIdentity).toHaveBeenCalledWith('Max@');
+  });
+
+  mainnetTest('re-resolves a VerusID before submitting an earnings claim', async () => {
+    const transactionWait = vi.fn().mockResolvedValue({ status: 1 });
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        claimableFees: vi.fn().mockResolvedValue('1000000'),
+        getTokenList: vi.fn().mockResolvedValue([]),
+        sendfees: vi.fn().mockResolvedValue(undefined)
+      },
+      sendfees: vi.fn().mockResolvedValue({ wait: transactionWait })
+    });
+    mockVerusd.getIdentity.mockResolvedValue({
+      result: {
+        fullyqualifiedname: 'Max.VRSC@',
+        identity: { identityaddress: VALID_I_ADDRESS },
+        status: 'active'
+      }
+    });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect VerusID' }));
+    await waitFor(() => expect(screen.getByTestId('can-claim-earnings')).toHaveTextContent('yes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Claim earnings' }));
+
+    await waitFor(() => expect(delegatorContract.sendfees).toHaveBeenCalledTimes(1));
+    expect(mockVerusd.getIdentity).toHaveBeenCalledTimes(2);
+    expect(mockVerusd.getIdentity.mock.invocationCallOrder[1])
+      .toBeLessThan(delegatorContract.callStatic.sendfees.mock.invocationCallOrder[0]);
+    expect(transactionWait).toHaveBeenCalledTimes(1);
   });
 
   mainnetTest('keeps earnings lookup available while refund token metadata is still loading', async () => {

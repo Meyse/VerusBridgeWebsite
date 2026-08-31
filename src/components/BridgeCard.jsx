@@ -786,8 +786,10 @@ const BridgeCard = ({ controller }) => {
   const isAwaitingReceiveQuote = Boolean(controller.requiresReceiveQuote && !controller.hasFreshReceiveQuote);
   const shouldShowReceiveAmount = hasPositiveAmount && Boolean(receiveAmountDisplay) && receiveAmountDisplay !== '--';
   const showValidation = controller.address.length > 2;
-  const isAddressValid = showValidation && !controller.addressError;
+  const showValidationIcon = showValidation && !controller.isAddressResolving;
+  const isAddressValid = showValidationIcon && !controller.addressError;
   const isAddressInvalid = showValidation && Boolean(controller.addressError);
+  const addressStatusMessage = controller.addressError || controller.addressResolutionMessage || '';
   const showSelfButton = Boolean(controller.account && controller.allowsEthereumDestination !== false);
   const showBalance = controller.isWalletConnected && controller.tokenBalance;
   const isInsufficientBalance = Boolean(controller.amountError) && controller.amountError.includes('not available in your wallet');
@@ -1082,7 +1084,12 @@ const BridgeCard = ({ controller }) => {
 
             <div className={styles.reviewAddressPanel}>
               <div className={styles.reviewSectionLabel}>Destination address</div>
-              <div className={styles.reviewAddressValue}>{controller.address}</div>
+              {controller.reviewDestinationIdentityName ? (
+                <div className={styles.reviewAddressIdentity}>{controller.reviewDestinationIdentityName}</div>
+              ) : null}
+              <div className={styles.reviewAddressValue}>
+                {controller.reviewDestinationAddress || controller.address}
+              </div>
             </div>
 
             <div className={styles.reviewDetails}>
@@ -1310,13 +1317,15 @@ const BridgeCard = ({ controller }) => {
                     setDisplayAddress(controller.address);
                   }}
                   placeholder={addressPlaceholder}
+                  aria-describedby={addressStatusMessage ? 'bridge-destination-status' : undefined}
+                  aria-invalid={isAddressInvalid || undefined}
                   type="text"
                   value={displayAddress}
                 />
 
-                {showSelfButton || showValidation ? (
+                {showSelfButton || showValidationIcon ? (
                   <div className={styles.addressActions}>
-                    {showValidation ? (
+                    {showValidationIcon ? (
                       <div className={validationIconClassName}>
                         {isAddressValid ? <CheckIcon /> : <CloseIcon />}
                       </div>
@@ -1334,6 +1343,18 @@ const BridgeCard = ({ controller }) => {
                   </div>
                 ) : null}
               </div>
+              {addressStatusMessage ? (
+                <p
+                  className={joinClassNames(
+                    styles.addressStatus,
+                    controller.addressError ? styles.addressStatusError : ''
+                  )}
+                  id="bridge-destination-status"
+                  role={controller.addressError ? 'alert' : 'status'}
+                >
+                  {addressStatusMessage}
+                </p>
+              ) : null}
             </div>
 
             <button
