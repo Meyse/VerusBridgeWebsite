@@ -1,0 +1,354 @@
+.card {
+  padding: 10px;
+  border-radius: 32px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 249, 252, 0.9));
+  border: 1px solid rgba(168, 183, 208, 0.38);
+  box-shadow: 0 24px 52px rgba(15, 23, 42, 0.08);
+}
+
+.stack {
+  display: grid;
+  gap: 14px;
+}
+
+.panel {
+  padding: 20px;
+  border-radius: 24px;
+  background: #ffffff;
+  border: 1px solid rgba(168, 183, 208, 0.34);
+}
+
+.panelMuted {
+  background: linear-gradient(180deg, rgba(243, 247, 255, 0.94), rgba(249, 251, 255, 0.92));
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.panelLabel {
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #62728c;
+}
+
+.balanceRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.92rem;
+  color: #60718d;
+}
+
+.maxButton {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(49, 101, 212, 0.12);
+  color: #17336e;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.entryRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 186px;
+  gap: 14px;
+  align-items: end;
+}
+
+.amountInput,
+.textInput,
+.selectInput {
+  width: 100%;
+  border: 1px solid rgba(168, 183, 208, 0.48);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f172a;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.amountInput:focus,
+.textInput:focus,
+.selectInput:focus {
+  border-color: rgba(49, 101, 212, 0.76);
+  box-shadow: 0 0 0 4px rgba(49, 101, 212, 0.12);
+}
+
+.amountInput {
+  min-height: 72px;
+  padding: 0 18px;
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+.outputDisplay {
+  min-height: 72px;
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(168, 183, 208, 0.3);
+  color: #0f172a;
+}
+
+.outputAmount {
+  display: block;
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+.outputMeta {
+  margin-top: 6px;
+  font-size: 0.92rem;
+  color: #60718d;
+}
+
+.selectInput {
+  min-height: 56px;
+  padding: 0 16px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.textInput {
+  min-height: 58px;
+  padding: 0 18px;
+  font-size: 1rem;
+}
+
+.helperText {
+  margin: 8px 2px 0;
+  font-size: 0.9rem;
+  color: #60718d;
+  line-height: 1.6;
+}
+
+.errorText {
+  margin: 8px 2px 0;
+  font-size: 0.9rem;
+  color: #b42318;
+  line-height: 1.5;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summaryItem {
+  min-height: 92px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(168, 183, 208, 0.32);
+}
+
+.summaryLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #66758f;
+}
+
+.summaryValue {
+  display: block;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: #13203a;
+}
+
+.summaryCopy {
+  margin-top: 8px;
+  color: #60718d;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.toggleGrid {
+  display: grid;
+  gap: 12px;
+}
+
+.toggleCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(168, 183, 208, 0.32);
+}
+
+.toggleTitle {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 700;
+  color: #13203a;
+}
+
+.toggleDescription {
+  display: block;
+  color: #60718d;
+  line-height: 1.5;
+}
+
+.actionRow {
+  display: grid;
+  gap: 12px;
+}
+
+.noticeRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(49, 101, 212, 0.1);
+  color: #17336e;
+  font-weight: 700;
+}
+
+.resultMetric {
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(168, 183, 208, 0.32);
+}
+
+.resultMetricLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #66758f;
+}
+
+.resultMetricValue {
+  display: block;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: #13203a;
+  overflow-wrap: anywhere;
+}
+
+.resultMetricHint {
+  margin: 10px 0 0;
+  color: #60718d;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.refundList {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.refundItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(168, 183, 208, 0.32);
+}
+
+.refundItemMain {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.refundItemIcon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.refundItemText {
+  min-width: 0;
+}
+
+.refundItemTitle {
+  display: block;
+  font-weight: 700;
+  color: #13203a;
+}
+
+.refundItemMeta {
+  display: block;
+  margin-top: 4px;
+  color: #60718d;
+  line-height: 1.5;
+}
+
+.detailsPanel {
+  border-radius: 24px;
+  background: #ffffff;
+  border: 1px solid rgba(168, 183, 208, 0.34);
+  overflow: hidden;
+}
+
+.detailsSummary {
+  list-style: none;
+  cursor: pointer;
+  padding: 20px;
+  font-weight: 700;
+  color: #13203a;
+}
+
+.detailsSummary::-webkit-details-marker {
+  display: none;
+}
+
+.detailsBody {
+  display: grid;
+  gap: 14px;
+  padding: 0 20px 20px;
+}
+
+.legacyPanel :global(.MuiFormControl-root) {
+  width: 100%;
+}
+
+.legacyPanel :global(.MuiTextField-root) {
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .entryRow,
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .refundItem {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .panel {
+    padding: 18px;
+  }
+}

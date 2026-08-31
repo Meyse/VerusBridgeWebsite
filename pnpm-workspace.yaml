@@ -1,0 +1,15 @@
+minimumReleaseAge: 1440
+minimumReleaseAgeIgnoreMissingTime: false
+minimumReleaseAgeStrict: true
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 43200
+trustLockfile: false
+blockExoticSubdeps: true
+overrides:
+  ws: 8.21.3
+verifyDepsBeforeRun: error
+strictDepBuilds: true
+allowBuilds:
+  bufferutil: false
+  esbuild: true
+  utf-8-validate: false

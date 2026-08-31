@@ -1,4 +1,4 @@
-import { convertVerusAddressToEthAddress, fromBase58ToHex } from "./convert";
+import { convertVerusAddressToEthAddress } from "./convert";
 import { isiAddress, isRAddress, isETHAddress } from 'utils/rules';
 import { GLOBAL_ADDRESS, BLOCKCHAIN_NAME } from "constants/contractAddress";
 import { ETH_FEES } from 'constants/contractAddress';

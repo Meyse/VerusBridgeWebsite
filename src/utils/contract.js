@@ -1,11 +1,10 @@
-import { getAddress } from '@ethersproject/address';
-import { AddressZero } from '@ethersproject/constants';
-import { Contract } from '@ethersproject/contracts';
-import web3 from 'web3';
+import { Contract, constants, utils } from 'ethers';
+
+import { BN } from './ethereumUnits';
 // returns the checksummed address if the address is valid, otherwise returns false
 export function isAddress(value) {
   try {
-    return getAddress(value);
+    return utils.getAddress(value);
   } catch {
     return false;
   }
@@ -31,7 +30,7 @@ export function getContract(
   library,
   account
 ) {
-  if (!isAddress(address) || address === AddressZero) {
+  if (!isAddress(address) || address === constants.AddressZero) {
     throw Error(`Invalid 'address' parameter '${address}'.`);
   }
 
@@ -41,8 +40,8 @@ export function getContract(
 export const getMaxAmount = async (ERCContract, account) => {
   const DAIBalanceInt = await ERCContract.balanceOf(account);
   const decimals = await ERCContract.decimals();
-  const ten = new web3.utils.BN(10);
-  const base = ten.pow(new web3.utils.BN(decimals));
+  const ten = new BN(10);
+  const base = ten.pow(new BN(decimals));
   const DAIBalancewhole = parseFloat(DAIBalanceInt.div(base.toString()).toString());
 
   let mod = "";

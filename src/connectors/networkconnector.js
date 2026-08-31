@@ -1,12 +1,22 @@
 import { NetworkConnector } from '@web3-react/network-connector';
 
-import { NAME_ID_MAPPING } from '../constants/chain';
+import { BRIDGE_DEPLOYMENT } from '../config/bridgeDeployment';
 
-const RPC_URLS = {
-  [NAME_ID_MAPPING.SEPOLIA.id]: process.env.REACT_APP_RPC_URL_SEPOLIA || ''
+const defaultChainId = BRIDGE_DEPLOYMENT.ethereumChainId;
+const configuredRpcUrl = BRIDGE_DEPLOYMENT.ethereumRpcUrl;
+
+const isHttpUrl = (value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
 };
 
-export const networkConnector = new NetworkConnector({
-  urls: RPC_URLS,
-  defaultChainId: NAME_ID_MAPPING.SEPOLIA.id
-});
+export const networkConnector = isHttpUrl(configuredRpcUrl)
+  ? new NetworkConnector({
+    defaultChainId,
+    urls: { [defaultChainId]: configuredRpcUrl }
+  })
+  : null;

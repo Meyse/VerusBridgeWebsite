@@ -5,6 +5,7 @@ import { useWeb3React } from '@web3-react/core';
 import { useToast } from 'components/Toast/ToastProvider';
 
 import { injectedConnector } from '../connectors/injectedConnector';
+import { isInjectedWalletAutoConnectSuppressed } from '../utils/walletConnection';
 
 const useInactiveListener = (suppress = false) => {
   const { active, error, activate } = useWeb3React();
@@ -13,7 +14,9 @@ const useInactiveListener = (suppress = false) => {
   // eslint-disable-next-line consistent-return
   useEffect(() => {
     const { ethereum } = window;
-    if (ethereum && ethereum.on && !active && !error && !suppress) {
+    const autoConnectSuppressed = isInjectedWalletAutoConnectSuppressed();
+
+    if (ethereum && ethereum.on && !active && !error && !suppress && !autoConnectSuppressed) {
       const handleConnect = () => {
         addToast({ type: 'info', description: 'connected to wallet'});
         activate(injectedConnector);
@@ -53,7 +56,7 @@ const useInactiveListener = (suppress = false) => {
         }
       };
     }
-  }, [active, error, suppress, activate]);
+  }, [active, error, suppress, activate, addToast]);
 
   return null;
 };

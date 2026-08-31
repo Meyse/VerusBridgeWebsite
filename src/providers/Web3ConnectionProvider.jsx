@@ -8,15 +8,15 @@ import useInactiveListener from '../hooks/useInactiveListener';
 
 function Web3ConnectionProvider({ children }) {
   const context = useWeb3React();
-  const { activate, active } = context;
+  const { activate, active, error } = context;
 
   const triedEager = useEagerConnect();
 
   useEffect(() => {
-    if (triedEager && !active) {
+    if (triedEager && !active && !error && networkConnector) {
       activate(networkConnector);
     }
-  }, [triedEager, active, activate]);
+  }, [triedEager, active, error, activate]);
 
   useInactiveListener(!triedEager);
 

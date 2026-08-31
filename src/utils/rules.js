@@ -1,23 +1,29 @@
 import BigNumber from 'bignumber.js';
 
+import excludedAddresses from '../exclude.json';
+
+const ETH_ADDRESS_PATTERN = /^(0x)?[0-9a-fA-F]{40}$/;
+
+export const normalizeEthereumAddress = (address) => address.toLowerCase().replace(/^0x/, '');
+
+export const buildExcludedEthereumAddressSet = (addresses) => {
+  if (!Array.isArray(addresses) || !addresses.every((address) => (
+    typeof address === 'string' && ETH_ADDRESS_PATTERN.test(address)
+  ))) {
+    throw new TypeError('exclude.json ETH entries must be valid Ethereum addresses');
+  }
+
+  return new Set(addresses.map(normalizeEthereumAddress));
+};
+
+const EXCLUDED_ETH_ADDRESSES = buildExcludedEthereumAddressSet(excludedAddresses?.ETH);
+
 export const isRAddress = (address) => (/^R[1-9A-HJ-NP-Za-km-z]{33,34}$/).test(address);
 export const isiAddress = (address) => (/^i[1-9A-HJ-NP-Za-km-z]{33,34}$/).test(address);
 
 export const isETHAddressAsync = async (address) => {
-  const response = await fetch('./exclude.json');
-  let excludeFound = true;
-  try {
-    const excludeList = await response.json();
-    excludeFound = excludeList?.ETH.findIndex(element => {
-      return element.toLowerCase() === address.toLowerCase();
-    }) === -1;
-  } catch (e) {
-
-  }
-
-  const ETHPassesRegex = (/^(0x)?[0-9a-fA-F]{40}$/).test(address);
-  const retval = excludeFound && ETHPassesRegex;
-  return retval;
+  const ETHPassesRegex = ETH_ADDRESS_PATTERN.test(address);
+  return ETHPassesRegex && !EXCLUDED_ETH_ADDRESSES.has(normalizeEthereumAddress(address));
 }
 
 export const isETHAddress = (address) => {

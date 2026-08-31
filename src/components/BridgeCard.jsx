@@ -1,0 +1,1411 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import { Alert } from '@mui/material';
+import { createPortal } from 'react-dom';
+
+import { getTokenExplorerUrl } from 'config/explorerLinks';
+import {
+  buildDestinationCurrency,
+  buildTokenCurrency,
+  formatCompactAddress,
+  getSourceCurrencySections,
+  getTokenDisplaySymbol,
+  sortSourceCurrencies
+} from 'utils/bridgeUi';
+import { isETHAddress, isRAddress, isiAddress } from 'utils/rules';
+
+import styles from '../styles/ReferenceBridge.module.css';
+
+const joinClassNames = (...classNames) => classNames.filter(Boolean).join(' ');
+
+const ChevronIcon = ({ primary = false }) => (
+  <img
+    alt="Open currency selector"
+    className={joinClassNames(styles.selectorChevron, primary ? styles.selectorChevronPrimary : '')}
+    src="/chevron.svg"
+  />
+);
+
+const RouteArrowIcon = () => (
+  <svg aria-hidden="true" fill="none" height="12" viewBox="0 0 20 12" width="20">
+    <path
+      d="M1.5 6h14m0 0-4-4m4 4-4 4"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.75"
+    />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg fill="none" height="12" viewBox="0 0 20 20" width="12">
+    <path
+      d="M5 10l3 3 7-7"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2.25"
+    />
+  </svg>
+);
+
+const CloseIcon = () => (
+  <svg fill="none" height="12" viewBox="0 0 20 20" width="12">
+    <path
+      d="M6 6l8 8M14 6l-8 8"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2.25"
+    />
+  </svg>
+);
+
+const EditIcon = () => (
+  <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 20 20" width="14">
+    <path
+      d="M4 13.75V16h2.25l8.46-8.46-2.25-2.25L4 13.75zm9.79-9.21l2.25 2.25 1-1a1 1 0 000-1.41l-.84-.84a1 1 0 00-1.41 0l-1 1z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+const InfoIcon = () => (
+  <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 16 16" width="14">
+    <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M8 7v3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+    <circle cx="8" cy="4.75" fill="currentColor" r="0.75" />
+  </svg>
+);
+
+const WarningIcon = () => (
+  <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 16 16" width="14">
+    <path
+      d="M7.13 2.46a1 1 0 011.74 0l5.1 9.18A1 1 0 0113.1 13H2.9a1 1 0 01-.87-1.36l5.1-9.18z"
+      stroke="currentColor"
+      strokeLinejoin="round"
+      strokeWidth="1.35"
+    />
+    <path d="M8 5.4v3.55" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
+    <circle cx="8" cy="11.15" fill="currentColor" r="0.8" />
+  </svg>
+);
+
+const ModalCloseIcon = () => (
+  <svg aria-hidden="true" fill="none" height="20" viewBox="0 0 20 20" width="20">
+    <path
+      d="M4.5 4.5l11 11m0-11l-11 11"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.9"
+    />
+  </svg>
+);
+
+const SearchIcon = () => (
+  <svg aria-hidden="true" fill="none" height="22" viewBox="0 0 24 24" width="22">
+    <path
+      d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    />
+  </svg>
+);
+
+const ButtonSpinner = () => (
+  <span aria-hidden="true" className={styles.buttonSpinner} />
+);
+
+const createPopoverId = (prefix) => `${prefix}-popover-${Math.random().toString(36).slice(2, 10)}`;
+
+const ActivityPopover = ({ ariaLabel, className, id, lines }) => (
+  <div
+    aria-label={ariaLabel}
+    className={joinClassNames(styles.activityPopover, className)}
+    id={id}
+    role="dialog"
+  >
+    {lines.map((line) => (
+      <div className={styles.activityPopoverLine} key={line}>
+        {line}
+      </div>
+    ))}
+  </div>
+);
+
+const InfoPopoverButton = ({
+  buttonAriaLabel,
+  dialogAriaLabel,
+  dialogClassName,
+  isOpen,
+  lines,
+  onToggle,
+  popoverId,
+  wrapperClassName,
+  wrapperRef
+}) => (
+  <span className={wrapperClassName} ref={wrapperRef}>
+    <button
+      aria-controls={isOpen ? popoverId : undefined}
+      aria-expanded={isOpen}
+      aria-haspopup="dialog"
+      aria-label={buttonAriaLabel}
+      className={styles.activityInfoButton}
+      onClick={onToggle}
+      type="button"
+    >
+      <InfoIcon />
+    </button>
+
+    {isOpen ? (
+      <ActivityPopover
+        ariaLabel={dialogAriaLabel}
+        className={dialogClassName}
+        id={popoverId}
+        lines={lines}
+      />
+    ) : null}
+  </span>
+);
+
+let bodyScrollLockCount = 0;
+let lockedBodyScrollY = 0;
+let lockedBodyStyles = null;
+
+const restoreInlineStyle = (styleDeclaration, propertyName, value) => {
+  if (value) {
+    styleDeclaration.setProperty(propertyName, value);
+    return;
+  }
+
+  styleDeclaration.removeProperty(propertyName);
+};
+
+const CurrencyOptionAddress = ({ address }) => {
+  if (!address) {
+    return null;
+  }
+
+  const compactAddress = formatCompactAddress(address);
+  const tokenExplorerUrl = getTokenExplorerUrl(address);
+
+  if (!tokenExplorerUrl) {
+    return <span className={styles.currencyOptionAddress}>{compactAddress}</span>;
+  }
+
+  return (
+    <a
+      className={styles.currencyOptionAddress}
+      href={tokenExplorerUrl}
+      rel="noopener noreferrer"
+      target="_blank"
+      title={address}
+    >
+      {compactAddress}
+    </a>
+  );
+};
+
+const acquireBodyScrollLock = () => {
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    return () => {};
+  }
+
+  bodyScrollLockCount += 1;
+
+  if (bodyScrollLockCount === 1) {
+    const { body, documentElement } = document;
+    const viewportWidth = documentElement.clientWidth;
+    const scrollbarWidth = viewportWidth > 0 ? Math.max(0, window.innerWidth - viewportWidth) : 0;
+
+    lockedBodyScrollY = window.scrollY;
+    lockedBodyStyles = {
+      left: body.style.left,
+      overflow: body.style.overflow,
+      paddingRight: body.style.paddingRight,
+      position: body.style.position,
+      right: body.style.right,
+      top: body.style.top,
+      width: body.style.width
+    };
+
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${lockedBodyScrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+
+    if (scrollbarWidth > 0) {
+      body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+  }
+
+  return () => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      return;
+    }
+
+    bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1);
+
+    if (bodyScrollLockCount !== 0) {
+      return;
+    }
+
+    const { body } = document;
+
+    if (lockedBodyStyles) {
+      restoreInlineStyle(body.style, 'left', lockedBodyStyles.left);
+      restoreInlineStyle(body.style, 'overflow', lockedBodyStyles.overflow);
+      restoreInlineStyle(body.style, 'padding-right', lockedBodyStyles.paddingRight);
+      restoreInlineStyle(body.style, 'position', lockedBodyStyles.position);
+      restoreInlineStyle(body.style, 'right', lockedBodyStyles.right);
+      restoreInlineStyle(body.style, 'top', lockedBodyStyles.top);
+      restoreInlineStyle(body.style, 'width', lockedBodyStyles.width);
+    }
+
+    lockedBodyStyles = null;
+
+    if (typeof window.scrollTo === 'function') {
+      window.scrollTo(0, lockedBodyScrollY);
+    }
+  };
+};
+
+const CurrencyModal = ({
+  currencies,
+  emptyStateMessage = 'No currencies available yet.',
+  isLoading = false,
+  loadingMessage = 'Loading currencies...',
+  isOpen,
+  onClose,
+  onSelect,
+  onStatusAction,
+  searchTerm,
+  showSections = false,
+  setSearchTerm,
+  statusActionLabel,
+  statusMessage,
+  statusTone = 'info',
+  title
+}) => {
+  const modalCardRef = useRef(null);
+  const searchInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    searchInputRef.current?.focus();
+    const releaseBodyScrollLock = acquireBodyScrollLock();
+
+    const handlePointerDown = (event) => {
+      if (modalCardRef.current && !modalCardRef.current.contains(event.target)) {
+        onClose();
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('touchstart', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      releaseBodyScrollLock();
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const normalizedSearch = searchTerm.toLowerCase();
+  const filteredCurrencies = currencies.filter(
+    (currency) => [currency.name, currency.symbol, currency.address, ...(currency.searchTerms || [])]
+      .some((value) => (value || '').toLowerCase().includes(normalizedSearch))
+  );
+  const currencySections = showSections
+    ? getSourceCurrencySections(filteredCurrencies)
+    : [{ id: 'all', currencies: filteredCurrencies }];
+
+  const modalContent = (
+    <div className={styles.modalOverlay}>
+      <div
+        aria-label={title}
+        aria-modal="true"
+        className={styles.modalCard}
+        ref={modalCardRef}
+        role="dialog"
+      >
+        <div className={styles.modalHeader}>
+          <h2 className={styles.modalTitle}>{title}</h2>
+          <button
+            aria-label="Close currency picker"
+            className={styles.modalClose}
+            onClick={onClose}
+            type="button"
+          >
+            <ModalCloseIcon />
+          </button>
+        </div>
+
+        <div className={styles.searchInputWrap}>
+          <span className={styles.searchIcon}>
+            <SearchIcon />
+          </span>
+          <input
+            aria-label="Search currencies"
+            autoComplete="off"
+            className={styles.searchInput}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search by name or paste address"
+            ref={searchInputRef}
+            spellCheck={false}
+            type="text"
+            value={searchTerm}
+          />
+        </div>
+
+        {statusMessage ? (
+          <div
+            className={`${styles.modalStatus} ${statusTone === 'warning' ? styles.modalStatusWarning : styles.modalStatusInfo}`}
+            role={statusTone === 'warning' ? 'alert' : 'status'}
+          >
+            <span>{statusMessage}</span>
+            {statusActionLabel && onStatusAction ? (
+              <button
+                className={styles.modalStatusAction}
+                onClick={onStatusAction}
+                type="button"
+              >
+                {statusActionLabel}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className={styles.currencyList}>
+          {filteredCurrencies.length === 0 ? (
+            <div className={styles.emptyState}>
+              {isLoading ? loadingMessage : emptyStateMessage}
+            </div>
+          ) : (
+            currencySections.map((section) => (
+              <div className={styles.currencySection} key={section.id}>
+                {showSections ? (
+                  <div className={styles.currencySectionLabel}>{section.label}</div>
+                ) : null}
+                {section.currencies.map((currency) => (
+                  <div className={styles.currencyOption} key={currency.id}>
+                    <button
+                      aria-label={`Select ${currency.name}`}
+                      className={styles.currencyOptionSelect}
+                      onClick={() => {
+                        onSelect(currency.id);
+                        onClose();
+                      }}
+                      type="button"
+                    />
+                    <div className={styles.currencyOptionLeft}>
+                      <div className={styles.currencyOptionIconWrap}>
+                        <img alt="" className={styles.currencyOptionIcon} src={currency.icon} />
+                      </div>
+                      <div className={styles.currencyOptionText}>
+                        <div className={styles.currencyOptionName}>{currency.name}</div>
+                        <div className={styles.currencyOptionMeta}>
+                          <span className={styles.currencyOptionSymbol}>{currency.symbol}</span>
+                          <CurrencyOptionAddress address={currency.address} />
+                        </div>
+                      </div>
+                    </div>
+                    {currency.balanceLabel || currency.fiatLabel ? (
+                      <div className={styles.currencyOptionRight}>
+                        {currency.fiatLabel ? (
+                          <div className={styles.currencyOptionValue}>{currency.fiatLabel}</div>
+                        ) : null}
+                        {currency.balanceLabel ? (
+                          <div className={currency.fiatLabel ? styles.currencyOptionBalance : styles.currencyOptionBalanceOnly}>
+                            {currency.balanceLabel}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (typeof document === 'undefined') {
+    return modalContent;
+  }
+
+  return createPortal(modalContent, document.body);
+};
+
+const formatAddressForInput = (address, isFocused) => {
+  if (!address) {
+    return '';
+  }
+
+  const shouldCompactRecognizedAddress = !isFocused && (
+    isETHAddress(address)
+    || isRAddress(address)
+    || isiAddress(address)
+  );
+  return shouldCompactRecognizedAddress ? formatCompactAddress(address) : address;
+};
+
+const StaticCurrencyPill = ({ currency }) => {
+  if (!currency) {
+    return null;
+  }
+
+  return (
+    <div className={`${styles.selectorButton} ${styles.selectorButtonWithIcon} ${styles.reviewCurrencyPill}`}>
+      <div className={styles.selectorIconWrap}>
+        <img alt={currency.symbol} className={styles.selectorIcon} src={currency.icon} />
+      </div>
+      <span className={styles.selectorButtonText}>{currency.symbol}</span>
+    </div>
+  );
+};
+
+const ConversionWarning = ({ label, message }) => (
+  <div className={styles.conversionWarningText} role="alert">
+    <span className={styles.conversionWarningIcon}>
+      <WarningIcon />
+    </span>
+    <span className={styles.conversionWarningBody}>
+      <span className={styles.conversionWarningLabel}>{label}</span>
+      {' '}
+      <span>{message}</span>
+    </span>
+  </div>
+);
+
+const ReviewExchangeRate = ({ exchangeRate, isInverted, onToggle }) => {
+  if (!exchangeRate?.primary || !exchangeRate?.inverse) {
+    return null;
+  }
+
+  const activeRate = isInverted ? exchangeRate.inverse : exchangeRate.primary;
+  const fiatText = activeRate.fiatLabel ? ` (${activeRate.fiatLabel})` : '';
+
+  return (
+    <button
+      aria-label={`Invert exchange rate. Current rate: ${activeRate.label}${fiatText}`}
+      className={styles.reviewExchangeRate}
+      onClick={onToggle}
+      type="button"
+    >
+      <span>{activeRate.label}</span>
+      {activeRate.fiatLabel ? (
+        <span className={styles.reviewExchangeRateFiat}>({activeRate.fiatLabel})</span>
+      ) : null}
+    </button>
+  );
+};
+
+const RECEIVE_ESTIMATE_TOOLTIP_LINES = [
+  'This amount is estimated and not guaranteed.',
+  'Bridging and conversion settle over time, so the final value can shift before completion.'
+];
+
+const REVIEW_TIME_TOOLTIP_LINES = [
+  'More activity on the bridge can help transfers complete faster.',
+  'Because the bridge protocol settles in a decentralized way, completion can still take a while.'
+];
+const BLOCKED_SEND_AMOUNT_PRESETS = [
+  { id: '25', label: '25%' },
+  { id: '50', label: '50%' },
+  { id: '75', label: '75%' },
+  { id: 'max', label: 'Max' }
+];
+const DESKTOP_HOVER_MEDIA_QUERY = '(hover: hover) and (pointer: fine)';
+const INFO_POPOVER_KEYS = {
+  receiveEstimate: 'receiveEstimate',
+  reviewTime: 'reviewTime',
+  sendAmountPreset: 'sendAmountPreset'
+};
+const CLOSED_INFO_POPOVERS = {
+  [INFO_POPOVER_KEYS.receiveEstimate]: false,
+  [INFO_POPOVER_KEYS.reviewTime]: false,
+  [INFO_POPOVER_KEYS.sendAmountPreset]: false
+};
+
+const getCanUseHoverAmountPresets = () => (
+  typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia(DESKTOP_HOVER_MEDIA_QUERY).matches
+);
+
+const splitRouteLabel = (routeLabel) => String(routeLabel || '')
+  .split(/\s*(?:->|→)\s*/)
+  .filter(Boolean);
+
+const ReviewRouteValue = ({ routeLabel }) => {
+  const segments = splitRouteLabel(routeLabel);
+
+  if (segments.length < 2) {
+    return routeLabel || '--';
+  }
+
+  let routePrefix = '';
+  const keyedSegments = segments.map((segment) => {
+    routePrefix = routePrefix ? `${routePrefix}>${segment}` : segment;
+
+    return {
+      key: routePrefix,
+      label: segment
+    };
+  });
+
+  return (
+    <span aria-label={routeLabel} className={styles.reviewRouteValue}>
+      {keyedSegments.map((segment, index) => (
+        <React.Fragment key={segment.key}>
+          <span className={styles.reviewRouteSegment}>{segment.label}</span>
+          {index < keyedSegments.length - 1 ? (
+            <span className={styles.reviewRouteArrow}>
+              <RouteArrowIcon />
+            </span>
+          ) : null}
+        </React.Fragment>
+      ))}
+    </span>
+  );
+};
+
+const BridgeCard = ({ controller }) => {
+  const [destinationSearch, setDestinationSearch] = useState('');
+  const [destinationSelectorOpen, setDestinationSelectorOpen] = useState(false);
+  const [displayAddress, setDisplayAddress] = useState(() => formatAddressForInput(controller.address, false));
+  const [isAddressFocused, setIsAddressFocused] = useState(false);
+  const [isExchangeRateInverted, setIsExchangeRateInverted] = useState(false);
+  const [openInfoPopovers, setOpenInfoPopovers] = useState(CLOSED_INFO_POPOVERS);
+  const [isHoverCapable, setIsHoverCapable] = useState(getCanUseHoverAmountPresets);
+  const [sourceSearch, setSourceSearch] = useState('');
+  const [sourceSelectorOpen, setSourceSelectorOpen] = useState(false);
+  const receiveEstimateInfoRef = useRef(null);
+  const receiveEstimatePopoverIdRef = useRef(createPopoverId('receive-estimate'));
+  const reviewTimeInfoRef = useRef(null);
+  const reviewTimePopoverIdRef = useRef(createPopoverId('review-time'));
+  const sendAmountPresetInfoRef = useRef(null);
+  const sendAmountPresetPopoverIdRef = useRef(createPopoverId('send-amount-preset'));
+  const infoPopoverRefs = useMemo(() => ({
+    [INFO_POPOVER_KEYS.receiveEstimate]: receiveEstimateInfoRef,
+    [INFO_POPOVER_KEYS.reviewTime]: reviewTimeInfoRef,
+    [INFO_POPOVER_KEYS.sendAmountPreset]: sendAmountPresetInfoRef
+  }), []);
+
+  const sourceCurrencies = useMemo(
+    () => (
+      Array.isArray(controller.sourceCurrencies)
+        ? controller.sourceCurrencies
+        : sortSourceCurrencies(controller.tokenOptions.map((token) => buildTokenCurrency(token)))
+    ),
+    [controller.sourceCurrencies, controller.tokenOptions]
+  );
+
+  const destinationCurrencies = useMemo(
+    () => controller.destinationOptions.map((option) => buildDestinationCurrency(option, controller.selectedToken)),
+    [controller.destinationOptions, controller.selectedToken]
+  );
+
+  const selectedSourceCurrency = useMemo(
+    () => (controller.selectedToken ? buildTokenCurrency(controller.selectedToken) : null),
+    [controller.selectedToken]
+  );
+
+  const selectedDestinationCurrency = useMemo(
+    () => controller.receiveCurrency || (
+      controller.selectedDestination ? buildDestinationCurrency(controller.selectedDestination, controller.selectedToken) : null
+    ),
+    [controller.receiveCurrency, controller.selectedDestination, controller.selectedToken]
+  );
+  const isReceiveEstimateInfoOpen = openInfoPopovers[INFO_POPOVER_KEYS.receiveEstimate];
+  const isReviewTimeInfoOpen = openInfoPopovers[INFO_POPOVER_KEYS.reviewTime];
+  const isSendAmountPresetInfoOpen = openInfoPopovers[INFO_POPOVER_KEYS.sendAmountPreset];
+  const hasOpenInfoPopover = Object.values(openInfoPopovers).some(Boolean);
+
+  const closeInfoPopover = useCallback((popoverKey) => {
+    setOpenInfoPopovers((currentValue) => (
+      currentValue[popoverKey]
+        ? {
+          ...currentValue,
+          [popoverKey]: false
+        }
+        : currentValue
+    ));
+  }, []);
+
+  const closeAllInfoPopovers = useCallback(() => {
+    setOpenInfoPopovers((currentValue) => (
+      Object.values(currentValue).some(Boolean)
+        ? { ...CLOSED_INFO_POPOVERS }
+        : currentValue
+    ));
+  }, []);
+
+  const openInfoPopover = useCallback((popoverKey) => {
+    setOpenInfoPopovers((currentValue) => (
+      currentValue[popoverKey]
+        ? currentValue
+        : {
+          ...currentValue,
+          [popoverKey]: true
+        }
+    ));
+  }, []);
+
+  const toggleInfoPopover = useCallback((popoverKey) => {
+    setOpenInfoPopovers((currentValue) => ({
+      ...currentValue,
+      [popoverKey]: !currentValue[popoverKey]
+    }));
+  }, []);
+
+  useEffect(() => {
+    setDisplayAddress(formatAddressForInput(controller.address, isAddressFocused));
+  }, [controller.address, isAddressFocused]);
+
+  useEffect(() => {
+    if (!controller.isReviewing) {
+      return;
+    }
+
+    setSourceSelectorOpen(false);
+    setDestinationSelectorOpen(false);
+  }, [controller.isReviewing]);
+
+  useEffect(() => {
+    if (controller.requiresReceiveQuote) {
+      return;
+    }
+
+    closeInfoPopover(INFO_POPOVER_KEYS.receiveEstimate);
+  }, [closeInfoPopover, controller.requiresReceiveQuote]);
+
+  useEffect(() => {
+    if (controller.isReviewing) {
+      return;
+    }
+
+    closeInfoPopover(INFO_POPOVER_KEYS.reviewTime);
+  }, [closeInfoPopover, controller.isReviewing]);
+
+  useEffect(() => {
+    if (!hasOpenInfoPopover) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      Object.entries(infoPopoverRefs).forEach(([popoverKey, popoverRef]) => {
+        if (openInfoPopovers[popoverKey] && popoverRef.current && !popoverRef.current.contains(event.target)) {
+          closeInfoPopover(popoverKey);
+        }
+      });
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeAllInfoPopovers();
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('touchstart', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [closeAllInfoPopovers, closeInfoPopover, hasOpenInfoPopover, infoPopoverRefs, openInfoPopovers]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      setIsHoverCapable(false);
+      return undefined;
+    }
+
+    const mediaQueryList = window.matchMedia(DESKTOP_HOVER_MEDIA_QUERY);
+    const handleMediaQueryChange = (event) => {
+      setIsHoverCapable(event.matches);
+    };
+
+    setIsHoverCapable(mediaQueryList.matches);
+
+    if (typeof mediaQueryList.addEventListener === 'function') {
+      mediaQueryList.addEventListener('change', handleMediaQueryChange);
+
+      return () => {
+        mediaQueryList.removeEventListener('change', handleMediaQueryChange);
+      };
+    }
+
+    if (typeof mediaQueryList.addListener === 'function') {
+      mediaQueryList.addListener(handleMediaQueryChange);
+
+      return () => {
+        mediaQueryList.removeListener(handleMediaQueryChange);
+      };
+    }
+
+    return undefined;
+  }, []);
+
+  const receiveAmountDisplay = controller.receiveAmountDisplay ?? controller.estimatedDisplayValue;
+  const receiveFiatLabel = controller.receiveFiatLabel ?? controller.estimatedFiatLabel;
+  const reviewReceiveAmountDisplay = controller.reviewReceiveAmountDisplay || receiveAmountDisplay;
+  const reviewReceiveFiatLabel = controller.reviewReceiveFiatLabel ?? receiveFiatLabel;
+  const conversionWarningMessage = controller.conversionWarningMessage || '';
+  const reviewExchangeRate = controller.reviewExchangeRate || null;
+  const amountNumber = parseFloat(controller.amount);
+  const hasPositiveAmount = !Number.isNaN(amountNumber) && amountNumber > 0;
+  const isConversionReceiveEstimate = Boolean(controller.requiresReceiveQuote);
+  const isAwaitingReceiveQuote = Boolean(controller.requiresReceiveQuote && !controller.hasFreshReceiveQuote);
+  const shouldShowReceiveAmount = hasPositiveAmount && Boolean(receiveAmountDisplay) && receiveAmountDisplay !== '--';
+  const showValidation = controller.address.length > 2;
+  const showValidationIcon = showValidation && !controller.isAddressResolving;
+  const isAddressValid = showValidationIcon && !controller.addressError;
+  const isAddressInvalid = showValidation && Boolean(controller.addressError);
+  const addressErrorMessage = controller.addressError || '';
+  const showSelfButton = Boolean(controller.account && controller.allowsEthereumDestination !== false);
+  const showBalance = controller.isWalletConnected && controller.tokenBalance;
+  const isInsufficientBalance = Boolean(controller.amountError) && controller.amountError.includes('not available in your wallet');
+  const showSendMeta = Boolean(controller.amountFiatLabel) || showBalance;
+  const sendAmountPresets = Array.isArray(controller.sendAmountPresets) ? controller.sendAmountPresets : [];
+  const sendAmountPresetWarningMessage = controller.sendAmountPresetWarningMessage || '';
+  const hasSendAmountPresetWarning = Boolean(sendAmountPresetWarningMessage);
+  const visibleSendAmountPresets = hasSendAmountPresetWarning ? BLOCKED_SEND_AMOUNT_PRESETS : sendAmountPresets;
+  const hasMaxPreset = visibleSendAmountPresets.some((preset) => preset.id === 'max');
+  const showDesktopAmountPresetRail = Boolean(
+    controller.isWalletConnected
+    && isHoverCapable
+    && visibleSendAmountPresets.length > 0
+  );
+  const showFooterMaxButton = Boolean(showBalance && hasMaxPreset && !showDesktopAmountPresetRail && !hasSendAmountPresetWarning);
+  const addressHint = controller.addressHint || 'Enter a VerusID, R-address or Ethereum address.';
+  const addressPlaceholder = controller.addressPlaceholder || 'Enter a receiving address';
+  const addressInputClassName = joinClassNames(
+    styles.addressInput,
+    showSelfButton ? styles.addressInputWithSelf : '',
+    isAddressValid ? styles.addressInputValid : '',
+    isAddressInvalid ? styles.addressInputInvalid : ''
+  );
+  const validationIconClassName = joinClassNames(
+    styles.validationIcon,
+    isAddressValid ? styles.validationIconSuccess : styles.validationIconError
+  );
+
+  const showReceiveMeta = Boolean(receiveFiatLabel);
+  const isReviewing = Boolean(controller.isReviewing);
+  const sendSectionClassName = styles.cardSection;
+  const receiveSectionClassName = joinClassNames(styles.cardSection, styles.cardSectionSecondary);
+  const sendSelectorClassName = joinClassNames(
+    styles.selector,
+    showDesktopAmountPresetRail ? styles.selectorWithAmountPresets : ''
+  );
+  const receiveSelectorClassName = styles.selector;
+  const reviewSendSectionClassName = joinClassNames(styles.cardSection, styles.reviewCardSection);
+  const reviewReceiveSectionClassName = joinClassNames(
+    styles.cardSection,
+    styles.cardSectionSecondary,
+    styles.reviewCardSection
+  );
+  const sourceModalStatusMessage = !controller.isWalletConnected
+    ? controller.sourceCatalogError || (controller.isSourceCatalogLoading ? 'Loading all currencies...' : '')
+    : '';
+  const sourceModalStatusTone = controller.sourceCatalogError ? 'warning' : 'info';
+  const sourceModalStatusActionLabel = controller.sourceCatalogError ? 'Retry' : '';
+
+  useEffect(() => {
+    setIsExchangeRateInverted(false);
+  }, [isReviewing, reviewExchangeRate?.primary?.label]);
+
+  useEffect(() => {
+    if (hasSendAmountPresetWarning && showDesktopAmountPresetRail) {
+      return;
+    }
+
+    closeInfoPopover(INFO_POPOVER_KEYS.sendAmountPreset);
+  }, [closeInfoPopover, hasSendAmountPresetWarning, showDesktopAmountPresetRail]);
+
+  const handleSendAmountPresetClick = (preset) => {
+    if (hasSendAmountPresetWarning) {
+      openInfoPopover(INFO_POPOVER_KEYS.sendAmountPreset);
+      return;
+    }
+
+    closeInfoPopover(INFO_POPOVER_KEYS.sendAmountPreset);
+    controller.setAmount(preset.amount);
+  };
+
+  const formatReceiveAmount = (value) => {
+    if (!isConversionReceiveEstimate || !value || value === '--' || /estimating/i.test(value)) {
+      return value;
+    }
+
+    return value.startsWith('~') ? value : `~${value}`;
+  };
+  const liveReceiveAmountDisplay = formatReceiveAmount(receiveAmountDisplay);
+  const reviewReceiveAmountText = formatReceiveAmount(reviewReceiveAmountDisplay);
+  const receiveLabel = isConversionReceiveEstimate ? 'You receive (estimated)' : 'You receive';
+  const reviewWarnings = [
+    conversionWarningMessage ? {
+      id: 'conversion',
+      label: 'High slippage warning:',
+      message: conversionWarningMessage
+    } : null,
+    controller.reviewBouncebackWarningMessage ? {
+      id: 'bounceback',
+      label: 'Bounceback warning:',
+      message: controller.reviewBouncebackWarningMessage
+    } : null
+  ].filter(Boolean);
+  const receiveLabelHeader = (
+    <div className={styles.selectorLabelRow}>
+      <span className={styles.selectorLabel}>{receiveLabel}</span>
+      {isConversionReceiveEstimate ? (
+        <InfoPopoverButton
+          buttonAriaLabel="Show estimated receive details"
+          dialogAriaLabel="Estimated receive details"
+          dialogClassName={styles.selectorLabelPopover}
+          isOpen={isReceiveEstimateInfoOpen}
+          lines={RECEIVE_ESTIMATE_TOOLTIP_LINES}
+          onToggle={() => toggleInfoPopover(INFO_POPOVER_KEYS.receiveEstimate)}
+          popoverId={receiveEstimatePopoverIdRef.current}
+          wrapperClassName={styles.selectorLabelInfo}
+          wrapperRef={receiveEstimateInfoRef}
+        />
+      ) : null}
+    </div>
+  );
+  const reviewTimeLabel = (
+    <span className={styles.reviewDetailLabelRow}>
+      <span className={styles.reviewDetailLabel}>Estimated time</span>
+      <InfoPopoverButton
+        buttonAriaLabel="Show estimated time details"
+        dialogAriaLabel="Estimated time details"
+        dialogClassName={styles.reviewDetailPopover}
+        isOpen={isReviewTimeInfoOpen}
+        lines={REVIEW_TIME_TOOLTIP_LINES}
+        onToggle={() => toggleInfoPopover(INFO_POPOVER_KEYS.reviewTime)}
+        popoverId={reviewTimePopoverIdRef.current}
+        wrapperClassName={styles.reviewDetailLabelInfo}
+        wrapperRef={reviewTimeInfoRef}
+      />
+    </span>
+  );
+
+  const submitState = useMemo(() => {
+    if (!controller.isWalletConnected) {
+      return { disabled: true, label: 'Connect your wallet' };
+    }
+
+    if (!controller.selectedToken) {
+      return { disabled: true, label: 'Select currency to send' };
+    }
+
+    if (!controller.selectedDestination) {
+      return { disabled: true, label: 'Select currency to receive' };
+    }
+
+    if (!hasPositiveAmount) {
+      return { disabled: true, label: 'Choose amount' };
+    }
+
+    if (isInsufficientBalance) {
+      return {
+        disabled: true,
+        label: `Not enough ${getTokenDisplaySymbol(controller.selectedToken) || controller.selectedToken.name}`
+      };
+    }
+
+    if (isAwaitingReceiveQuote) {
+      return {
+        disabled: true,
+        isLoading: true,
+        label: 'Estimating...'
+      };
+    }
+
+    if (controller.submitDisabledReason === 'Awaiting network fee estimate') {
+      return {
+        disabled: true,
+        isLoading: true,
+        label: 'Loading fees'
+      };
+    }
+
+    if (controller.isRefundSignaturePending) {
+      return {
+        disabled: true,
+        isLoading: true,
+        label: 'Waiting for signature'
+      };
+    }
+
+    return {
+      disabled: !controller.canSubmit || controller.isTxPending,
+      isLoading: controller.isTxPending,
+      label: controller.isTxPending ? 'Submitting...' : 'Review'
+    };
+  }, [
+    controller.canSubmit,
+    controller.hasFreshReceiveQuote,
+    controller.isRefundSignaturePending,
+    controller.isTxPending,
+    controller.isWalletConnected,
+    controller.requiresReceiveQuote,
+    controller.selectedDestination,
+    controller.selectedToken,
+    controller.submitDisabledReason,
+    hasPositiveAmount,
+    isAwaitingReceiveQuote,
+    isInsufficientBalance
+  ]);
+
+  return (
+    <>
+      {isReviewing ? (
+        <div className={styles.reviewHeader}>
+          <button
+            className={styles.reviewBackButton}
+            onClick={controller.closeReview}
+            type="button"
+          >
+            <EditIcon />
+            <span>Edit details</span>
+          </button>
+        </div>
+      ) : null}
+
+      <form
+        className={styles.bridgeCard}
+        id="bridge-interface"
+        onSubmit={(event) => {
+          event.preventDefault();
+
+          if (isReviewing) {
+            controller.handleSubmit();
+            return;
+          }
+
+          if (controller.openReview) {
+            controller.openReview();
+            return;
+          }
+
+          controller.handleSubmit();
+        }}
+      >
+        {controller.alert ? (
+          <div className={styles.alert}>
+            <Alert severity={controller.alert.severity}>{controller.alert.message}</Alert>
+          </div>
+        ) : null}
+
+        {isReviewing ? (
+          <>
+            <div className={styles.bridgeCardInner}>
+              <div className={reviewSendSectionClassName}>
+                <div className={`${styles.selector} ${styles.reviewSelector}`}>
+                  <div className={styles.selectorHeader}>
+                    <span className={styles.selectorLabel}>You send</span>
+                  </div>
+
+                  <div className={`${styles.selectorRow} ${styles.reviewSummaryRow}`}>
+                    <div className={styles.selectorInputWrap}>
+                      <div className={styles.reviewSummaryText}>
+                        <div className={styles.reviewAmountValue}>{controller.amount || '--'}</div>
+                      </div>
+                    </div>
+
+                    <StaticCurrencyPill currency={selectedSourceCurrency} />
+                  </div>
+
+                  {controller.amountFiatLabel ? (
+                    <div className={styles.reviewAmountMetaRow}>
+                      <div className={styles.reviewAmountMeta}>{controller.amountFiatLabel}</div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className={reviewReceiveSectionClassName}>
+                <div className={`${styles.selector} ${styles.reviewSelector}`}>
+                  <div className={styles.selectorHeader}>
+                    {receiveLabelHeader}
+                  </div>
+
+                  <div className={`${styles.selectorRow} ${styles.reviewSummaryRow}`}>
+                    <div className={styles.selectorInputWrap}>
+                      <div className={styles.reviewSummaryText}>
+                        <div className={styles.reviewAmountValue}>{reviewReceiveAmountText || '--'}</div>
+                      </div>
+                    </div>
+
+                    <StaticCurrencyPill currency={selectedDestinationCurrency} />
+                  </div>
+
+                  {reviewReceiveFiatLabel ? (
+                    <div className={styles.reviewAmountMetaRow}>
+                      <div className={styles.reviewAmountMeta}>{reviewReceiveFiatLabel}</div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            {reviewWarnings.map((warning) => (
+              <ConversionWarning key={warning.id} label={warning.label} message={warning.message} />
+            ))}
+
+            <div className={styles.reviewAddressPanel}>
+              <div className={styles.reviewSectionLabel}>Destination address</div>
+              {controller.reviewDestinationIdentityName ? (
+                <div className={styles.reviewAddressIdentity}>{controller.reviewDestinationIdentityName}</div>
+              ) : null}
+              <div className={styles.reviewAddressValue}>
+                {controller.reviewDestinationAddress || controller.address}
+              </div>
+            </div>
+
+            <div className={styles.reviewDetails}>
+              <div className={styles.reviewDetailRow}>
+                <span className={styles.reviewDetailLabel}>Route</span>
+                <span className={styles.reviewDetailValue}>
+                  <ReviewRouteValue routeLabel={controller.reviewRouteLabel} />
+                </span>
+              </div>
+
+              {reviewExchangeRate ? (
+                <div className={styles.reviewDetailRow}>
+                  <span className={styles.reviewDetailLabel}>Price</span>
+                  <span className={styles.reviewDetailValue}>
+                    <ReviewExchangeRate
+                      exchangeRate={reviewExchangeRate}
+                      isInverted={isExchangeRateInverted}
+                      onToggle={() => setIsExchangeRateInverted((currentValue) => !currentValue)}
+                    />
+                  </span>
+                </div>
+              ) : null}
+
+              <div className={styles.reviewDetailRow}>
+                {reviewTimeLabel}
+                <span className={styles.reviewDetailValue}>{controller.reviewTimeEstimate}</span>
+              </div>
+
+              {controller.reviewFeeRows?.map((row) => (
+                <div className={styles.reviewDetailRow} key={row.id}>
+                  <span className={styles.reviewDetailLabel}>{row.label}</span>
+                  <span className={styles.reviewDetailValue}>
+                    {row.value}
+                    {row.fiatLabel ? <span className={styles.reviewDetailFiat}>({row.fiatLabel})</span> : null}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <button
+              className={joinClassNames(
+                styles.submitButton,
+                !controller.canConfirmReview ? styles.submitButtonDisabled : ''
+              )}
+              disabled={!controller.canConfirmReview}
+              type="submit"
+            >
+              {controller.isTxPending ? <ButtonSpinner /> : null}
+              <span>{controller.reviewConfirmLabel || 'Confirm'}</span>
+            </button>
+          </>
+        ) : (
+          <>
+            <div className={styles.bridgeCardInner}>
+              <div className={sendSectionClassName}>
+                <div className={sendSelectorClassName}>
+                  <div className={styles.selectorHeader}>
+                    <span className={styles.selectorLabel}>You send</span>
+
+                    {showDesktopAmountPresetRail ? (
+                      <span className={styles.amountPresetInfoWrap} ref={sendAmountPresetInfoRef}>
+                        <div aria-label="Send amount presets" className={styles.amountPresetRail} role="group">
+                          {visibleSendAmountPresets.map((preset) => (
+                            <button
+                              aria-controls={hasSendAmountPresetWarning && isSendAmountPresetInfoOpen
+                                ? sendAmountPresetPopoverIdRef.current
+                                : undefined}
+                              aria-expanded={hasSendAmountPresetWarning ? isSendAmountPresetInfoOpen : undefined}
+                              aria-haspopup={hasSendAmountPresetWarning ? 'dialog' : undefined}
+                              aria-label={`Set amount to ${preset.label}`}
+                              className={styles.amountPresetButton}
+                              key={preset.id}
+                              onClick={() => handleSendAmountPresetClick(preset)}
+                              type="button"
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {hasSendAmountPresetWarning && isSendAmountPresetInfoOpen ? (
+                          <ActivityPopover
+                            ariaLabel="Send amount preset details"
+                            className={styles.amountPresetPopover}
+                            id={sendAmountPresetPopoverIdRef.current}
+                            lines={[sendAmountPresetWarningMessage]}
+                          />
+                        ) : null}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className={styles.selectorRow}>
+                    <div className={styles.selectorInputWrap}>
+                      <input
+                        className={styles.amountInput}
+                        inputMode="decimal"
+                        onChange={(event) => controller.setAmount(event.target.value)}
+                        placeholder="0.00"
+                        type="text"
+                        value={controller.amount}
+                      />
+                    </div>
+
+                    <div className={styles.selectorActionGroup}>
+                      <button
+                        className={joinClassNames(
+                          styles.selectorButton,
+                          styles.selectorButtonSoft,
+                          selectedSourceCurrency ? styles.selectorButtonWithIcon : ''
+                        )}
+                        onClick={() => setSourceSelectorOpen(true)}
+                        type="button"
+                      >
+                        {selectedSourceCurrency ? (
+                          <>
+                            <div className={styles.selectorIconWrap}>
+                              <img alt={selectedSourceCurrency.symbol} className={styles.selectorIcon} src={selectedSourceCurrency.icon} />
+                            </div>
+                            <span className={styles.selectorButtonText}>{selectedSourceCurrency.symbol}</span>
+                          </>
+                        ) : (
+                          <span className={styles.selectorButtonText}>Select currency</span>
+                        )}
+                        <ChevronIcon />
+                      </button>
+                    </div>
+                  </div>
+
+                  {showSendMeta ? (
+                    <div className={styles.selectorMeta}>
+                      {controller.amountFiatLabel ? (
+                        <div className={styles.fiatValue}>{controller.amountFiatLabel}</div>
+                      ) : null}
+
+                      {showBalance ? (
+                        <div className={styles.balanceDisplay}>
+                          <div className={styles.balanceText}>
+                            <span>{controller.tokenBalanceLabel}</span>
+                            {showFooterMaxButton ? (
+                              <button className={styles.maxButton} onClick={controller.handleMaxAmount} type="button">
+                                Max
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className={receiveSectionClassName}>
+                <div className={receiveSelectorClassName}>
+                  <div className={styles.selectorHeader}>
+                    {receiveLabelHeader}
+                  </div>
+
+                  <div className={styles.selectorRow}>
+                    <div className={styles.selectorInputWrap}>
+                      <input
+                        className={`${styles.amountInput} ${styles.amountInputDisabled}`}
+                        disabled
+                        placeholder="0.00"
+                        type="text"
+                        value={shouldShowReceiveAmount ? liveReceiveAmountDisplay : ''}
+                      />
+                    </div>
+
+                    <button
+                      className={joinClassNames(
+                        styles.selectorButton,
+                        selectedDestinationCurrency ? styles.selectorButtonWithIcon : styles.selectorButtonPrimary
+                      )}
+                      onClick={() => setDestinationSelectorOpen(true)}
+                      type="button"
+                    >
+                      {selectedDestinationCurrency ? (
+                        <>
+                          <div className={styles.selectorIconWrap}>
+                            <img alt={selectedDestinationCurrency.symbol} className={styles.selectorIcon} src={selectedDestinationCurrency.icon} />
+                          </div>
+                          <span className={styles.selectorButtonText}>{selectedDestinationCurrency.symbol}</span>
+                        </>
+                      ) : (
+                        <span className={styles.selectorButtonTextPrimary}>Select currency</span>
+                      )}
+                      <ChevronIcon primary={!selectedDestinationCurrency} />
+                    </button>
+                  </div>
+
+                  {showReceiveMeta ? (
+                    <div className={styles.receiveMeta}>
+                      {receiveFiatLabel ? (
+                        <div className={styles.fiatValue}>{receiveFiatLabel}</div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            {conversionWarningMessage ? (
+              <ConversionWarning
+                label="High slippage warning:"
+                message={conversionWarningMessage}
+              />
+            ) : null}
+
+            <div className={styles.addressBlock}>
+              <div className={styles.addressHint}>{addressHint}</div>
+              <div className={styles.addressWrapper}>
+                <input
+                  className={addressInputClassName}
+                  onBlur={() => {
+                    setIsAddressFocused(false);
+                    setDisplayAddress(formatAddressForInput(controller.address, false));
+                  }}
+                  onChange={(event) => {
+                    setDisplayAddress(event.target.value);
+                    controller.setAddress(event.target.value);
+                  }}
+                  onFocus={() => {
+                    setIsAddressFocused(true);
+                    setDisplayAddress(controller.address);
+                  }}
+                  placeholder={addressPlaceholder}
+                  aria-describedby={addressErrorMessage ? 'bridge-destination-status' : undefined}
+                  aria-invalid={isAddressInvalid || undefined}
+                  type="text"
+                  value={displayAddress}
+                />
+
+                {showSelfButton || showValidationIcon ? (
+                  <div className={styles.addressActions}>
+                    {showValidationIcon ? (
+                      <div className={validationIconClassName}>
+                        {isAddressValid ? <CheckIcon /> : <CloseIcon />}
+                      </div>
+                    ) : null}
+
+                    {showSelfButton ? (
+                      <button
+                        className={styles.selfButton}
+                        onClick={() => controller.setAddress(controller.account)}
+                        type="button"
+                      >
+                        self
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+              <p
+                className={joinClassNames(
+                  styles.addressStatus,
+                  addressErrorMessage ? styles.addressStatusError : ''
+                )}
+                id="bridge-destination-status"
+                role={addressErrorMessage ? 'alert' : undefined}
+              >
+                {addressErrorMessage}
+              </p>
+            </div>
+
+            <button
+              className={joinClassNames(
+                styles.submitButton,
+                submitState.disabled ? styles.submitButtonDisabled : ''
+              )}
+              disabled={submitState.disabled}
+              type="submit"
+            >
+              {submitState.isLoading ? <ButtonSpinner /> : null}
+              <span>{submitState.label}</span>
+            </button>
+          </>
+        )}
+      </form>
+
+      {!isReviewing ? (
+        <>
+          <CurrencyModal
+            currencies={sourceCurrencies}
+            emptyStateMessage={controller.isWalletConnected
+              ? 'No matching assets found in this wallet.'
+              : 'No currencies available yet.'}
+            isLoading={controller.isWalletConnected && controller.isSourceCurrenciesLoading}
+            isOpen={sourceSelectorOpen}
+            loadingMessage="Loading wallet assets..."
+            onClose={() => setSourceSelectorOpen(false)}
+            onSelect={controller.selectToken}
+            onStatusAction={controller.retrySourceCatalog}
+            searchTerm={sourceSearch}
+            showSections={!controller.isWalletConnected}
+            setSearchTerm={setSourceSearch}
+            statusActionLabel={sourceModalStatusActionLabel}
+            statusMessage={sourceModalStatusMessage}
+            statusTone={sourceModalStatusTone}
+            title="Select a currency"
+          />
+
+          <CurrencyModal
+            currencies={destinationCurrencies}
+            emptyStateMessage={controller.destinationEmptyStateMessage || 'No currencies available yet. Enter a valid destination address to unlock receive options.'}
+            isOpen={destinationSelectorOpen}
+            onClose={() => setDestinationSelectorOpen(false)}
+            onSelect={controller.selectDestination}
+            searchTerm={destinationSearch}
+            setSearchTerm={setDestinationSearch}
+            title="Select a currency"
+          />
+        </>
+      ) : null}
+    </>
+  );
+};
+
+export default BridgeCard;
