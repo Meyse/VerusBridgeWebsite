@@ -1,4 +1,11 @@
-import { BLOCKCHAIN_NAME, GLOBAL_ADDRESS, GLOBAL_IADDRESS } from 'constants/contractAddress';
+import {
+  BLOCKCHAIN_NAME,
+  ETHEREUM_BLOCKCHAIN_NAME,
+  ETHEREUM_NATIVE_ASSET_NAME,
+  GLOBAL_ADDRESS,
+  GLOBAL_IADDRESS,
+  VERUS_NATIVE_ASSET_NAME
+} from 'constants/contractAddress';
 
 const bridgeBlockName = BLOCKCHAIN_NAME.toUpperCase();
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -129,17 +136,17 @@ const addressIconAliases = {
 const knownEthereumMetadata = {
   [GLOBAL_ADDRESS.BETH.toLowerCase()]: { name: 'VBRID', symbol: 'VBRID' },
   [GLOBAL_ADDRESS.DAI.toLowerCase()]: { name: 'Dai Stablecoin', symbol: 'DAI' },
-  [GLOBAL_ADDRESS.ETH.toLowerCase()]: { name: 'Ethereum', symbol: 'ETH' },
+  [GLOBAL_ADDRESS.ETH.toLowerCase()]: { name: ETHEREUM_NATIVE_ASSET_NAME, symbol: 'ETH' },
   [GLOBAL_ADDRESS.MKR.toLowerCase()]: { name: 'Maker', symbol: 'MKR' },
-  [GLOBAL_ADDRESS.VRSC.toLowerCase()]: { name: 'Verus', symbol: 'VRSC' }
+  [GLOBAL_ADDRESS.VRSC.toLowerCase()]: { name: VERUS_NATIVE_ASSET_NAME, symbol: bridgeBlockName }
 };
 
 const knownVerusMetadata = {
   [GLOBAL_ADDRESS.BETH.toLowerCase()]: { name: 'Bridge.vETH', symbol: 'Bridge.vETH' },
   [GLOBAL_ADDRESS.DAI.toLowerCase()]: { name: 'Dai Stablecoin', symbol: 'DAI.vETH' },
-  [GLOBAL_ADDRESS.ETH.toLowerCase()]: { name: 'Ethereum', symbol: 'vETH' },
+  [GLOBAL_ADDRESS.ETH.toLowerCase()]: { name: ETHEREUM_NATIVE_ASSET_NAME, symbol: 'vETH' },
   [GLOBAL_ADDRESS.MKR.toLowerCase()]: { name: 'Maker', symbol: 'MKR.vETH' },
-  [GLOBAL_ADDRESS.VRSC.toLowerCase()]: { name: 'Verus', symbol: bridgeBlockName }
+  [GLOBAL_ADDRESS.VRSC.toLowerCase()]: { name: VERUS_NATIVE_ASSET_NAME, symbol: bridgeBlockName }
 };
 
 const isSameAddress = (left, right) => (
@@ -352,6 +359,8 @@ export const getTokenVerusName = (token) => {
 const getTokenSearchTerms = (token) => uniqueValues([
   getTokenDisplayName(token),
   getTokenDisplaySymbol(token),
+  isEthereumToken(token) ? ETHEREUM_BLOCKCHAIN_NAME : null,
+  isEthereumToken(token) ? 'Ethereum' : null,
   token?.ethereumName,
   token?.ethereumSymbol,
   token?.name,

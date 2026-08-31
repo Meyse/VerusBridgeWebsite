@@ -9,6 +9,10 @@ import {
 } from 'react-router-dom';
 
 import useBridgeController from 'hooks/useBridgeController';
+import {
+  ETHEREUM_BLOCKCHAIN_NAME,
+  TESTNET
+} from 'constants/contractAddress';
 
 import BridgeHomePage from './BridgeHomePage';
 
@@ -127,6 +131,21 @@ describe('BridgeHomePage', () => {
 
     expect(page.firstElementChild).toBe(header);
     expect(header.parentElement).toBe(page);
+  });
+
+  test('describes the active bridge networks in the supporting copy', () => {
+    render(
+      <MemoryRouter>
+        <BridgeHomePage />
+      </MemoryRouter>
+    );
+
+    const verusName = TESTNET ? 'Verus Testnet' : 'Verus';
+    const ethereumAssetName = TESTNET ? `${ETHEREUM_BLOCKCHAIN_NAME} ETH` : ETHEREUM_BLOCKCHAIN_NAME;
+
+    expect(screen.getByText(
+      `Bridge or convert completely trustless into ${verusName}, or convert back into ${ethereumAssetName}. No counterparty risk.`
+    )).toBeInTheDocument();
   });
 
   test('renders hero token decor only while the landing hero is visible', () => {

@@ -7,6 +7,11 @@ export const EXPECTED_ETHEREUM_CHAIN_ID = BRIDGE_DEPLOYMENT.ethereumChainId;
 export const VERUS_RPC_URL = BRIDGE_DEPLOYMENT.verusRpcUrl;
 
 export const BLOCKCHAIN_NAME = BRIDGE_DEPLOYMENT.verusBlockchainName;
+export const ETHEREUM_NATIVE_ASSET_NAME = TESTNET
+  ? `${ETHEREUM_BLOCKCHAIN_NAME} ETH`
+  : ETHEREUM_BLOCKCHAIN_NAME;
+export const VERUS_BLOCKCHAIN_DISPLAY_NAME = TESTNET ? BLOCKCHAIN_NAME : 'Verus';
+export const VERUS_NATIVE_ASSET_NAME = TESTNET ? 'Verus Testnet' : 'Verus';
 
 
 export const GLOBAL_ADDRESS = TESTNET ? { // vrsctest hex 'id' names of currencies must be checksummed i.e. mixture of capitals

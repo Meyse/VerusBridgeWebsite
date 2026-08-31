@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { getExplorerResources } from 'config/explorerLinks';
+import { ETHEREUM_BLOCKCHAIN_NAME } from 'constants/contractAddress';
 import styles from 'styles/ReferenceBridge.module.css';
 import { HOME_INFO_SECTION_ID } from 'utils/homeNavigation';
 
@@ -114,7 +115,7 @@ const ReferenceTrustlessSection = () => {
               </p>
               <p className={styles.faqBulletCopy}>
                 How quickly that happens depends on bridge activity. Notarizations are only
-                produced when there&apos;s traffic to process. Ethereum confirmation times and gas
+                produced when there&apos;s traffic to process. {ETHEREUM_BLOCKCHAIN_NAME} confirmation times and gas
                 conditions also play a role. The process isn&apos;t instant, but every step exists to
                 make sure your funds are cryptographically proven before they arrive.
               </p>

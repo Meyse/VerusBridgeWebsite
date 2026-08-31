@@ -7,10 +7,12 @@ import { Wallet, utils } from 'ethers';
 import { useToast } from 'components/Toast/ToastProvider';
 import {
   BLOCKCHAIN_NAME,
+  ETHEREUM_BLOCKCHAIN_NAME,
   EXPECTED_ETHEREUM_CHAIN_ID,
   GLOBAL_ADDRESS,
   GLOBAL_IADDRESS,
-  HEIGHT_LOCATION_IN_FORKS
+  HEIGHT_LOCATION_IN_FORKS,
+  TESTNET
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import { getContract, getMaxAmount } from 'utils/contract';
@@ -64,6 +66,8 @@ const TBTC_ADDRESS = '0x18084fbA666A33d37592fA2633fD49A74dD93a88';
 const originalFetch = global.fetch;
 const REFUND_ADDRESS_MESSAGE = 'Agreeing to this will create a public key address for Verus Refunds.';
 const VALID_REFUND_ADDRESS = toBase58Check(Buffer.alloc(20, 1), 60);
+const directRouteLabel = `${ETHEREUM_BLOCKCHAIN_NAME} -> ${TESTNET ? BLOCKCHAIN_NAME : 'Verus'}`;
+const bouncebackRouteLabel = `${directRouteLabel} -> ${ETHEREUM_BLOCKCHAIN_NAME}`;
 
 const liveEthToken = {
   name: 'vETH',
@@ -696,12 +700,13 @@ describe('useBridgeController disconnected source bootstrap', () => {
     render(<HookProbe />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+      expect(screen.getByTestId('source-symbols')).toHaveTextContent('EURC');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Configure EURC Auto Direct' }));
 
     await waitFor(() => {
+      expect(screen.getByTestId('selected-value')).toHaveTextContent(EURC_ADDRESS);
       expect(screen.getByTestId('receive-symbol')).toHaveTextContent('EURC.vETH');
     });
 
@@ -913,16 +918,22 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const usdPriceMap = readJsonTestId('usd-price-map');
     const priceSourceMap = readJsonTestId('price-source-map');
 
-    expect(usdPriceMap.DAI).toBe(1);
-    expect(usdPriceMap.USDC).toBe(1);
-    expect(usdPriceMap.USDT).toBe(1);
-    expect(usdPriceMap.BRIDGE).toBeCloseTo(10, 6);
-    expect(usdPriceMap.ETH).toBeCloseTo(1000, 6);
-    expect(usdPriceMap.MKR).toBeCloseTo(2000, 6);
-    expect(usdPriceMap.VRSC).toBeCloseTo(0.666666, 5);
-    expect(usdPriceMap.EURC).toBeCloseTo(1.25, 6);
-    expect(usdPriceMap.SCRVUSD).toBeCloseTo(1.111111, 5);
-    expect(usdPriceMap.TBTC).toBeCloseTo(40000, 6);
+    if (TESTNET) {
+      expect(usdPriceMap).toEqual({});
+      expect(screen.getByTestId('eth-usd-price')).toBeEmptyDOMElement();
+    } else {
+      expect(usdPriceMap.DAI).toBe(1);
+      expect(usdPriceMap.USDC).toBe(1);
+      expect(usdPriceMap.USDT).toBe(1);
+      expect(usdPriceMap.BRIDGE).toBeCloseTo(10, 6);
+      expect(usdPriceMap.ETH).toBeCloseTo(1000, 6);
+      expect(usdPriceMap.MKR).toBeCloseTo(2000, 6);
+      expect(usdPriceMap.VRSC).toBeCloseTo(0.666666, 5);
+      expect(usdPriceMap.EURC).toBeCloseTo(1.25, 6);
+      expect(usdPriceMap.SCRVUSD).toBeCloseTo(1.111111, 5);
+      expect(usdPriceMap.TBTC).toBeCloseTo(40000, 6);
+      expect(screen.getByTestId('eth-usd-price')).toHaveTextContent('1000');
+    }
     expect(priceSourceMap.DAI).toBe('peg');
     expect(priceSourceMap.USDT).toBe('peg');
     expect(priceSourceMap.ETH).toBe('Bridge.vETH');
@@ -932,7 +943,6 @@ describe('useBridgeController disconnected source bootstrap', () => {
     expect(priceSourceMap.EURC).toBe('Floralis');
     expect(priceSourceMap.SCRVUSD).toBe('Floralis');
     expect(priceSourceMap.TBTC).toBe('Floralis');
-    expect(screen.getByTestId('eth-usd-price')).toHaveTextContent('1000');
   });
 
   test('falls back to block distance when exact notarization block time never responds', async () => {
@@ -998,27 +1008,43 @@ describe('useBridgeController disconnected source bootstrap', () => {
     render(<HookProbe />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+      expect(screen.getByTestId('source-symbols')).toHaveTextContent('tBTC');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Configure EURC Direct' }));
     await waitFor(() => {
-      expect(screen.getByTestId('amount-fiat')).toHaveTextContent('$2.50');
+      if (TESTNET) {
+        expect(screen.getByTestId('amount-fiat')).toBeEmptyDOMElement();
+      } else {
+        expect(screen.getByTestId('amount-fiat')).toHaveTextContent('$2.50');
+      }
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Configure scrvUSD Direct' }));
     await waitFor(() => {
-      expect(screen.getByTestId('amount-fiat')).toHaveTextContent('$2.22');
+      if (TESTNET) {
+        expect(screen.getByTestId('amount-fiat')).toBeEmptyDOMElement();
+      } else {
+        expect(screen.getByTestId('amount-fiat')).toHaveTextContent('$2.22');
+      }
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Configure USDT Direct' }));
     await waitFor(() => {
-      expect(screen.getByTestId('amount-fiat')).toHaveTextContent('$2.00');
+      if (TESTNET) {
+        expect(screen.getByTestId('amount-fiat')).toBeEmptyDOMElement();
+      } else {
+        expect(screen.getByTestId('amount-fiat')).toHaveTextContent('$2.00');
+      }
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Configure tBTC Direct' }));
     await waitFor(() => {
-      expect(screen.getByTestId('amount-fiat')).toHaveTextContent('$4,000.00');
+      if (TESTNET) {
+        expect(screen.getByTestId('amount-fiat')).toBeEmptyDOMElement();
+      } else {
+        expect(screen.getByTestId('amount-fiat')).toHaveTextContent('$4,000.00');
+      }
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Configure LINK Direct' }));
@@ -1054,9 +1080,9 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
     expect(mockVerusd.estimateConversion).toHaveBeenLastCalledWith(expect.objectContaining({
       amount: '2.29029837',
-      convertto: 'i9nwxtKuVYX4MSbeULLiK2ttVi6rUEhh4X',
-      currency: 'iGBs4DWztRNvNEJBt4mqHszLxfKTNHTkhM',
-      via: 'i3f7tSctFkiPpiedY8QR5Tep9p4qDVebDx'
+      convertto: GLOBAL_IADDRESS.ETH,
+      currency: GLOBAL_IADDRESS.DAI,
+      via: GLOBAL_IADDRESS.BETH
     }));
   });
 
@@ -1099,7 +1125,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       expect(mockVerusd.estimateConversion).toHaveBeenCalledTimes(1);
     });
 
-    expect(mockVerusd.estimateConversion.mock.calls[0][0].convertto).toBe('i9nwxtKuVYX4MSbeULLiK2ttVi6rUEhh4X');
+    expect(mockVerusd.estimateConversion.mock.calls[0][0].convertto).toBe(GLOBAL_IADDRESS.ETH);
 
     fireEvent.click(screen.getByRole('button', { name: 'Configure Swap' }));
 
@@ -1107,7 +1133,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       expect(mockVerusd.estimateConversion).toHaveBeenCalledTimes(2);
     });
 
-    expect(mockVerusd.estimateConversion.mock.calls[1][0].convertto).toBe('i9nwxtKuVYX4MSbeULLiK2ttVi6rUEhh4X');
+    expect(mockVerusd.estimateConversion.mock.calls[1][0].convertto).toBe(GLOBAL_IADDRESS.ETH);
   });
 
   test('preserves tiny conversion quotes with full precision instead of rounding them down', async () => {
@@ -1126,7 +1152,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     render(<HookProbe />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+      expect(screen.getByTestId('source-symbols')).toHaveTextContent('DAI');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Configure Bridge ETH' }));
@@ -1157,9 +1183,11 @@ describe('useBridgeController disconnected source bootstrap', () => {
       expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
     });
 
-    await waitFor(() => {
-      expect(screen.getByTestId('eth-usd-price')).toHaveTextContent('1000');
-    });
+    if (!TESTNET) {
+      await waitFor(() => {
+        expect(screen.getByTestId('eth-usd-price')).toHaveTextContent('1000');
+      });
+    }
 
     fireEvent.click(screen.getByRole('button', { name: 'Configure Bridge ETH' }));
 
@@ -1173,8 +1201,12 @@ describe('useBridgeController disconnected source bootstrap', () => {
       expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes');
     });
 
-    expect(screen.getByTestId('review-exchange-rate-primary')).toHaveTextContent('1 vETH = 2121.65 DAI|$1,000.00');
-    expect(screen.getByTestId('review-exchange-rate-inverse')).toHaveTextContent('1 DAI = 0.00047133 vETH|$1.00');
+    expect(screen.getByTestId('review-exchange-rate-primary')).toHaveTextContent(
+      TESTNET ? '1 vETH = 2121.65 DAI|' : '1 vETH = 2121.65 DAI|$1,000.00'
+    );
+    expect(screen.getByTestId('review-exchange-rate-inverse')).toHaveTextContent(
+      TESTNET ? '1 DAI = 0.00047133 vETH|' : '1 DAI = 0.00047133 vETH|$1.00'
+    );
   });
 
   test('does not warn when an ETH to VRSC quote stays within the 3% threshold', async () => {
@@ -1255,7 +1287,11 @@ describe('useBridgeController disconnected source bootstrap', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Bridge VRSC' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('receive-fiat')).toHaveTextContent('$933.33');
+      if (TESTNET) {
+        expect(screen.getByTestId('receive-fiat')).toBeEmptyDOMElement();
+      } else {
+        expect(screen.getByTestId('receive-fiat')).toHaveTextContent('$933.33');
+      }
     });
   });
 
@@ -1910,7 +1946,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       expect(screen.getByTestId('review-confirm-label')).toHaveTextContent('Not enough ETH');
     });
 
-    expect(screen.getByTestId('review-route-label')).toHaveTextContent('Ethereum -> Verus');
+    expect(screen.getByTestId('review-route-label')).toHaveTextContent(directRouteLabel);
     expect(screen.getByTestId('review-time-estimate')).toHaveTextContent('1-6 hours');
     expect(screen.getByTestId('review-bounceback-warning')).toBeEmptyDOMElement();
     expect(screen.getByTestId('review-fees').textContent).not.toContain('Network cost:');
@@ -2018,7 +2054,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('review-route-label')).toHaveTextContent('Ethereum -> Verus -> Ethereum');
+      expect(screen.getByTestId('review-route-label')).toHaveTextContent(bouncebackRouteLabel);
     });
 
     expect(screen.getByTestId('review-time-estimate')).toHaveTextContent('2-10 hours');
@@ -2102,7 +2138,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+      expect(screen.getByTestId('source-symbols')).toHaveTextContent('DAI');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Configure Direct DAI' }));

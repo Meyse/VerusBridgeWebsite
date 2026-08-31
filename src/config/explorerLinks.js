@@ -1,5 +1,7 @@
 import {
   DELEGATOR_ADD,
+  BLOCKCHAIN_NAME,
+  ETHEREUM_BLOCKCHAIN_NAME,
   GLOBAL_ADDRESS,
   TESTNET
 } from 'constants/contractAddress';
@@ -20,14 +22,14 @@ export const getExplorerResources = () => (
     },
     {
       id: 'vrsc',
-      title: 'VRSC token',
-      description: 'Open the VRSC token contract on Ethereum.',
+      title: `${BLOCKCHAIN_NAME} token`,
+      description: `Open the ${BLOCKCHAIN_NAME} token contract on ${ETHEREUM_BLOCKCHAIN_NAME}.`,
       href: buildTokenUrl(GLOBAL_ADDRESS.VRSC)
     },
     {
       id: 'bridge-veth',
       title: 'Bridge.vETH token',
-      description: 'Open the Bridge.vETH contract on Ethereum.',
+      description: `Open the Bridge.vETH contract on ${ETHEREUM_BLOCKCHAIN_NAME}.`,
       href: buildTokenUrl(GLOBAL_ADDRESS.BETH)
     }
   ].filter((resource) => resource.href)

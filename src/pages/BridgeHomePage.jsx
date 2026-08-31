@@ -7,6 +7,10 @@ import ReferenceInfoBar from 'components/ReferenceInfoBar';
 import ReferenceTrustlessSection from 'components/ReferenceTrustlessSection';
 import SiteFooter from 'components/SiteFooter';
 import SiteHeader from 'components/SiteHeader';
+import {
+  ETHEREUM_NATIVE_ASSET_NAME,
+  VERUS_NATIVE_ASSET_NAME
+} from 'constants/contractAddress';
 import useBridgeController from 'hooks/useBridgeController';
 import { getCurrencyIcon } from 'utils/bridgeUi';
 import {
@@ -317,7 +321,7 @@ const BridgeHomePage = () => {
               <BridgeCard controller={controller} />
               {!isReviewing ? (
                 <p className={styles.supportingText}>
-                  Bridge or convert completely trustless into Verus, or convert back into Ethereum. No counterparty risk.
+                  Bridge or convert completely trustless into {VERUS_NATIVE_ASSET_NAME}, or convert back into {ETHEREUM_NATIVE_ASSET_NAME}. No counterparty risk.
                 </p>
               ) : null}
             </div>

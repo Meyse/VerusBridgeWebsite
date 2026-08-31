@@ -13,10 +13,13 @@ import {
   BLOCKCHAIN_NAME,
   DELEGATOR_ADD,
   ETHEREUM_BLOCKCHAIN_NAME,
+  ETHEREUM_NATIVE_ASSET_NAME,
   ETH_FEES,
   GLOBAL_ADDRESS,
   GLOBAL_IADDRESS,
   HEIGHT_LOCATION_IN_FORKS,
+  TESTNET,
+  VERUS_BLOCKCHAIN_DISPLAY_NAME,
   VERUS_RPC_URL
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
@@ -625,7 +628,7 @@ const createSeededEthToken = () => ({
   iaddress: GLOBAL_IADDRESS.ETH,
   erc20address: ZERO_ADDRESS,
   flags: '0',
-  ethereumName: 'Ethereum',
+  ethereumName: ETHEREUM_NATIVE_ASSET_NAME,
   ethereumSymbol: 'ETH'
 });
 
@@ -776,10 +779,10 @@ const getRouteLabel = (destination) => {
   }
 
   if (isBouncebackDestination(destination)) {
-    return 'Ethereum -> Verus -> Ethereum';
+    return `${ETHEREUM_BLOCKCHAIN_NAME} -> ${VERUS_BLOCKCHAIN_DISPLAY_NAME} -> ${ETHEREUM_BLOCKCHAIN_NAME}`;
   }
 
-  return 'Ethereum -> Verus';
+  return `${ETHEREUM_BLOCKCHAIN_NAME} -> ${VERUS_BLOCKCHAIN_DISPLAY_NAME}`;
 };
 
 const getRouteTimeEstimate = (destination) => (
@@ -1005,7 +1008,7 @@ const getEthereumTokenMetadata = async (library, token) => {
   ) {
     return {
       decimals: SEEDED_ETH_DECIMALS,
-      ethereumName: 'Ethereum',
+      ethereumName: ETHEREUM_NATIVE_ASSET_NAME,
       ethereumSymbol: 'ETH'
     };
   }
@@ -1108,7 +1111,7 @@ export default function useBridgeController({
   );
 
   const effectiveTokenUsdPrices = useMemo(
-    () => internalPricingSnapshot.usdPriceBySymbol,
+    () => (TESTNET ? {} : internalPricingSnapshot.usdPriceBySymbol),
     [internalPricingSnapshot.usdPriceBySymbol]
   );
   const priceSourceBySymbol = useMemo(
@@ -1402,7 +1405,7 @@ export default function useBridgeController({
           return {
             conversionWarningGapPercent: betterVenueGapPercent,
             conversionWarningKind: 'better-venue',
-            conversionWarningMessage: `This quote is ${betterVenueGapPercent.toFixed(1)}% below a better currently available route. You may get a better result by bridging to Verus first, then swapping there.`
+            conversionWarningMessage: `This quote is ${betterVenueGapPercent.toFixed(1)}% below a better currently available route. You may get a better result by bridging to ${VERUS_BLOCKCHAIN_DISPLAY_NAME} first, then swapping there.`
           };
         }
       }
@@ -2200,7 +2203,7 @@ export default function useBridgeController({
     if (requiresLiveGasEstimate && !hasLiveGasEstimate(gasPrice)) {
       addToast({
         type: 'error',
-        description: 'Ethereum network cost is still loading. Try again in a moment.'
+        description: `${ETHEREUM_BLOCKCHAIN_NAME} network cost is still loading. Try again in a moment.`
       });
       return;
     }
@@ -2411,7 +2414,7 @@ export default function useBridgeController({
     if (requiresLiveGasEstimate && !hasLiveGasEstimate(gasPrice)) {
       setAlert({
         severity: 'info',
-        message: 'Estimating the Ethereum network cost for this bounceback route. Try again in a moment.'
+        message: `Estimating the ${ETHEREUM_BLOCKCHAIN_NAME} network cost for this bounceback route. Try again in a moment.`
       });
       return;
     }

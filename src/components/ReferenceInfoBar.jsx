@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-import { BLOCKCHAIN_NAME, TESTNET } from 'constants/contractAddress';
+import {
+  BLOCKCHAIN_NAME,
+  ETHEREUM_BLOCKCHAIN_NAME,
+  TESTNET,
+  VERUS_BLOCKCHAIN_DISPLAY_NAME
+} from 'constants/contractAddress';
 import styles from 'styles/ReferenceBridge.module.css';
 import { getCurrencyIcon } from 'utils/bridgeUi';
 
@@ -121,7 +126,6 @@ const ReferenceInfoBar = ({
     notarizationHeight,
     verusTipHeight
   });
-  const bridgeLabel = BLOCKCHAIN_NAME === 'VRSC' ? 'Verus' : BLOCKCHAIN_NAME;
   const ethIcon = getCurrencyIcon('ETH');
   const verusIcon = getCurrencyIcon(BLOCKCHAIN_NAME);
 
@@ -198,13 +202,13 @@ const ReferenceInfoBar = ({
           <div className={styles.infoChip}>
             <div className={styles.infoChipIconGroup}>
               <img
-                alt="Ethereum"
+                alt={ETHEREUM_BLOCKCHAIN_NAME}
                 className={`${styles.currencyIcon} ${styles.roundedIcon}`}
                 src={ethIcon}
               />
               <span className={styles.infoChipArrow}>→</span>
               <img
-                alt={bridgeLabel}
+                alt={VERUS_BLOCKCHAIN_DISPLAY_NAME}
                 className={styles.currencyIcon}
                 src={verusIcon}
               />
@@ -217,19 +221,19 @@ const ReferenceInfoBar = ({
           <div className={styles.infoChip}>
             <div className={styles.infoChipIconGroup}>
               <img
-                alt="Ethereum"
+                alt={ETHEREUM_BLOCKCHAIN_NAME}
                 className={`${styles.currencyIcon} ${styles.roundedIcon}`}
                 src={ethIcon}
               />
               <span className={styles.infoChipArrow}>→</span>
               <img
-                alt={bridgeLabel}
+                alt={VERUS_BLOCKCHAIN_DISPLAY_NAME}
                 className={styles.currencyIcon}
                 src={verusIcon}
               />
               <span className={styles.infoChipArrow}>→</span>
               <img
-                alt="Ethereum"
+                alt={ETHEREUM_BLOCKCHAIN_NAME}
                 className={`${styles.currencyIcon} ${styles.roundedIcon}`}
                 src={ethIcon}
               />

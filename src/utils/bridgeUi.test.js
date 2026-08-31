@@ -7,25 +7,36 @@ import {
   getTokenVerusSymbol,
   sortSourceCurrencies
 } from './bridgeUi';
-import { GLOBAL_ADDRESS } from 'constants/contractAddress';
+import {
+  BLOCKCHAIN_NAME,
+  ETHEREUM_BLOCKCHAIN_NAME,
+  GLOBAL_ADDRESS,
+  TESTNET
+} from 'constants/contractAddress';
+
+const ethereumNativeAssetName = TESTNET
+  ? `${ETHEREUM_BLOCKCHAIN_NAME} ETH`
+  : ETHEREUM_BLOCKCHAIN_NAME;
+const verusNativeAssetName = TESTNET ? 'Verus Testnet' : 'Verus';
 
 describe('bridge source token display metadata', () => {
   test('shows Ethereum-facing labels for ETH while keeping legacy aliases searchable', () => {
     const token = {
       name: 'vETH',
       ticker: 'ETH',
-      value: '0x454CB83913D688795E237837d30258d11ea7c752',
+      value: GLOBAL_ADDRESS.ETH,
       erc20address: '0x0000000000000000000000000000000000000000'
     };
 
     const currency = buildTokenCurrency(token);
 
-    expect(getTokenDisplayName(token)).toBe('Ethereum');
+    expect(getTokenDisplayName(token)).toBe(ethereumNativeAssetName);
     expect(getTokenDisplaySymbol(token)).toBe('ETH');
-    expect(currency.name).toBe('Ethereum');
+    expect(currency.name).toBe(ethereumNativeAssetName);
     expect(currency.symbol).toBe('ETH');
     expect(currency.icon).toBe('/icons/currencies/eth.svg');
     expect(currency.address).toBeUndefined();
+    expect(currency.searchTerms).toContain('Ethereum');
     expect(currency.searchTerms).toContain('vETH');
     expect(currency.searchTerms).not.toContain('0x0000000000000000000000000000000000000000');
   });
@@ -52,7 +63,7 @@ describe('bridge source token display metadata', () => {
     const token = {
       name: 'DAI.vETH',
       ticker: 'DAI',
-      value: '0x8b72F1c2D326d376aDd46698E385Cf624f0CA1dA',
+      value: GLOBAL_ADDRESS.DAI,
       erc20address: '0x6B175474E89094C44Da98b954EedeAC495271d0F'
     };
 
@@ -65,16 +76,16 @@ describe('bridge source token display metadata', () => {
 
   test('shows Verus as the source-token name for VRSC', () => {
     const token = {
-      name: 'VRSC',
+      name: BLOCKCHAIN_NAME,
       ticker: 'VRSC',
       value: GLOBAL_ADDRESS.VRSC
     };
 
     const currency = buildTokenCurrency(token);
 
-    expect(currency.name).toBe('Verus');
-    expect(currency.symbol).toBe('VRSC');
-    expect(currency.icon).toBe('/icons/currencies/vrsc.svg');
+    expect(currency.name).toBe(verusNativeAssetName);
+    expect(currency.symbol).toBe(BLOCKCHAIN_NAME);
+    expect(currency.icon).toBe(TESTNET ? '/icons/currencies/vrsctest.svg' : '/icons/currencies/vrsc.svg');
     expect(currency.searchTerms).toContain('VRSC');
   });
 
@@ -88,11 +99,11 @@ describe('bridge source token display metadata', () => {
 
   test('uses canonical Verus symbols for direct receive destinations', () => {
     const destinationCurrency = buildDestinationCurrency(
-      { value: 'VRSC', iaddress: '0x8b72F1c2D326d376aDd46698E385Cf624f0CA1dA' },
+      { value: BLOCKCHAIN_NAME, iaddress: GLOBAL_ADDRESS.DAI },
       {
         name: 'DAI.vETH',
         ticker: 'DAI',
-        value: '0x8b72F1c2D326d376aDd46698E385Cf624f0CA1dA'
+        value: GLOBAL_ADDRESS.DAI
       }
     );
 
@@ -102,7 +113,7 @@ describe('bridge source token display metadata', () => {
 
   test('uses human-readable names for mapped direct receive destinations', () => {
     const destinationCurrency = buildDestinationCurrency(
-      { value: 'VRSC', iaddress: '0x4444444444444444444444444444444444444444' },
+      { value: BLOCKCHAIN_NAME, iaddress: '0x4444444444444444444444444444444444444444' },
       {
         name: 'vUSDC.vETH',
         ticker: 'USDC',
@@ -121,14 +132,14 @@ describe('bridge source token display metadata', () => {
     expect(buildDestinationCurrency(
       { value: 'bridgeVRSC', iaddress: GLOBAL_ADDRESS.VRSC }
     )).toMatchObject({
-      name: 'Verus',
-      symbol: 'VRSC'
+      name: verusNativeAssetName,
+      symbol: BLOCKCHAIN_NAME
     });
 
     expect(buildDestinationCurrency(
       { value: 'bridgeETH', iaddress: GLOBAL_ADDRESS.ETH }
     )).toMatchObject({
-      name: 'Ethereum',
+      name: ethereumNativeAssetName,
       symbol: 'vETH'
     });
 
