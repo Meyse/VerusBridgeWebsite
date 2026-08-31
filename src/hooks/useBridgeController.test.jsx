@@ -928,7 +928,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     expect(screen.getByTestId('destination-count')).toHaveTextContent('1');
     expect(screen.getByTestId('receive-amount')).toHaveTextContent('5');
     expect(screen.getByTestId('allows-ethereum-destination')).toHaveTextContent('no');
-    expect(screen.getByTestId('address-hint')).toHaveTextContent('Enter a VerusID (such as Max@), R-address, or i-address.');
+    expect(screen.getByTestId('address-hint')).toHaveTextContent('Enter a VerusID or R-address.');
   });
 
   test('resolves a VerusID before enabling review and pins its i-address in the review snapshot', async () => {

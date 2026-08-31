@@ -1303,16 +1303,16 @@ export default function useBridgeController({
   const addressHint = useMemo(
     () => (
       allowsEthereumDestination
-        ? 'Enter a VerusID (such as Max@), R-address, i-address, or Ethereum address.'
-        : 'Enter a VerusID (such as Max@), R-address, or i-address.'
+        ? 'Enter a VerusID, R-address or Ethereum address.'
+        : 'Enter a VerusID or R-address.'
     ),
     [allowsEthereumDestination]
   );
   const addressPlaceholder = useMemo(
     () => (
       allowsEthereumDestination
-        ? 'VerusID or receiving address'
-        : 'VerusID or Verus address'
+        ? 'Enter a receiving address'
+        : 'Enter a Verus receiving address'
     ),
     [allowsEthereumDestination]
   );

@@ -789,7 +789,7 @@ const BridgeCard = ({ controller }) => {
   const showValidationIcon = showValidation && !controller.isAddressResolving;
   const isAddressValid = showValidationIcon && !controller.addressError;
   const isAddressInvalid = showValidation && Boolean(controller.addressError);
-  const addressStatusMessage = controller.addressError || controller.addressResolutionMessage || '';
+  const addressErrorMessage = controller.addressError || '';
   const showSelfButton = Boolean(controller.account && controller.allowsEthereumDestination !== false);
   const showBalance = controller.isWalletConnected && controller.tokenBalance;
   const isInsufficientBalance = Boolean(controller.amountError) && controller.amountError.includes('not available in your wallet');
@@ -805,8 +805,8 @@ const BridgeCard = ({ controller }) => {
     && visibleSendAmountPresets.length > 0
   );
   const showFooterMaxButton = Boolean(showBalance && hasMaxPreset && !showDesktopAmountPresetRail && !hasSendAmountPresetWarning);
-  const addressHint = controller.addressHint || 'Enter a Verus address (R-address or i-address) or Ethereum address';
-  const addressPlaceholder = controller.addressPlaceholder || 'Enter receiving address';
+  const addressHint = controller.addressHint || 'Enter a VerusID, R-address or Ethereum address.';
+  const addressPlaceholder = controller.addressPlaceholder || 'Enter a receiving address';
   const addressInputClassName = joinClassNames(
     styles.addressInput,
     showSelfButton ? styles.addressInputWithSelf : '',
@@ -1317,7 +1317,7 @@ const BridgeCard = ({ controller }) => {
                     setDisplayAddress(controller.address);
                   }}
                   placeholder={addressPlaceholder}
-                  aria-describedby={addressStatusMessage ? 'bridge-destination-status' : undefined}
+                  aria-describedby={addressErrorMessage ? 'bridge-destination-status' : undefined}
                   aria-invalid={isAddressInvalid || undefined}
                   type="text"
                   value={displayAddress}
@@ -1343,18 +1343,16 @@ const BridgeCard = ({ controller }) => {
                   </div>
                 ) : null}
               </div>
-              {addressStatusMessage ? (
-                <p
-                  className={joinClassNames(
-                    styles.addressStatus,
-                    controller.addressError ? styles.addressStatusError : ''
-                  )}
-                  id="bridge-destination-status"
-                  role={controller.addressError ? 'alert' : 'status'}
-                >
-                  {addressStatusMessage}
-                </p>
-              ) : null}
+              <p
+                className={joinClassNames(
+                  styles.addressStatus,
+                  addressErrorMessage ? styles.addressStatusError : ''
+                )}
+                id="bridge-destination-status"
+                role={addressErrorMessage ? 'alert' : undefined}
+              >
+                {addressErrorMessage}
+              </p>
             </div>
 
             <button

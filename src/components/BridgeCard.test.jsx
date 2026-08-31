@@ -53,10 +53,10 @@ const createController = (overrides = {}) => ({
   routeLabel: '',
   feeEstimate: '',
   address: '',
-  addressHint: 'Enter a Verus address (R-address or i-address) or Ethereum address',
+  addressHint: 'Enter a VerusID, R-address or Ethereum address.',
   addressError: '',
   addressResolutionMessage: '',
-  addressPlaceholder: 'Enter receiving address',
+  addressPlaceholder: 'Enter a receiving address',
   account: '',
   canConfirmReview: false,
   hasFreshReceiveQuote: true,
@@ -833,7 +833,7 @@ describe('BridgeCard currency selectors', () => {
     expect(screen.getByDisplayValue('iMEHwE...4wLv')).toBeInTheDocument();
   });
 
-  test('shows VerusID resolution feedback and the canonical destination in review', () => {
+  test('hides VerusID resolution details below the input and shows the canonical destination in review', () => {
     const identityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
     const { rerender } = render(
       <BridgeCard
@@ -844,9 +844,8 @@ describe('BridgeCard currency selectors', () => {
       />
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent(
-      `Max.VRSC@ resolves to ${identityAddress}.`
-    );
+    expect(screen.queryByText(`Max.VRSC@ resolves to ${identityAddress}.`)).not.toBeInTheDocument();
+    expect(document.getElementById('bridge-destination-status')).toBeEmptyDOMElement();
 
     rerender(
       <BridgeCard
@@ -861,6 +860,28 @@ describe('BridgeCard currency selectors', () => {
 
     expect(screen.getByText('Max.VRSC@')).toBeInTheDocument();
     expect(screen.getByText(identityAddress)).toBeInTheDocument();
+  });
+
+  test('keeps the destination error row mounted before an address is entered', () => {
+    const { rerender } = render(<BridgeCard controller={createController()} />);
+    const status = document.getElementById('bridge-destination-status');
+
+    expect(screen.getByText('Enter a VerusID, R-address or Ethereum address.')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Enter a receiving address')).toBeInTheDocument();
+    expect(status).toBeEmptyDOMElement();
+    expect(status).not.toHaveAttribute('role');
+
+    rerender(
+      <BridgeCard
+        controller={createController({
+          address: 'not-an-address',
+          addressError: 'Enter a valid destination address.'
+        })}
+      />
+    );
+
+    expect(status).toHaveAttribute('role', 'alert');
+    expect(status).toHaveTextContent('Enter a valid destination address.');
   });
 
   test('closes the currency picker when the close button is pressed', () => {
