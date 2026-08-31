@@ -39,7 +39,9 @@ describe('ReferenceTrustlessSection', () => {
     expect(screen.getByText(new RegExp(`${ETHEREUM_BLOCKCHAIN_NAME} confirmation times and gas conditions`)))
       .toBeInTheDocument();
     expect(screen.getByText(/the Ethereum contracts accepted invalid claims/i)).toBeInTheDocument();
-    expect(screen.getByText(/undergoing code review, regression testing, and fuzzing before the bridge reopens/i))
+    expect(screen.getByText(/the Verus protocol and Ethereum contracts were upgraded with hardened validation/i))
+      .toBeInTheDocument();
+    expect(screen.getByText(/underwent code review, regression testing, and fuzzing before the bridge reopened/i))
       .toBeInTheDocument();
     expect(screen.queryByText(/no entity can steal/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/you'd need to simultaneously compromise the majority/i)).not.toBeInTheDocument();

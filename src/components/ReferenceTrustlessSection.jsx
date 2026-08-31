@@ -109,9 +109,9 @@ const ReferenceTrustlessSection = () => {
                 and Ethereum.
               </p>
               <p className={styles.faqBulletCopy}>
-                The bridge is being upgraded with hardened validation across the protocol and Ethereum
-                contracts. The affected paths are undergoing code review, regression testing, and fuzzing
-                before the bridge reopens.
+                Following the exploits, the Verus protocol and Ethereum contracts were upgraded with
+                hardened validation. The affected paths underwent code review, regression testing, and
+                fuzzing before the bridge reopened.
               </p>
             </div>
           </FAQItem>
