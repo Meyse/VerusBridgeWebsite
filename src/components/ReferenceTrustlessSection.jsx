@@ -27,8 +27,7 @@ const ReferenceTrustlessSection = () => {
     <section className={styles.trustSection} id={HOME_INFO_SECTION_ID}>
     <div className={styles.trustInner}>
       <div className={styles.trustHeadline}>
-        <h2 className={styles.trustHeadlineLine}>You don&apos;t need to trust anyone.</h2>
-        <h3 className={styles.trustHeadlineLine}>This bridge is decentralized mathematics.</h3>
+        <h2 className={styles.trustHeadlineLine}>Security without a custodial multisig</h2>
       </div>
 
       <div className={styles.trustFeatureGrid}>
@@ -41,8 +40,8 @@ const ReferenceTrustlessSection = () => {
             />
           </div>
           <p className={styles.trustFeatureCopy}>
-            No entity can steal, freeze, or manipulate your funds.
-            Only mathematical consensus can move them.
+            No company, operator, or multisig wallet controls the bridge reserves.
+            Cross-chain transfers follow public protocol rules instead of custodial approval.
           </p>
         </div>
 
@@ -55,8 +54,8 @@ const ReferenceTrustlessSection = () => {
             />
           </div>
           <p className={`${styles.trustFeatureCopy} ${styles.trustFeatureCopyAccent}`}>
-            Thousands of Verus miners and stakers verify every transaction.
-            No multisig wallets. No trusted parties.
+            Security is layered across Verus consensus, witnessed notarizations, and the Ethereum contracts.
+            Each layer must validate the same transaction correctly.
           </p>
         </div>
       </div>
@@ -67,39 +66,52 @@ const ReferenceTrustlessSection = () => {
         </div>
 
         <div className={styles.faqList}>
-          <FAQItem question="Why do most bridges fail?">
+          <FAQItem question="How does the bridge avoid custodial key risk?">
             <p className={styles.faqAnswerLead}>
-              Most bridges have two weak points. First, they rely on a small group of key holders
-              (a multisig wallet) to custody funds. If those keys are compromised through hacking,
-              social engineering, or insider collusion, the funds can be drained.
+              The bridge does not rely on a company, single key holder, or small multisig group to
+              approve withdrawals or control the bridge reserves.
             </p>
             <div className={styles.faqAnswerCopy}>
               <p className={styles.faqBulletCopy}>
-                Second, they depend on smart contracts that can contain vulnerabilities or, worse,
-                can be upgraded or modified by a small team. That means even a contract that looks
-                safe today can be changed tomorrow.
-              </p>
-              <p className={styles.faqBulletCopy}>
-                Billions have been lost to both attack vectors. The fundamental problem is the same
-                in each case: you&apos;re trusting a small group of people with everyone&apos;s money.
+                Cross-chain transfers must follow public protocol rules. Verus miners and stakers
+                confirm Verus chain state, while witnessed notarizations carry that state across the bridge.
               </p>
             </div>
           </FAQItem>
 
-          <FAQItem question="What makes the Verus-Ethereum Bridge different?">
+          <FAQItem question="How are cross-chain transfers verified?">
             <p className={styles.faqAnswerLead}>
-              No single entity, multisig, or key holder has custody of your funds at any point.
-              Instead, the entire decentralized network of Verus miners and stakers verifies every
-              cross-chain transaction through consensus rules.
+              Verus miners and stakers confirm Verus chain state through consensus. Witnessed
+              notarizations then carry cryptographic evidence of that state to the Ethereum contracts.
             </p>
             <div className={styles.faqAnswerCopy}>
               <p className={styles.faqBulletCopy}>
-                To attack this bridge, you&apos;d need to simultaneously compromise the majority of
-                the mining and staking network, have colluding notary witnesses, and run a fake
-                shadow chain.
+                The security of the complete bridge depends on every layer validating and interpreting
+                that evidence correctly.
               </p>
               <p className={styles.faqBulletCopy}>
-                These are requirements comparable to attacking the blockchain itself.
+                Decentralized consensus removes custodial key risk, but it does not remove software
+                and smart-contract risk.
+              </p>
+            </div>
+          </FAQItem>
+
+          <FAQItem question="What happened in the 2026 bridge exploits?">
+            <p className={styles.faqAnswerLead}>
+              In May and July 2026, attackers exploited flaws in cross-chain validation. The Ethereum
+              contracts accepted invalid claims and released assets that were not backed by matching
+              exports from Verus.
+            </p>
+            <div className={styles.faqAnswerCopy}>
+              <p className={styles.faqBulletCopy}>
+                The attacks did not compromise a custodial multisig or take control of the Verus mining
+                and staking network. They exposed implementation failures at the boundary between Verus
+                and Ethereum.
+              </p>
+              <p className={styles.faqBulletCopy}>
+                The bridge is being upgraded with hardened validation across the protocol and Ethereum
+                contracts. The affected paths are undergoing code review, regression testing, and fuzzing
+                before the bridge reopens.
               </p>
             </div>
           </FAQItem>
@@ -116,8 +128,8 @@ const ReferenceTrustlessSection = () => {
               <p className={styles.faqBulletCopy}>
                 How quickly that happens depends on bridge activity. Notarizations are only
                 produced when there&apos;s traffic to process. {ETHEREUM_BLOCKCHAIN_NAME} confirmation times and gas
-                conditions also play a role. The process isn&apos;t instant, but every step exists to
-                make sure your funds are cryptographically proven before they arrive.
+                conditions also play a role. The process isn&apos;t instant because the required proof and
+                confirmation steps must complete before the transfer can be accepted.
               </p>
             </div>
           </FAQItem>

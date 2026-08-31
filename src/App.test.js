@@ -28,6 +28,6 @@ vi.mock('./providers/WrappedWeb3ReactProvider', () => ({
 
 test('renders the bridge landing page', () => {
   render(React.createElement(App));
-  const heading = screen.getByText(/Bridge assets securely/i);
+  const heading = screen.getByText(/Bridge assets to Verus/i);
   expect(heading).toBeInTheDocument();
 });

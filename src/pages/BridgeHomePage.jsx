@@ -313,7 +313,7 @@ const BridgeHomePage = () => {
           <div className={styles.content}>
             {!isReviewing ? (
               <div className={styles.titleWrap}>
-                <h1 className={styles.title}>Bridge assets securely</h1>
+                <h1 className={styles.title}>Bridge assets to Verus</h1>
               </div>
             ) : null}
 
@@ -321,7 +321,7 @@ const BridgeHomePage = () => {
               <BridgeCard controller={controller} />
               {!isReviewing ? (
                 <p className={styles.supportingText}>
-                  Bridge or convert completely trustless into {VERUS_NATIVE_ASSET_NAME}, or convert back into {ETHEREUM_NATIVE_ASSET_NAME}. No counterparty risk.
+                  Move assets between {ETHEREUM_NATIVE_ASSET_NAME} and {VERUS_NATIVE_ASSET_NAME} through the Verus-Ethereum Bridge.
                 </p>
               ) : null}
             </div>

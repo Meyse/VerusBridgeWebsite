@@ -10,8 +10,8 @@ import {
 
 import useBridgeController from 'hooks/useBridgeController';
 import {
-  ETHEREUM_BLOCKCHAIN_NAME,
-  TESTNET
+  ETHEREUM_NATIVE_ASSET_NAME,
+  VERUS_NATIVE_ASSET_NAME
 } from 'constants/contractAddress';
 
 import BridgeHomePage from './BridgeHomePage';
@@ -133,18 +133,16 @@ describe('BridgeHomePage', () => {
     expect(header.parentElement).toBe(page);
   });
 
-  test('describes the active bridge networks in the supporting copy', () => {
+  test('introduces the bridge using the active network names', () => {
     render(
       <MemoryRouter>
         <BridgeHomePage />
       </MemoryRouter>
     );
 
-    const verusName = TESTNET ? 'Verus Testnet' : 'Verus';
-    const ethereumAssetName = TESTNET ? `${ETHEREUM_BLOCKCHAIN_NAME} ETH` : ETHEREUM_BLOCKCHAIN_NAME;
-
+    expect(screen.getByRole('heading', { name: 'Bridge assets to Verus' })).toBeInTheDocument();
     expect(screen.getByText(
-      `Bridge or convert completely trustless into ${verusName}, or convert back into ${ethereumAssetName}. No counterparty risk.`
+      `Move assets between ${ETHEREUM_NATIVE_ASSET_NAME} and ${VERUS_NATIVE_ASSET_NAME} through the Verus-Ethereum Bridge.`
     )).toBeInTheDocument();
   });
 
@@ -188,7 +186,7 @@ describe('BridgeHomePage', () => {
       </MemoryRouter>
     );
 
-    expect(screen.queryByText(/bridge assets securely/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/bridge assets to Verus/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/scroll to learn more/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId('trust-section')).not.toBeInTheDocument();
     expect(screen.queryByTestId('site-footer')).not.toBeInTheDocument();
