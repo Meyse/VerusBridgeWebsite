@@ -114,7 +114,7 @@
   justify-content: center;
   gap: 5px;
   padding: 0 10px;
-  border: 1px solid var(--theme-border);
+  border: none;
   border-radius: 999px;
   background: transparent;
   color: var(--theme-text-muted);
@@ -122,18 +122,16 @@
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
-  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .deploymentSwitch:hover {
   background: var(--theme-surface-soft);
-  border-color: var(--theme-border-strong);
   color: var(--theme-text-strong);
 }
 
 .deploymentSwitch:focus-visible {
   outline: none;
-  border-color: var(--theme-border-strong);
   box-shadow: var(--theme-focus-ring);
   color: var(--theme-text-strong);
 }
