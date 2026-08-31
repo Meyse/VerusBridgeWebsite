@@ -55,6 +55,7 @@ const createController = (overrides = {}) => ({
   address: '',
   addressHint: 'Enter a Verus address (R-address or i-address) or Ethereum address',
   addressError: '',
+  addressResolutionMessage: '',
   addressPlaceholder: 'Enter receiving address',
   account: '',
   canConfirmReview: false,
@@ -69,6 +70,7 @@ const createController = (overrides = {}) => ({
   closeReview: vi.fn(),
   hasEnoughNativeEth: true,
   isReviewing: false,
+  isAddressResolving: false,
   isRefundSignaturePending: false,
   isTxPending: false,
   nativeEthBalance: 0,
@@ -80,6 +82,8 @@ const createController = (overrides = {}) => ({
   reviewFeeRows: [],
   reviewReceiveAmountDisplay: '',
   reviewReceiveFiatLabel: null,
+  reviewDestinationAddress: '',
+  reviewDestinationIdentityName: '',
   reviewRouteLabel: 'Ethereum -> Verus',
   reviewTimeEstimate: '1-6 hours',
   sendAmountPresets: [{ id: 'max', label: 'Max', amount: '1' }],
@@ -827,6 +831,36 @@ describe('BridgeCard currency selectors', () => {
 
     fireEvent.blur(screen.getByDisplayValue(address));
     expect(screen.getByDisplayValue('iMEHwE...4wLv')).toBeInTheDocument();
+  });
+
+  test('shows VerusID resolution feedback and the canonical destination in review', () => {
+    const identityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
+    const { rerender } = render(
+      <BridgeCard
+        controller={createController({
+          address: 'Max@',
+          addressResolutionMessage: `Max.VRSC@ resolves to ${identityAddress}.`
+        })}
+      />
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      `Max.VRSC@ resolves to ${identityAddress}.`
+    );
+
+    rerender(
+      <BridgeCard
+        controller={createController({
+          address: 'Max@',
+          isReviewing: true,
+          reviewDestinationAddress: identityAddress,
+          reviewDestinationIdentityName: 'Max.VRSC@'
+        })}
+      />
+    );
+
+    expect(screen.getByText('Max.VRSC@')).toBeInTheDocument();
+    expect(screen.getByText(identityAddress)).toBeInTheDocument();
   });
 
   test('closes the currency picker when the close button is pressed', () => {

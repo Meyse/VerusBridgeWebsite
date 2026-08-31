@@ -77,6 +77,10 @@ export class VerusdRpcInterface {
     return this.request('getinfo', []);
   }
 
+  getIdentity(identityNameOrAddress) {
+    return this.request('getidentity', [identityNameOrAddress]);
+  }
+
   estimateConversion(output) {
     return this.request('estimateconversion', [output]);
   }
