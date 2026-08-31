@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 
 import ToastProvider from 'components/Toast/ToastProvider';
+import RouteMetadata from 'components/RouteMetadata';
 
 import BridgeHomePage from './pages/BridgeHomePage';
 import Claim from './pages/Claim';
@@ -219,16 +220,16 @@ const buildTheme = (mode) => {
 const router = createBrowserRouter([
   {
     path: "/",
-    element: <BridgeHomePage />,
+    element: <><RouteMetadata /><BridgeHomePage /></>,
     errorElement: <div>Not a Valid path</div>
   },
   {
     path: "/claim",
-    element: <Claim />
+    element: <><RouteMetadata /><Claim /></>
   },
   {
     path: "/nft",
-    element: <NFT />
+    element: <><RouteMetadata /><NFT /></>
   }
 ]);
 

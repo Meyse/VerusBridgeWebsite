@@ -5,6 +5,11 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv } from 'vite';
 import svgr from 'vite-plugin-svgr';
 
+import {
+  createSearchPublishingPlugin,
+  resolveSearchPublishingPolicy
+} from './vite.seo.js';
+
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const sourceRoot = path.join(projectRoot, 'src');
 const sourceAliases = [
@@ -42,15 +47,21 @@ export default defineConfig(({ mode }) => {
     } : {}),
     REACT_APP_BRIDGE_ENV: bridgeEnvironment
   };
+  const searchPublishingPolicy = resolveSearchPublishingPolicy(bridgeEnvironment, {
+    ...environment,
+    ...testEnvironment
+  });
   const processEnvironment = {
     ...Object.fromEntries(
       legacyEnvironmentKeys.map((key) => [key, environment[key] || testEnvironment[key] || ''])
     ),
-    REACT_APP_BRIDGE_ENV: bridgeEnvironment
+    REACT_APP_BRIDGE_ENV: bridgeEnvironment,
+    REACT_APP_PUBLIC_SITE_URL: searchPublishingPolicy.siteOrigin,
+    REACT_APP_SEARCH_INDEXING_ENABLED: String(searchPublishingPolicy.indexingEnabled)
   };
 
   return {
-    plugins: [react(), svgr()],
+    plugins: [react(), svgr(), createSearchPublishingPlugin(searchPublishingPolicy)],
     resolve: {
       alias: {
         events: 'events/',
