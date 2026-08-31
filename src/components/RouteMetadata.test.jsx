@@ -44,5 +44,11 @@ describe('RouteMetadata', () => {
       'content',
       'https://eth.verusbridge.io/nft'
     );
+    expect(document.querySelector('meta[property="og:image"]')).toHaveAttribute(
+      'content',
+      'https://eth.verusbridge.io/og/og-image-bridge.png'
+    );
+    expect(document.querySelector('meta[property="og:image:width"]')).toHaveAttribute('content', '1200');
+    expect(document.querySelector('meta[property="og:image:height"]')).toHaveAttribute('content', '630');
   });
 });

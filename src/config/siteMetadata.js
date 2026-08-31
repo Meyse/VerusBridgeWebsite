@@ -16,6 +16,12 @@ const siteMetadataByPathname = Object.freeze({
   })
 });
 
+export const SOCIAL_IMAGE_METADATA = Object.freeze({
+  height: 630,
+  pathname: '/og/og-image-bridge.png',
+  width: 1200
+});
+
 export const SITE_METADATA = Object.freeze(Object.values(siteMetadataByPathname));
 
 export const getSiteMetadata = (pathname) => siteMetadataByPathname[pathname] || null;

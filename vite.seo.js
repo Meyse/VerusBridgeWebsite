@@ -1,7 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { SITE_METADATA } from './src/config/siteMetadata.js';
+import {
+  SITE_METADATA,
+  SOCIAL_IMAGE_METADATA
+} from './src/config/siteMetadata.js';
 
 export const OFFICIAL_SITE_ORIGIN = 'https://eth.verusbridge.io';
 
@@ -72,6 +75,9 @@ export const resolveSearchPublishingPolicy = (bridgeEnvironment, environment = {
 export const renderRouteDocument = (html, metadata, policy) => {
   const title = escapeHtml(metadata.title);
   const description = escapeHtml(metadata.description);
+  const socialImageUrl = policy.siteOrigin
+    ? new URL(SOCIAL_IMAGE_METADATA.pathname, policy.siteOrigin).toString()
+    : SOCIAL_IMAGE_METADATA.pathname;
   let renderedHtml = replaceOrInsertHeadTag(
     html,
     /<title>[\s\S]*?<\/title>/i,
@@ -96,6 +102,21 @@ export const renderRouteDocument = (html, metadata, policy) => {
     renderedHtml,
     /<meta\s+property=["']og:description["'][^>]*>/i,
     `<meta property="og:description" content="${description}" />`
+  );
+  renderedHtml = replaceOrInsertHeadTag(
+    renderedHtml,
+    /<meta\s+property=["']og:image["'][^>]*>/i,
+    `<meta property="og:image" content="${socialImageUrl}" />`
+  );
+  renderedHtml = replaceOrInsertHeadTag(
+    renderedHtml,
+    /<meta\s+property=["']og:image:width["'][^>]*>/i,
+    `<meta property="og:image:width" content="${SOCIAL_IMAGE_METADATA.width}" />`
+  );
+  renderedHtml = replaceOrInsertHeadTag(
+    renderedHtml,
+    /<meta\s+property=["']og:image:height["'][^>]*>/i,
+    `<meta property="og:image:height" content="${SOCIAL_IMAGE_METADATA.height}" />`
   );
   renderedHtml = removeHeadTag(
     renderedHtml,

@@ -83,6 +83,9 @@ describe('search publishing policy', () => {
     expect(html).toContain('<meta name="robots" content="index, follow" />');
     expect(html).toContain('<link rel="canonical" href="https://eth.verusbridge.io/nft" />');
     expect(html).toContain('<meta property="og:url" content="https://eth.verusbridge.io/nft" />');
+    expect(html).toContain('<meta property="og:image" content="https://eth.verusbridge.io/og/og-image-bridge.png" />');
+    expect(html).toContain('<meta property="og:image:width" content="1200" />');
+    expect(html).toContain('<meta property="og:image:height" content="630" />');
     expect(createRobotsTxt(policy)).toBe([
       'User-agent: *',
       'Disallow:',

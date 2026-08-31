@@ -2,7 +2,10 @@ import { useEffect } from 'react';
 
 import { useLocation } from 'react-router-dom';
 
-import { getSiteMetadata } from 'config/siteMetadata';
+import {
+  getSiteMetadata,
+  SOCIAL_IMAGE_METADATA
+} from 'config/siteMetadata';
 
 const setMetaContent = (attribute, key, content) => {
   let element = document.head.querySelector(`meta[${attribute}="${key}"]`);
@@ -46,8 +49,11 @@ const RouteMetadata = ({
     setMetaContent('name', 'description', metadata.description);
     setMetaContent('property', 'og:title', metadata.title);
     setMetaContent('property', 'og:description', metadata.description);
+    setMetaContent('property', 'og:image:width', String(SOCIAL_IMAGE_METADATA.width));
+    setMetaContent('property', 'og:image:height', String(SOCIAL_IMAGE_METADATA.height));
 
     if (!indexingEnabled || !siteOrigin) {
+      setMetaContent('property', 'og:image', SOCIAL_IMAGE_METADATA.pathname);
       setMetaContent('name', 'robots', 'noindex, nofollow');
       removeHeadElement('link[rel="canonical"]');
       removeHeadElement('meta[property="og:url"]');
@@ -55,7 +61,9 @@ const RouteMetadata = ({
     }
 
     const canonicalUrl = new URL(metadata.pathname, siteOrigin).toString();
+    const socialImageUrl = new URL(SOCIAL_IMAGE_METADATA.pathname, siteOrigin).toString();
     setMetaContent('name', 'robots', 'index, follow');
+    setMetaContent('property', 'og:image', socialImageUrl);
     setMetaContent('property', 'og:url', canonicalUrl);
     setCanonicalUrl(canonicalUrl);
   }, [indexingEnabled, pathname, siteOrigin]);
