@@ -45,6 +45,7 @@ describe('ReferenceTrustlessSection', () => {
       .toBeInTheDocument();
     expect(screen.queryByText(/no entity can steal/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/you'd need to simultaneously compromise the majority/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/decentralized consensus removes custodial key risk/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Who can move my funds?')).not.toBeInTheDocument();
     expect(screen.queryByText('Who verifies each transaction?')).not.toBeInTheDocument();
     expect(screen.queryByText('Where do I go for claims, NFT bridging, and contract inspection?')).not.toBeInTheDocument();

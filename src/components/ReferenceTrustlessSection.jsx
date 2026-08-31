@@ -89,10 +89,6 @@ const ReferenceTrustlessSection = () => {
                 The security of the complete bridge depends on every layer validating and interpreting
                 that evidence correctly.
               </p>
-              <p className={styles.faqBulletCopy}>
-                Decentralized consensus removes custodial key risk, but it does not remove software
-                and smart-contract risk.
-              </p>
             </div>
           </FAQItem>
 
