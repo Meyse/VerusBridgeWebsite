@@ -7,7 +7,7 @@ describe('Verus JSON-RPC client', () => {
     global.fetch = originalFetch;
   });
 
-  test('preserves the request method, params, ID sequence, and endpoint shape', async () => {
+  test('preserves the request method, params, ID sequence, and configured endpoint path', async () => {
     global.fetch = vi.fn()
       .mockResolvedValueOnce({
         json: vi.fn().mockResolvedValue({ error: null, id: 0, result: { longestchain: 10 } }),
@@ -19,17 +19,17 @@ describe('Verus JSON-RPC client', () => {
         ok: true,
         status: 200
       });
-    const client = new VerusdRpcInterface('VRSC', 'https://rpc.example/private/path');
+    const client = new VerusdRpcInterface('VRSC', 'https://rpc.example/verus/bridge');
 
     await client.getInfo();
     await client.getCurrency('bridge.veth');
 
-    expect(global.fetch).toHaveBeenNthCalledWith(1, 'https://rpc.example/', {
+    expect(global.fetch).toHaveBeenNthCalledWith(1, 'https://rpc.example/verus/bridge', {
       body: JSON.stringify({ id: 0, jsonrpc: '1.0', method: 'getinfo', params: [] }),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST'
     });
-    expect(global.fetch).toHaveBeenNthCalledWith(2, 'https://rpc.example/', {
+    expect(global.fetch).toHaveBeenNthCalledWith(2, 'https://rpc.example/verus/bridge', {
       body: JSON.stringify({ id: 1, jsonrpc: '1.0', method: 'getcurrency', params: ['bridge.veth'] }),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST'

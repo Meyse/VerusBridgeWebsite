@@ -16,7 +16,7 @@ const getEndpoint = (baseUrl) => {
   }
 
   try {
-    const endpoint = new URL('/', baseUrl);
+    const endpoint = new URL(baseUrl);
     return endpoint.protocol === 'http:' || endpoint.protocol === 'https:'
       ? endpoint.toString()
       : null;
