@@ -107,6 +107,37 @@
   margin-left: auto;
 }
 
+.deploymentSwitch {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 1px solid var(--theme-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.deploymentSwitch:hover {
+  background: var(--theme-surface-soft);
+  border-color: var(--theme-border-strong);
+  color: var(--theme-text-strong);
+}
+
+.deploymentSwitch:focus-visible {
+  outline: none;
+  border-color: var(--theme-border-strong);
+  box-shadow: var(--theme-focus-ring);
+  color: var(--theme-text-strong);
+}
+
 .headerTitle {
   margin: 0;
   font-size: 14px;
@@ -1119,11 +1150,11 @@
   min-height: 52px;
   padding: 12px 64px 12px 16px;
   border-radius: 12px;
-  border: none;
+  border: 1px solid var(--theme-border-strong);
   color: var(--theme-text-strong);
   background: var(--theme-input-bg);
   outline: none;
-  transition: background-color 200ms ease, box-shadow 200ms ease;
+  transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
 }
 
 .claimAddressInput {
@@ -2641,10 +2672,29 @@
 
   .headerInner {
     flex-wrap: wrap;
+    gap: 8px;
   }
 
   .headerRight {
-    gap: 8px;
+    gap: 6px;
+  }
+
+  .deploymentSwitch {
+    width: 32px;
+    min-height: 32px;
+    padding: 0;
+  }
+
+  .deploymentSwitch span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .walletGroup {

@@ -181,7 +181,7 @@ describe('SiteHeader wallet interactions', () => {
     }
   });
 
-  test('links to the other deployment without carrying transaction state', () => {
+  test('keeps the deployment switch beside the wallet controls without carrying transaction state', () => {
     useWeb3React.mockReturnValue({
       account: null,
       activate: vi.fn(),
@@ -196,19 +196,19 @@ describe('SiteHeader wallet interactions', () => {
       ? 'https://bridge.antafri.com'
       : 'https://testbridge.antafri.com';
     const navigation = screen.getByRole('navigation', { name: /primary/i });
+    const switchLink = screen.getByRole('link', { name: targetLabel });
+    const connectButton = screen.getByRole('button', { name: /connect wallet/i });
 
-    expect(within(navigation).getByRole('link', { name: targetLabel })).toHaveAttribute(
+    expect(within(navigation).queryByRole('link', { name: targetLabel })).not.toBeInTheDocument();
+    expect(switchLink).toHaveAttribute(
       'href',
       `${targetOrigin}/claim`
     );
+    expect(switchLink.compareDocumentPosition(connectButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /open navigation/i }));
 
-    expect(screen.getAllByRole('link', { name: targetLabel })).toHaveLength(2);
-    expect(screen.getAllByRole('link', { name: targetLabel })[1]).toHaveAttribute(
-      'href',
-      `${targetOrigin}/claim`
-    );
+    expect(screen.getAllByRole('link', { name: targetLabel })).toHaveLength(1);
   });
 
   test('keeps a wrong-network action visible and switches MetaMask before reconnecting', async () => {
@@ -231,7 +231,6 @@ describe('SiteHeader wallet interactions', () => {
 
     expect(networkAlert).toHaveTextContent(/wrong network/i);
     expect(walletControls).toHaveClass(styles.headerRight);
-    expect(walletControls.firstElementChild).toBe(networkAlert);
     expect(networkAlert).not.toContainElement(switchButton);
     expect(networkAlert.nextElementSibling).toContainElement(switchButton);
     expect(screen.queryByRole('button', { name: /connect wallet/i })).not.toBeInTheDocument();
@@ -372,6 +371,7 @@ describe('SiteHeader wallet interactions', () => {
 
   test('stores the disconnect preference before deactivating the wallet', () => {
     const deactivate = vi.fn();
+    const targetLabel = TESTNET ? 'Switch to Mainnet' : 'Switch to Testnet';
 
     useWeb3React.mockReturnValue({
       account: '0x1234567890123456789012345678901234567890',
@@ -382,7 +382,12 @@ describe('SiteHeader wallet interactions', () => {
 
     renderHeader();
 
-    fireEvent.click(screen.getByRole('button', { name: /0x1234/i }));
+    const switchLink = screen.getByRole('link', { name: targetLabel });
+    const connectedWalletButton = screen.getByRole('button', { name: /0x1234/i });
+
+    expect(switchLink.compareDocumentPosition(connectedWalletButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(connectedWalletButton);
     fireEvent.click(screen.getByRole('button', { name: /disconnect/i }));
 
     expect(deactivate).toHaveBeenCalledTimes(1);

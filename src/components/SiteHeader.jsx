@@ -43,8 +43,8 @@ const NAV_ITEMS = [
 ];
 
 const ALTERNATE_BRIDGE = TESTNET
-  ? { label: 'Switch to Mainnet', origin: 'https://bridge.antafri.com' }
-  : { label: 'Switch to Testnet', origin: 'https://testbridge.antafri.com' };
+  ? { label: 'Switch to Mainnet', origin: 'https://bridge.antafri.com', target: 'Mainnet' }
+  : { label: 'Switch to Testnet', origin: 'https://testbridge.antafri.com', target: 'Testnet' };
 
 const CopyIcon = ({ copied }) => (
   <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
@@ -92,6 +92,18 @@ const MenuIcon = () => (
       strokeLinecap="round"
       strokeLinejoin="round"
       strokeWidth="2"
+    />
+  </svg>
+);
+
+const NetworkSwitchIcon = () => (
+  <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 24 24" width="14">
+    <path
+      d="M7 7h11m0 0-3-3m3 3-3 3M17 17H6m0 0 3 3m-3-3 3-3"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
     />
   </svg>
 );
@@ -394,13 +406,20 @@ const SiteHeader = () => {
                 {item.label}
               </Link>
             ))}
-            <a className={styles.headerNavLink} href={alternateBridgeHref}>
-              {ALTERNATE_BRIDGE.label}
-            </a>
           </nav>
         </div>
 
         <div className={styles.headerRight}>
+          <a
+            aria-label={ALTERNATE_BRIDGE.label}
+            className={styles.deploymentSwitch}
+            href={alternateBridgeHref}
+            title={ALTERNATE_BRIDGE.label}
+          >
+            <NetworkSwitchIcon />
+            <span>{ALTERNATE_BRIDGE.target}</span>
+          </a>
+
           {isWrongNetwork ? (
             <div aria-label="Wallet network status" className={styles.networkNotice} role="alert">
               <AlertIcon />
@@ -562,9 +581,6 @@ const SiteHeader = () => {
           <Link className={styles.mobileNavLink} to="/nft">
             NFT bridge
           </Link>
-          <a className={styles.mobileNavLink} href={alternateBridgeHref}>
-            {ALTERNATE_BRIDGE.label}
-          </a>
         </div>
       ) : null}
     </header>
