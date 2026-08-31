@@ -66,7 +66,7 @@ const ReferenceTrustlessSection = () => {
         </div>
 
         <div className={styles.faqList}>
-          <FAQItem question="How does the bridge avoid custodial key risk?">
+          <FAQItem question="How are the bridge reserves secured?">
             <p className={styles.faqAnswerLead}>
               The bridge does not rely on a company, single key holder, or small multisig group to
               approve withdrawals or control the bridge reserves.

@@ -21,7 +21,7 @@ describe('ReferenceTrustlessSection', () => {
       'Security is layered across Verus consensus, witnessed notarizations, and the Ethereum contracts. Each layer must validate the same transaction correctly.'
     )).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'FAQ' })).toBeInTheDocument();
-    expect(screen.getByText('How does the bridge avoid custodial key risk?')).toBeInTheDocument();
+    expect(screen.getByText('How are the bridge reserves secured?')).toBeInTheDocument();
     expect(screen.getByText('How are cross-chain transfers verified?')).toBeInTheDocument();
     expect(screen.getByText('What happened in the 2026 bridge exploits?')).toBeInTheDocument();
     expect(screen.getByText('How long does it take for my funds to arrive on Verus?')).toBeInTheDocument();
