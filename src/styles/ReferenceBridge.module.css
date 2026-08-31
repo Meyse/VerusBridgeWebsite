@@ -1852,13 +1852,8 @@
   border-radius: 24px;
   padding: 32px;
   box-shadow: var(--theme-card-shadow);
-  border: 1px solid var(--theme-border-soft);
+  border: none;
   backdrop-filter: blur(18px);
-}
-
-.trustFeatureCardAccent {
-  background: var(--theme-accent-panel);
-  border-color: var(--theme-info-border);
 }
 
 .trustFeatureEmoji {
@@ -1888,13 +1883,9 @@
 .trustFeatureCopy {
   margin: 0;
   font-size: clamp(22px, 1.15rem + 0.5vw, 28px);
-  line-height: 1.24;
-  color: var(--theme-text-muted);
-  letter-spacing: -0.025em;
-}
-
-.trustFeatureCopyAccent {
-  color: var(--theme-accent-text);
+  line-height: 1.4;
+  color: var(--theme-text);
+  letter-spacing: -0.015em;
 }
 
 .faqSection {
@@ -2612,8 +2603,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .trustFeatureCard,
-  .trustFeatureCardAccent {
+  .trustFeatureCard {
     padding: 64px;
   }
 
@@ -2640,12 +2630,15 @@
     margin-bottom: 56px;
   }
 
+  .trustHeadlineLine {
+    line-height: 1.2;
+  }
+
   .faqSection {
     margin-top: 72px;
   }
 
-  .trustFeatureCard,
-  .trustFeatureCardAccent {
+  .trustFeatureCard {
     padding: 28px;
   }
 
@@ -2663,7 +2656,6 @@
 
   .trustFeatureCopy {
     font-size: 22px;
-    line-height: 1.22;
   }
 
   .amountInput {

@@ -45,7 +45,7 @@ const ReferenceTrustlessSection = () => {
           </p>
         </div>
 
-        <div className={`${styles.trustFeatureCard} ${styles.trustFeatureCardAccent}`}>
+        <div className={styles.trustFeatureCard}>
           <div className={styles.trustFeatureEmoji}>
             <TrustFlashIcon
               aria-hidden="true"
@@ -53,7 +53,7 @@ const ReferenceTrustlessSection = () => {
               focusable="false"
             />
           </div>
-          <p className={`${styles.trustFeatureCopy} ${styles.trustFeatureCopyAccent}`}>
+          <p className={styles.trustFeatureCopy}>
             Security is layered across Verus consensus, witnessed notarizations, and the Ethereum contracts.
             Each layer must validate the same transaction correctly.
           </p>
