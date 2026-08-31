@@ -10,7 +10,9 @@ import { isAddress } from 'utils/contract';
 const ETHERSCAN_BASE_URL = TESTNET ? 'https://sepolia.etherscan.io' : 'https://etherscan.io';
 
 const buildAddressUrl = (address) => (isAddress(address) ? `${ETHERSCAN_BASE_URL}/address/${address}` : null);
-const buildTokenUrl = (address) => (isAddress(address) ? `${ETHERSCAN_BASE_URL}/token/${address}` : null);
+export const getTokenExplorerUrl = (address) => (
+  isAddress(address) ? `${ETHERSCAN_BASE_URL}/token/${address}` : null
+);
 
 export const getExplorerResources = () => (
   [
@@ -24,13 +26,13 @@ export const getExplorerResources = () => (
       id: 'vrsc',
       title: `${BLOCKCHAIN_NAME} token`,
       description: `Open the ${BLOCKCHAIN_NAME} token contract on ${ETHEREUM_BLOCKCHAIN_NAME}.`,
-      href: buildTokenUrl(GLOBAL_ADDRESS.VRSC)
+      href: getTokenExplorerUrl(GLOBAL_ADDRESS.VRSC)
     },
     {
       id: 'bridge-veth',
       title: 'Bridge.vETH token',
       description: `Open the Bridge.vETH contract on ${ETHEREUM_BLOCKCHAIN_NAME}.`,
-      href: buildTokenUrl(GLOBAL_ADDRESS.BETH)
+      href: getTokenExplorerUrl(GLOBAL_ADDRESS.BETH)
     }
   ].filter((resource) => resource.href)
 );

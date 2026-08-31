@@ -2,7 +2,7 @@ import React from 'react';
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
-import { GLOBAL_ADDRESS } from 'constants/contractAddress';
+import { GLOBAL_ADDRESS, TESTNET } from 'constants/contractAddress';
 
 import BridgeCard from './BridgeCard';
 import styles from '../styles/ReferenceBridge.module.css';
@@ -841,6 +841,61 @@ describe('BridgeCard currency selectors', () => {
     expect(screen.queryByRole('dialog', { name: /select a currency/i })).not.toBeInTheDocument();
   });
 
+  test("opens a compact token address in the build's Etherscan without selecting the currency", () => {
+    const tokenAddress = '0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8';
+    const controller = createController({
+      selectedToken: null,
+      sourceCurrencies: [
+        {
+          address: tokenAddress,
+          icon: '/icons/currencies/usdc.svg',
+          id: 'usdc',
+          name: 'USD Coin',
+          symbol: 'USDC'
+        }
+      ]
+    });
+
+    render(<BridgeCard controller={controller} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /select currency/i })[0]);
+
+    const addressLink = screen.getByRole('link', { name: '0x94a9...E4C8' });
+    const etherscanBaseUrl = TESTNET ? 'https://sepolia.etherscan.io' : 'https://etherscan.io';
+
+    expect(addressLink).toHaveAttribute('href', `${etherscanBaseUrl}/token/${tokenAddress}`);
+    expect(addressLink).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(addressLink).toHaveAttribute('target', '_blank');
+
+    fireEvent.click(addressLink);
+
+    expect(controller.selectToken).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: /select a currency/i })).toBeInTheDocument();
+  });
+
+  test('selects the currency and closes the picker from the primary row control', () => {
+    const controller = createController({
+      selectedToken: null,
+      sourceCurrencies: [
+        {
+          address: '0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8',
+          icon: '/icons/currencies/usdc.svg',
+          id: 'usdc',
+          name: 'USD Coin',
+          symbol: 'USDC'
+        }
+      ]
+    });
+
+    render(<BridgeCard controller={controller} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /select currency/i })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Select USD Coin' }));
+
+    expect(controller.selectToken).toHaveBeenCalledWith('usdc');
+    expect(screen.queryByRole('dialog', { name: /select a currency/i })).not.toBeInTheDocument();
+  });
+
   test('shows only owned wallet assets ordered by fiat value in the send picker', () => {
     render(
       <BridgeCard
@@ -875,7 +930,7 @@ describe('BridgeCard currency selectors', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: /select currency/i })[0]);
 
-    const options = screen.getAllByRole('button').filter((element) => (
+    const options = Array.from(document.getElementsByClassName(styles.currencyOption)).filter((element) => (
       element.textContent.includes('USD Coin') || element.textContent.includes('Ethereum')
     ));
 

@@ -1702,6 +1702,7 @@
 }
 
 .currencyOption {
+  position: relative;
   width: 100%;
   display: flex;
   align-items: center;
@@ -1714,21 +1715,36 @@
   transition: background-color 150ms ease, transform 150ms ease;
 }
 
+.currencyOptionSelect {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
 .currencyOption:hover {
   background: var(--theme-accent-soft);
 }
 
-.currencyOption:focus-visible {
+.currencyOptionSelect:focus-visible {
   background: var(--theme-accent-soft-strong);
   outline: none;
+  box-shadow: var(--theme-focus-ring);
 }
 
 .currencyOptionLeft {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 12px;
   flex: 1;
   min-width: 0;
+  pointer-events: none;
 }
 
 .currencyOptionIconWrap {
@@ -1777,18 +1793,37 @@
 }
 
 .currencyOptionAddress {
+  position: relative;
+  z-index: 2;
   font-size: 12px;
   color: var(--theme-text-soft);
   font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+  text-decoration: none;
+}
+
+a.currencyOptionAddress:hover,
+a.currencyOptionAddress:focus-visible {
+  color: var(--theme-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a.currencyOptionAddress:focus-visible {
+  outline: none;
+  box-shadow: var(--theme-focus-ring);
 }
 
 .currencyOptionRight {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   text-align: right;
   margin-left: 12px;
   flex-shrink: 0;
+  pointer-events: none;
 }
 
 .currencyOptionValue {

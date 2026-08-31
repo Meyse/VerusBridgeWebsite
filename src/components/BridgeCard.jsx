@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert } from '@mui/material';
 import { createPortal } from 'react-dom';
 
+import { getTokenExplorerUrl } from 'config/explorerLinks';
 import {
   buildDestinationCurrency,
   buildTokenCurrency,
@@ -182,6 +183,31 @@ const restoreInlineStyle = (styleDeclaration, propertyName, value) => {
   }
 
   styleDeclaration.removeProperty(propertyName);
+};
+
+const CurrencyOptionAddress = ({ address }) => {
+  if (!address) {
+    return null;
+  }
+
+  const compactAddress = formatCompactAddress(address);
+  const tokenExplorerUrl = getTokenExplorerUrl(address);
+
+  if (!tokenExplorerUrl) {
+    return <span className={styles.currencyOptionAddress}>{compactAddress}</span>;
+  }
+
+  return (
+    <a
+      className={styles.currencyOptionAddress}
+      href={tokenExplorerUrl}
+      rel="noopener noreferrer"
+      target="_blank"
+      title={address}
+    >
+      {compactAddress}
+    </a>
+  );
 };
 
 const acquireBodyScrollLock = () => {
@@ -383,28 +409,25 @@ const CurrencyModal = ({
                   <div className={styles.currencySectionLabel}>{section.label}</div>
                 ) : null}
                 {section.currencies.map((currency) => (
-                  <button
-                    className={styles.currencyOption}
-                    key={currency.id}
-                    onClick={() => {
-                      onSelect(currency.id);
-                      onClose();
-                    }}
-                    type="button"
-                  >
+                  <div className={styles.currencyOption} key={currency.id}>
+                    <button
+                      aria-label={`Select ${currency.name}`}
+                      className={styles.currencyOptionSelect}
+                      onClick={() => {
+                        onSelect(currency.id);
+                        onClose();
+                      }}
+                      type="button"
+                    />
                     <div className={styles.currencyOptionLeft}>
                       <div className={styles.currencyOptionIconWrap}>
-                        <img alt={currency.symbol} className={styles.currencyOptionIcon} src={currency.icon} />
+                        <img alt="" className={styles.currencyOptionIcon} src={currency.icon} />
                       </div>
                       <div className={styles.currencyOptionText}>
                         <div className={styles.currencyOptionName}>{currency.name}</div>
                         <div className={styles.currencyOptionMeta}>
                           <span className={styles.currencyOptionSymbol}>{currency.symbol}</span>
-                          {currency.address ? (
-                            <span className={styles.currencyOptionAddress}>
-                              {formatCompactAddress(currency.address)}
-                            </span>
-                          ) : null}
+                          <CurrencyOptionAddress address={currency.address} />
                         </div>
                       </div>
                     </div>
@@ -420,7 +443,7 @@ const CurrencyModal = ({
                         ) : null}
                       </div>
                     ) : null}
-                  </button>
+                  </div>
                 ))}
               </div>
             ))
