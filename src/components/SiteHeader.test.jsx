@@ -182,6 +182,7 @@ describe('SiteHeader wallet interactions', () => {
       expect(testnetNotice).toHaveTextContent(
         'TESTNETSepolia ↔ VRSCTEST · Test assets have no real-world value'
       );
+      expect(testnetNotice.closest('header')).toBeNull();
     } else {
       expect(testnetNotice).not.toBeInTheDocument();
     }
@@ -212,7 +213,55 @@ describe('SiteHeader wallet interactions', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /open navigation/i }));
 
-    expect(screen.getAllByRole('link', { name: TEST_ALTERNATE_BRIDGE.label })).toHaveLength(1);
+    const mobileNavigation = screen.getByRole('navigation', { name: /mobile/i });
+
+    expect(within(mobileNavigation).getByRole('link', { name: TEST_ALTERNATE_BRIDGE.label })).toHaveAttribute(
+      'href',
+      TESTNET ? 'https://mainnet.example/claim' : 'https://testnet.example/claim'
+    );
+    expect(within(mobileNavigation).queryByRole('link', { name: /nft bridge/i })).not.toBeInTheDocument();
+  });
+
+  test('exposes the mobile navigation state and toggles its accessible label', () => {
+    useWeb3React.mockReturnValue({
+      account: null,
+      activate: vi.fn(),
+      deactivate: vi.fn(),
+      error: null
+    });
+
+    renderHeader();
+
+    const openButton = screen.getByRole('button', { name: /open navigation/i });
+
+    expect(openButton).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('navigation', { name: /mobile/i })).not.toBeInTheDocument();
+
+    fireEvent.click(openButton);
+
+    const closeButton = screen.getByRole('button', { name: /close navigation/i });
+
+    expect(closeButton).toHaveAttribute('aria-expanded', 'true');
+    expect(closeButton).toHaveAttribute('aria-controls', 'mobile-navigation');
+    expect(screen.getByRole('navigation', { name: /mobile/i })).toBeInTheDocument();
+  });
+
+  test('closes the mobile navigation after a same-page Bridge selection', () => {
+    useWeb3React.mockReturnValue({
+      account: null,
+      activate: vi.fn(),
+      deactivate: vi.fn(),
+      error: null
+    });
+
+    renderHeader(['/']);
+
+    fireEvent.click(screen.getByRole('button', { name: /open navigation/i }));
+    fireEvent.click(within(
+      screen.getByRole('navigation', { name: /mobile/i })
+    ).getByRole('link', { name: 'Bridge' }));
+
+    expect(screen.queryByRole('navigation', { name: /mobile/i })).not.toBeInTheDocument();
   });
 
   test('omits the deployment switch when no counterpart site is configured', () => {

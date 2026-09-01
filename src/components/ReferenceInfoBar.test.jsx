@@ -73,4 +73,32 @@ describe('ReferenceInfoBar', () => {
 
     expect(screen.queryByRole('dialog', { name: /bridge notarization details/i })).not.toBeInTheDocument();
   });
+
+  test('combines mobile bridge costs and notarization status in one inline disclosure', () => {
+    render(
+      <ReferenceInfoBar
+        baseBridgeFee={0.003}
+        bounceBackFee={0.013}
+        ethUsdPrice={2100}
+        notarizationHeight={123456}
+        notarizationLagSeconds={7260}
+        verusTipHeight={123460}
+      />
+    );
+
+    const disclosureButton = screen.getByRole('button', { name: /costs and status/i });
+
+    expect(disclosureButton).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('region', { name: /costs and status details/i })).not.toBeInTheDocument();
+
+    fireEvent.click(disclosureButton);
+
+    const details = screen.getByRole('region', { name: /costs and status details/i });
+
+    expect(disclosureButton).toHaveAttribute('aria-expanded', 'true');
+    expect(details).toHaveTextContent('Ethereum → Verus');
+    expect(details).toHaveTextContent('Ethereum → Verus → Ethereum');
+    expect(details).toHaveTextContent('Notarization block123,456');
+    expect(details).toHaveTextContent('Verus tip123,460');
+  });
 });

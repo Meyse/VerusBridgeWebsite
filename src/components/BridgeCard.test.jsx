@@ -67,6 +67,7 @@ const createController = (overrides = {}) => ({
   conversionWarningMessage: '',
   setAddress: vi.fn(),
   canSubmit: false,
+  connectWallet: vi.fn(),
   closeReview: vi.fn(),
   hasEnoughNativeEth: true,
   isReviewing: false,
@@ -123,6 +124,24 @@ describe('BridgeCard currency selectors', () => {
 
     expect(screen.getByRole('button', { name: 'Review' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /confirm conversion/i })).not.toBeInTheDocument();
+  });
+
+  test('uses the primary CTA to connect a disconnected wallet', () => {
+    const connectWallet = vi.fn();
+
+    render(
+      <BridgeCard
+        controller={createController({ connectWallet, isWalletConnected: false })}
+      />
+    );
+
+    const connectButton = screen.getByRole('button', { name: 'Connect your wallet' });
+
+    expect(connectButton).toBeEnabled();
+
+    fireEvent.click(connectButton);
+
+    expect(connectWallet).toHaveBeenCalledTimes(1);
   });
 
   test('shows Estimating... and disables Review while a conversion quote is pending', () => {
@@ -191,6 +210,34 @@ describe('BridgeCard currency selectors', () => {
     expect(screen.getByRole('button', { name: 'Review' })).toBeEnabled();
   });
 
+  test('reduces long financial values before they can collide with the currency control', () => {
+    render(
+      <BridgeCard
+        controller={createController({
+          amount: '0.123456789012345678',
+          hasFreshReceiveQuote: true,
+          isWalletConnected: true,
+          receiveAmountDisplay: '3516.93731485',
+          receiveCurrency: {
+            id: 'VRSC',
+            icon: '/icons/currencies/vrsc.svg',
+            name: 'Verus',
+            symbol: 'VRSC'
+          },
+          selectedDestination: { value: 'VRSC' }
+        })}
+      />
+    );
+
+    const sendAmount = screen.getByDisplayValue('0.123456789012345678');
+    const receiveAmount = screen.getByDisplayValue('3516.93731485');
+
+    expect(sendAmount).toHaveClass(styles.amountInputCompact);
+    expect(receiveAmount).toHaveClass(styles.amountInputMedium);
+    expect(sendAmount.parentElement.parentElement).toHaveClass(styles.selectorRowStacked);
+    expect(receiveAmount.parentElement.parentElement).toHaveClass(styles.selectorRowStacked);
+  });
+
   test('opens estimated receive details for conversion quotes only', () => {
     render(
       <BridgeCard
@@ -205,11 +252,11 @@ describe('BridgeCard currency selectors', () => {
       />
     );
 
-    expect(screen.queryByRole('dialog', { name: /estimated receive details/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /estimated receive details/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /show estimated receive details/i }));
 
-    expect(screen.getByRole('dialog', { name: /estimated receive details/i })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /estimated receive details/i })).toBeInTheDocument();
     expect(screen.getByText(/estimated and not guaranteed/i)).toBeInTheDocument();
     expect(screen.getByText(/final value can shift before completion/i)).toBeInTheDocument();
   });
@@ -230,11 +277,11 @@ describe('BridgeCard currency selectors', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /show estimated receive details/i }));
 
-    expect(screen.getByRole('dialog', { name: /estimated receive details/i })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /estimated receive details/i })).toBeInTheDocument();
 
     fireEvent.mouseDown(document.body);
 
-    expect(screen.queryByRole('dialog', { name: /estimated receive details/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /estimated receive details/i })).not.toBeInTheDocument();
   });
 
   test('renders the inline review state with fee rows and a not-enough-eth CTA', () => {

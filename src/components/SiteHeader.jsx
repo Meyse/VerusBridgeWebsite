@@ -104,6 +104,18 @@ const MenuIcon = () => (
   </svg>
 );
 
+const CloseMenuIcon = () => (
+  <svg aria-hidden="true" fill="none" height="20" viewBox="0 0 24 24" width="20">
+    <path
+      d="M6 6l12 12M18 6L6 18"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    />
+  </svg>
+);
+
 const NetworkSwitchIcon = () => (
   <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 24 24" width="14">
     <path
@@ -394,182 +406,222 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
     return undefined;
   };
 
-  return (
-    <header
-      className={isScrolled ? `${styles.header} ${styles.headerScrolled}` : styles.header}
-      ref={headerRef}
-    >
-      <div className={styles.headerInner}>
-        <div className={styles.headerLeft}>
-          <Link className={styles.headerTitle} onClick={handleBridgeClick} to={bridgeHref}>
-            Verus-Ethereum Bridge
-          </Link>
+  const handleMobileNavClick = (event, item) => {
+    setMobileMenuOpen(false);
+    getNavItemClickHandler(item)?.(event);
+  };
 
-          <nav aria-label="Primary" className={styles.headerNav}>
+  return (
+    <>
+      <header
+        className={isScrolled ? `${styles.header} ${styles.headerScrolled}` : styles.header}
+        ref={headerRef}
+      >
+        <div className={styles.headerInner}>
+          <div className={styles.headerLeft}>
+            <Link
+              aria-label="Verus-Ethereum Bridge"
+              className={styles.headerTitle}
+              onClick={handleBridgeClick}
+              to={bridgeHref}
+            >
+              <span className={styles.headerTitleFull}>Verus-Ethereum Bridge</span>
+              <span className={styles.headerTitleCompact}>Verus Bridge</span>
+            </Link>
+
+            <nav aria-label="Primary" className={styles.headerNav}>
+              {NAV_ITEMS.map((item) => (
+                <Link
+                  className={styles.headerNavLink}
+                  key={item.label}
+                  onClick={getNavItemClickHandler(item)}
+                  to={getNavItemHref(item)}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+
+          <div className={styles.headerRight}>
+            {alternateBridge ? (
+              <a
+                aria-label={alternateBridge.label}
+                className={styles.deploymentSwitch}
+                href={alternateBridgeHref}
+                title={alternateBridge.label}
+              >
+                <NetworkSwitchIcon />
+                <span>{alternateBridge.target}</span>
+              </a>
+            ) : null}
+
+            {isWrongNetwork ? (
+              <div aria-label="Wallet network status" className={styles.networkNotice} role="alert">
+                <AlertIcon />
+                <span>Wrong network</span>
+              </div>
+            ) : null}
+
+            <div className={styles.walletGroup} ref={dropdownRef}>
+              {isWrongNetwork ? (
+                <button
+                  className={styles.connectButton}
+                  disabled={isSwitchingNetwork}
+                  onClick={handleSwitchNetwork}
+                  type="button"
+                >
+                  {isSwitchingNetwork ? 'Switching...' : `Switch to ${ETHEREUM_BLOCKCHAIN_NAME}`}
+                </button>
+              ) : null}
+
+              {!isWrongNetwork && !account ? (
+                <>
+                  <button
+                    aria-label="Connect wallet"
+                    aria-expanded={showDropdown}
+                    className={styles.connectButton}
+                    onClick={() => setShowDropdown((currentValue) => !currentValue)}
+                    type="button"
+                  >
+                    <span>Connect<span className={styles.connectButtonWalletText}> wallet</span></span>
+                  </button>
+
+                  {showDropdown ? (
+                    <div aria-label="Wallet connection options" className={styles.dropdown}>
+                      <div className={styles.walletOptionList}>
+                        {WALLET_OPTIONS.map((walletOption) => (
+                          <button
+                            className={styles.walletOption}
+                            key={walletOption.id}
+                            onClick={handleConfirmWallet}
+                            type="button"
+                          >
+                            <span className={styles.walletOptionIconWrap}>{walletOption.icon}</span>
+                            <span className={styles.walletOptionTitle}>{walletOption.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+
+              {!isWrongNetwork && account ? (
+                <>
+                  <button
+                    aria-expanded={showDropdown}
+                    className={showDropdown ? `${styles.connectedButton} ${styles.connectedButtonActive}` : styles.connectedButton}
+                    onClick={() => setShowDropdown((currentValue) => !currentValue)}
+                    type="button"
+                  >
+                    <span className={styles.connectedLabel}>{walletLabel}</span>
+                    {needsRefundSignatureAction ? (
+                      <span
+                        aria-label="Public key signature required"
+                        className={styles.connectedAlertIcon}
+                        role="img"
+                        title="Public key signature required"
+                      >
+                        <AlertIcon />
+                      </span>
+                    ) : null}
+                  </button>
+
+                  {showDropdown ? (
+                    <div className={styles.dropdown}>
+                      <div className={styles.dropdownHeader}>
+                        <div className={styles.dropdownKicker}>Connected wallet</div>
+                        <div className={styles.dropdownAddressRow}>
+                          <div className={styles.dropdownAddress}>{account}</div>
+                          <button
+                            aria-label="Copy address"
+                            className={styles.copyButton}
+                            onClick={handleCopyAddress}
+                            title="Copy address"
+                            type="button"
+                          >
+                            <CopyIcon copied={copied} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {needsRefundSignatureAction ? (
+                        <div className={styles.walletNotice} role="alert">
+                          <div className={styles.walletNoticeHeader}>
+                            <span>Public key signature needed</span>
+                          </div>
+                          <button
+                            className={styles.walletNoticeAction}
+                            disabled={isRetryingRefundSignature}
+                            onClick={handleRetryRefundSigning}
+                            type="button"
+                          >
+                            {isRetryingRefundSignature ? 'Waiting for signature...' : 'Retry signing'}
+                          </button>
+                        </div>
+                      ) : null}
+
+                      <div className={styles.dropdownActions}>
+                        <button className={styles.dropdownAction} onClick={handleOpenExplorer} type="button">
+                          <ExternalLinkIcon />
+                          <span>View on Etherscan</span>
+                        </button>
+                        <button
+                          className={`${styles.dropdownAction} ${styles.dropdownActionDanger}`}
+                          onClick={() => {
+                            suppressInjectedWalletAutoConnect();
+                            deactivate();
+                            setShowDropdown(false);
+                          }}
+                          type="button"
+                        >
+                          <span>Disconnect</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+
+            <button
+              aria-controls="mobile-navigation"
+              aria-expanded={mobileMenuOpen}
+              aria-label={mobileMenuOpen ? 'Close navigation' : 'Open navigation'}
+              className={styles.mobileMenuButton}
+              onClick={() => setMobileMenuOpen((currentValue) => !currentValue)}
+              type="button"
+            >
+              {mobileMenuOpen ? <CloseMenuIcon /> : <MenuIcon />}
+            </button>
+          </div>
+        </div>
+
+        {mobileMenuOpen ? (
+          <nav aria-label="Mobile" className={styles.mobileNavPanel} id="mobile-navigation">
             {NAV_ITEMS.map((item) => (
               <Link
-                className={styles.headerNavLink}
+                className={styles.mobileNavLink}
                 key={item.label}
-                onClick={getNavItemClickHandler(item)}
+                onClick={(event) => handleMobileNavClick(event, item)}
                 to={getNavItemHref(item)}
               >
                 {item.label}
               </Link>
             ))}
-          </nav>
-        </div>
-
-        <div className={styles.headerRight}>
-          {alternateBridge ? (
-            <a
-              aria-label={alternateBridge.label}
-              className={styles.deploymentSwitch}
-              href={alternateBridgeHref}
-              title={alternateBridge.label}
-            >
-              <NetworkSwitchIcon />
-              <span>{alternateBridge.target}</span>
-            </a>
-          ) : null}
-
-          {isWrongNetwork ? (
-            <div aria-label="Wallet network status" className={styles.networkNotice} role="alert">
-              <AlertIcon />
-              <span>Wrong network</span>
-            </div>
-          ) : null}
-
-          <div className={styles.walletGroup} ref={dropdownRef}>
-            {isWrongNetwork ? (
-              <button
-                className={styles.connectButton}
-                disabled={isSwitchingNetwork}
-                onClick={handleSwitchNetwork}
-                type="button"
+            {alternateBridge ? (
+              <a
+                className={styles.mobileNavLink}
+                href={alternateBridgeHref}
+                onClick={() => setMobileMenuOpen(false)}
               >
-                {isSwitchingNetwork ? 'Switching...' : `Switch to ${ETHEREUM_BLOCKCHAIN_NAME}`}
-              </button>
+                {alternateBridge.label}
+              </a>
             ) : null}
-
-            {!isWrongNetwork && !account ? (
-              <>
-                <button
-                  aria-expanded={showDropdown}
-                  className={styles.connectButton}
-                  onClick={() => setShowDropdown((currentValue) => !currentValue)}
-                  type="button"
-                >
-                  <span>Connect wallet</span>
-                </button>
-
-                {showDropdown ? (
-                  <div aria-label="Wallet connection options" className={styles.dropdown}>
-                    <div className={styles.walletOptionList}>
-                      {WALLET_OPTIONS.map((walletOption) => (
-                        <button
-                          className={styles.walletOption}
-                          key={walletOption.id}
-                          onClick={handleConfirmWallet}
-                          type="button"
-                        >
-                          <span className={styles.walletOptionIconWrap}>{walletOption.icon}</span>
-                          <span className={styles.walletOptionTitle}>{walletOption.title}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-
-            {!isWrongNetwork && account ? (
-              <>
-                <button
-                  aria-expanded={showDropdown}
-                  className={showDropdown ? `${styles.connectedButton} ${styles.connectedButtonActive}` : styles.connectedButton}
-                  onClick={() => setShowDropdown((currentValue) => !currentValue)}
-                  type="button"
-                >
-                  <span className={styles.connectedLabel}>{walletLabel}</span>
-                  {needsRefundSignatureAction ? (
-                    <span
-                      aria-label="Public key signature required"
-                      className={styles.connectedAlertIcon}
-                      role="img"
-                      title="Public key signature required"
-                    >
-                      <AlertIcon />
-                    </span>
-                  ) : null}
-                </button>
-
-                {showDropdown ? (
-                  <div className={styles.dropdown}>
-                    <div className={styles.dropdownHeader}>
-                      <div className={styles.dropdownKicker}>Connected wallet</div>
-                      <div className={styles.dropdownAddressRow}>
-                        <div className={styles.dropdownAddress}>{account}</div>
-                        <button
-                          aria-label="Copy address"
-                          className={styles.copyButton}
-                          onClick={handleCopyAddress}
-                          title="Copy address"
-                          type="button"
-                        >
-                          <CopyIcon copied={copied} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {needsRefundSignatureAction ? (
-                      <div className={styles.walletNotice} role="alert">
-                        <div className={styles.walletNoticeHeader}>
-                          <span>Public key signature needed</span>
-                        </div>
-                        <button
-                          className={styles.walletNoticeAction}
-                          disabled={isRetryingRefundSignature}
-                          onClick={handleRetryRefundSigning}
-                          type="button"
-                        >
-                          {isRetryingRefundSignature ? 'Waiting for signature...' : 'Retry signing'}
-                        </button>
-                      </div>
-                    ) : null}
-
-                    <div className={styles.dropdownActions}>
-                      <button className={styles.dropdownAction} onClick={handleOpenExplorer} type="button">
-                        <ExternalLinkIcon />
-                        <span>View on Etherscan</span>
-                      </button>
-                      <button
-                        className={`${styles.dropdownAction} ${styles.dropdownActionDanger}`}
-                        onClick={() => {
-                          suppressInjectedWalletAutoConnect();
-                          deactivate();
-                          setShowDropdown(false);
-                        }}
-                        type="button"
-                      >
-                        <span>Disconnect</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-
-          <button
-            aria-label="Open navigation"
-            className={styles.mobileMenuButton}
-            onClick={() => setMobileMenuOpen((currentValue) => !currentValue)}
-            type="button"
-          >
-            <MenuIcon />
-          </button>
-        </div>
-      </div>
+          </nav>
+        ) : null}
+      </header>
 
       {TESTNET ? (
         <div aria-label="Testnet environment" className={styles.testnetNotice} role="status">
@@ -577,25 +629,7 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
           <span>Sepolia ↔ VRSCTEST · Test assets have no real-world value</span>
         </div>
       ) : null}
-
-      {mobileMenuOpen ? (
-        <div className={styles.mobileNavPanel}>
-          {NAV_ITEMS.map((item) => (
-            <Link
-              className={styles.mobileNavLink}
-              key={item.label}
-              onClick={getNavItemClickHandler(item)}
-              to={getNavItemHref(item)}
-            >
-              {item.label}
-            </Link>
-          ))}
-          <Link className={styles.mobileNavLink} to="/nft">
-            NFT bridge
-          </Link>
-        </div>
-      ) : null}
-    </header>
+    </>
   );
 };
 

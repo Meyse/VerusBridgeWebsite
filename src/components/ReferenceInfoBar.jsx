@@ -19,20 +19,26 @@ const blockHeightFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0
 });
 
-const renderFeeValue = (amount, ethUsdPrice) => {
+const formatFeeValue = (amount, ethUsdPrice) => {
   if (!Number.isFinite(amount)) {
-    return '--';
+    return { amount: '--', fiat: null };
   }
 
-  const formattedAmount = `${amount.toFixed(amount < 0.01 ? 4 : 3)} ETH`;
-  const formattedFiat = !TESTNET && Number.isFinite(ethUsdPrice)
-    ? usdFormatter.format(amount * ethUsdPrice)
-    : null;
+  return {
+    amount: `${amount.toFixed(amount < 0.01 ? 4 : 3)} ETH`,
+    fiat: !TESTNET && Number.isFinite(ethUsdPrice)
+      ? usdFormatter.format(amount * ethUsdPrice)
+      : null
+  };
+};
+
+const renderFeeValue = (amount, ethUsdPrice) => {
+  const feeValue = formatFeeValue(amount, ethUsdPrice);
 
   return (
     <>
-      {formattedFiat ? <span className={styles.infoChipFiat}>{formattedFiat}</span> : null}
-      <span className={styles.infoChipAmount}>{formattedAmount}</span>
+      {feeValue.fiat ? <span className={styles.infoChipFiat}>{feeValue.fiat}</span> : null}
+      <span className={styles.infoChipAmount}>{feeValue.amount}</span>
     </>
   );
 };
@@ -109,6 +115,25 @@ const InfoIcon = () => (
   </svg>
 );
 
+const DisclosureChevron = ({ isOpen }) => (
+  <svg
+    aria-hidden="true"
+    className={isOpen ? `${styles.mobileInfoChevron} ${styles.mobileInfoChevronOpen}` : styles.mobileInfoChevron}
+    fill="none"
+    height="16"
+    viewBox="0 0 24 24"
+    width="16"
+  >
+    <path
+      d="M6 9l6 6 6-6"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    />
+  </svg>
+);
+
 const ReferenceInfoBar = ({
   baseBridgeFee,
   bounceBackFee,
@@ -119,30 +144,35 @@ const ReferenceInfoBar = ({
   ethToVerusCost,
   verusToEthCost
 }) => {
-  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
-  const activityChipRef = useRef(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const infoBarRef = useRef(null);
   const popoverIdRef = useRef(`notarization-popover-${Math.random().toString(36).slice(2, 10)}`);
+  const mobileDetailsIdRef = useRef(`costs-status-details-${Math.random().toString(36).slice(2, 10)}`);
   const notarizationTooltipDetails = getNotarizationTooltipDetails({
     notarizationHeight,
     verusTipHeight
   });
   const ethIcon = getCurrencyIcon('ETH');
   const verusIcon = getCurrencyIcon(BLOCKCHAIN_NAME);
+  const directFee = baseBridgeFee ?? ethToVerusCost;
+  const bouncebackFee = bounceBackFee ?? verusToEthCost;
+  const directFeeValue = formatFeeValue(directFee, ethUsdPrice);
+  const mobileFeeSummary = directFeeValue.fiat || directFeeValue.amount;
 
   useEffect(() => {
-    if (!isTooltipOpen) {
+    if (!isDetailsOpen) {
       return undefined;
     }
 
     const handlePointerDown = (event) => {
-      if (activityChipRef.current && !activityChipRef.current.contains(event.target)) {
-        setIsTooltipOpen(false);
+      if (infoBarRef.current && !infoBarRef.current.contains(event.target)) {
+        setIsDetailsOpen(false);
       }
     };
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
-        setIsTooltipOpen(false);
+        setIsDetailsOpen(false);
       }
     };
 
@@ -153,28 +183,28 @@ const ReferenceInfoBar = ({
       document.removeEventListener('mousedown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isTooltipOpen]);
+  }, [isDetailsOpen]);
 
   const activityChip = (
-    <div className={`${styles.infoChip} ${styles.activityChip}`} ref={activityChipRef}>
+    <div className={`${styles.infoChip} ${styles.activityChip}`}>
       <span className={styles.activityLabel}>Last confirmed bridge notarization:</span>
       <div className={styles.activityValueRow}>
         <span className={styles.activityValue}>{formatLagAgo(notarizationLagSeconds)}</span>
         {notarizationTooltipDetails ? (
           <button
-            aria-controls={isTooltipOpen ? popoverIdRef.current : undefined}
-            aria-expanded={isTooltipOpen}
+            aria-controls={isDetailsOpen ? popoverIdRef.current : undefined}
+            aria-expanded={isDetailsOpen}
             aria-haspopup="dialog"
             aria-label="Show bridge notarization details"
             className={styles.activityInfoButton}
-            onClick={() => setIsTooltipOpen((currentValue) => !currentValue)}
+            onClick={() => setIsDetailsOpen((currentValue) => !currentValue)}
             type="button"
           >
             <InfoIcon />
           </button>
         ) : null}
       </div>
-      {isTooltipOpen && notarizationTooltipDetails ? (
+      {isDetailsOpen && notarizationTooltipDetails ? (
         <div
           aria-label="Bridge notarization details"
           className={styles.activityPopover}
@@ -197,7 +227,7 @@ const ReferenceInfoBar = ({
 
   return (
     <div className={styles.infoBar}>
-      <div className={styles.infoBarInner}>
+      <div className={styles.infoBarInner} ref={infoBarRef}>
         <div className={styles.infoGroup}>
           <div className={styles.infoChip}>
             <div className={styles.infoChipIconGroup}>
@@ -214,7 +244,7 @@ const ReferenceInfoBar = ({
               />
             </div>
             <span className={styles.infoChipValue}>
-              {renderFeeValue(baseBridgeFee ?? ethToVerusCost, ethUsdPrice)}
+              {renderFeeValue(directFee, ethUsdPrice)}
             </span>
           </div>
 
@@ -239,12 +269,60 @@ const ReferenceInfoBar = ({
               />
             </div>
             <span className={styles.infoChipValue}>
-              {renderFeeValue(bounceBackFee ?? verusToEthCost, ethUsdPrice)}
+              {renderFeeValue(bouncebackFee, ethUsdPrice)}
             </span>
           </div>
         </div>
 
         {activityChip}
+
+        <div className={styles.mobileInfoPanel}>
+          <button
+            aria-controls={mobileDetailsIdRef.current}
+            aria-expanded={isDetailsOpen}
+            aria-label="Costs and status"
+            className={styles.mobileInfoSummary}
+            onClick={() => setIsDetailsOpen((currentValue) => !currentValue)}
+            type="button"
+          >
+            <span className={styles.mobileInfoHeading}>Costs and status</span>
+            <span className={styles.mobileInfoSummaryValue}>
+              Fee {mobileFeeSummary} · Last {formatLagAgo(notarizationLagSeconds)}
+            </span>
+            <DisclosureChevron isOpen={isDetailsOpen} />
+          </button>
+
+          {isDetailsOpen ? (
+            <div
+              aria-label="Costs and status details"
+              className={styles.mobileInfoDetails}
+              id={mobileDetailsIdRef.current}
+              role="region"
+            >
+              <div className={styles.mobileInfoDetailRow}>
+                <span>Ethereum → Verus</span>
+                <span className={styles.mobileInfoDetailValue}>{renderFeeValue(directFee, ethUsdPrice)}</span>
+              </div>
+              <div className={styles.mobileInfoDetailRow}>
+                <span>Ethereum → Verus → Ethereum</span>
+                <span className={styles.mobileInfoDetailValue}>{renderFeeValue(bouncebackFee, ethUsdPrice)}</span>
+              </div>
+
+              {notarizationTooltipDetails ? (
+                <>
+                  <div className={styles.mobileInfoDivider} />
+                  {notarizationTooltipDetails.stats.map(({ label, value }) => (
+                    <div className={styles.mobileInfoDetailRow} key={label}>
+                      <span>{label}</span>
+                      <strong>{value}</strong>
+                    </div>
+                  ))}
+                  <p className={styles.mobileInfoNote}>{notarizationTooltipDetails.note}</p>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
