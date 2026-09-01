@@ -678,16 +678,18 @@
 }
 
 .mobileInfoHeading {
-  color: var(--theme-text-strong);
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--theme-text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .mobileInfoSummaryValue {
   min-width: 0;
   overflow: hidden;
-  color: var(--theme-text-muted);
-  font-size: 11px;
+  color: var(--theme-text-strong);
+  font-size: 12px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
