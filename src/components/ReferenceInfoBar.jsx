@@ -287,7 +287,7 @@ const ReferenceInfoBar = ({
           >
             <span className={styles.mobileInfoHeading}>Costs and status</span>
             <span className={styles.mobileInfoSummaryValue}>
-              Fee {mobileFeeSummary} · Last {formatLagAgo(notarizationLagSeconds)}
+              Fee {mobileFeeSummary} · Notarized {formatLagAgo(notarizationLagSeconds)}
             </span>
             <DisclosureChevron isOpen={isDetailsOpen} />
           </button>

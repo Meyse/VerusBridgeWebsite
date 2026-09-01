@@ -89,6 +89,8 @@ describe('ReferenceInfoBar', () => {
     const disclosureButton = screen.getByRole('button', { name: /costs and status/i });
 
     expect(disclosureButton).toHaveAttribute('aria-expanded', 'false');
+    expect(disclosureButton).toHaveTextContent('Notarized ~2h 1m ago');
+    expect(disclosureButton).not.toHaveTextContent(/\bLast\b/);
     expect(screen.queryByRole('region', { name: /costs and status details/i })).not.toBeInTheDocument();
 
     fireEvent.click(disclosureButton);

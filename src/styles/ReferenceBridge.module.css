@@ -689,7 +689,7 @@
   overflow: hidden;
   color: var(--theme-text-strong);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1860,11 +1860,14 @@
 }
 
 .currencyOptionName {
+  overflow: hidden;
   color: var(--theme-text-strong);
   font-size: 15px;
   line-height: 1.15;
   font-weight: 500;
   letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .currencyOptionMeta {
@@ -2943,9 +2946,10 @@ a.currencyOptionAddress:focus-visible {
 
   .modalCard {
     max-width: none;
+    height: min(70vh, 36rem);
     padding: 14px 12px;
     border-radius: 22px 22px 20px 20px;
-    min-height: min(22rem, 80vh);
+    min-height: min(22rem, 70vh);
     max-height: min(80vh, 36rem);
   }
 
@@ -3042,6 +3046,10 @@ a.currencyOptionAddress:focus-visible {
 }
 
 @media (max-width: 380px) {
+  .mobileInfoSummaryValue {
+    font-size: 11px;
+  }
+
   .selectorButton {
     gap: 6px;
     padding-right: 10px;
