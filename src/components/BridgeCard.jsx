@@ -18,6 +18,20 @@ import styles from '../styles/ReferenceBridge.module.css';
 
 const joinClassNames = (...classNames) => classNames.filter(Boolean).join(' ');
 
+const getAmountSizeClassName = (value = '') => {
+  const characterCount = String(value).replace(/^[~+-]/, '').length;
+
+  if (characterCount >= 17) {
+    return styles.amountInputCompact;
+  }
+
+  if (characterCount >= 12) {
+    return styles.amountInputMedium;
+  }
+
+  return '';
+};
+
 const ChevronIcon = ({ primary = false }) => (
   <img
     alt="Open currency selector"
@@ -122,12 +136,12 @@ const ButtonSpinner = () => (
 
 const createPopoverId = (prefix) => `${prefix}-popover-${Math.random().toString(36).slice(2, 10)}`;
 
-const ActivityPopover = ({ ariaLabel, className, id, lines }) => (
+const ActivityPopover = ({ ariaLabel, className, id, lines, role = 'dialog' }) => (
   <div
     aria-label={ariaLabel}
     className={joinClassNames(styles.activityPopover, className)}
     id={id}
-    role="dialog"
+    role={role}
   >
     {lines.map((line) => (
       <div className={styles.activityPopoverLine} key={line}>
@@ -135,6 +149,20 @@ const ActivityPopover = ({ ariaLabel, className, id, lines }) => (
       </div>
     ))}
   </div>
+);
+
+const InfoToggleButton = ({ buttonAriaLabel, isOpen, onToggle, popoverId, role = 'dialog' }) => (
+  <button
+    aria-controls={isOpen ? popoverId : undefined}
+    aria-expanded={isOpen}
+    aria-haspopup={role === 'dialog' ? 'dialog' : undefined}
+    aria-label={buttonAriaLabel}
+    className={styles.activityInfoButton}
+    onClick={onToggle}
+    type="button"
+  >
+    <InfoIcon />
+  </button>
 );
 
 const InfoPopoverButton = ({
@@ -149,17 +177,12 @@ const InfoPopoverButton = ({
   wrapperRef
 }) => (
   <span className={wrapperClassName} ref={wrapperRef}>
-    <button
-      aria-controls={isOpen ? popoverId : undefined}
-      aria-expanded={isOpen}
-      aria-haspopup="dialog"
-      aria-label={buttonAriaLabel}
-      className={styles.activityInfoButton}
-      onClick={onToggle}
-      type="button"
-    >
-      <InfoIcon />
-    </button>
+    <InfoToggleButton
+      buttonAriaLabel={buttonAriaLabel}
+      isOpen={isOpen}
+      onToggle={onToggle}
+      popoverId={popoverId}
+    />
 
     {isOpen ? (
       <ActivityPopover
@@ -870,6 +893,10 @@ const BridgeCard = ({ controller }) => {
   };
   const liveReceiveAmountDisplay = formatReceiveAmount(receiveAmountDisplay);
   const reviewReceiveAmountText = formatReceiveAmount(reviewReceiveAmountDisplay);
+  const sendAmountSizeClassName = getAmountSizeClassName(controller.amount);
+  const receiveAmountSizeClassName = getAmountSizeClassName(
+    shouldShowReceiveAmount ? liveReceiveAmountDisplay : ''
+  );
   const receiveLabel = isConversionReceiveEstimate ? 'You receive (estimated)' : 'You receive';
   const reviewWarnings = [
     conversionWarningMessage ? {
@@ -884,19 +911,28 @@ const BridgeCard = ({ controller }) => {
     } : null
   ].filter(Boolean);
   const receiveLabelHeader = (
-    <div className={styles.selectorLabelRow}>
-      <span className={styles.selectorLabel}>{receiveLabel}</span>
-      {isConversionReceiveEstimate ? (
-        <InfoPopoverButton
-          buttonAriaLabel="Show estimated receive details"
-          dialogAriaLabel="Estimated receive details"
-          dialogClassName={styles.selectorLabelPopover}
-          isOpen={isReceiveEstimateInfoOpen}
+    <div className={styles.selectorLabelDisclosure} ref={receiveEstimateInfoRef}>
+      <div className={styles.selectorLabelRow}>
+        <span className={styles.selectorLabel}>{receiveLabel}</span>
+        {isConversionReceiveEstimate ? (
+          <span className={styles.selectorLabelInfo}>
+            <InfoToggleButton
+              buttonAriaLabel="Show estimated receive details"
+              isOpen={isReceiveEstimateInfoOpen}
+              onToggle={() => toggleInfoPopover(INFO_POPOVER_KEYS.receiveEstimate)}
+              popoverId={receiveEstimatePopoverIdRef.current}
+              role="region"
+            />
+          </span>
+        ) : null}
+      </div>
+      {isConversionReceiveEstimate && isReceiveEstimateInfoOpen ? (
+        <ActivityPopover
+          ariaLabel="Estimated receive details"
+          className={styles.selectorLabelPopover}
+          id={receiveEstimatePopoverIdRef.current}
           lines={RECEIVE_ESTIMATE_TOOLTIP_LINES}
-          onToggle={() => toggleInfoPopover(INFO_POPOVER_KEYS.receiveEstimate)}
-          popoverId={receiveEstimatePopoverIdRef.current}
-          wrapperClassName={styles.selectorLabelInfo}
-          wrapperRef={receiveEstimateInfoRef}
+          role="region"
         />
       ) : null}
     </div>
@@ -920,7 +956,7 @@ const BridgeCard = ({ controller }) => {
 
   const submitState = useMemo(() => {
     if (!controller.isWalletConnected) {
-      return { disabled: true, label: 'Connect your wallet' };
+      return { disabled: false, label: 'Connect your wallet' };
     }
 
     if (!controller.selectedToken) {
@@ -1006,6 +1042,11 @@ const BridgeCard = ({ controller }) => {
         id="bridge-interface"
         onSubmit={(event) => {
           event.preventDefault();
+
+          if (!controller.isWalletConnected) {
+            controller.connectWallet?.();
+            return;
+          }
 
           if (isReviewing) {
             controller.handleSubmit();
@@ -1182,10 +1223,17 @@ const BridgeCard = ({ controller }) => {
                     ) : null}
                   </div>
 
-                  <div className={styles.selectorRow}>
+                  <div className={joinClassNames(
+                    styles.selectorRow,
+                    sendAmountSizeClassName ? styles.selectorRowStacked : ''
+                  )}>
                     <div className={styles.selectorInputWrap}>
                       <input
-                        className={styles.amountInput}
+                        aria-label="Amount to send"
+                        className={joinClassNames(
+                          styles.amountInput,
+                          sendAmountSizeClassName
+                        )}
                         inputMode="decimal"
                         onChange={(event) => controller.setAmount(event.target.value)}
                         placeholder="0.00"
@@ -1248,12 +1296,21 @@ const BridgeCard = ({ controller }) => {
                     {receiveLabelHeader}
                   </div>
 
-                  <div className={styles.selectorRow}>
+                  <div className={joinClassNames(
+                    styles.selectorRow,
+                    receiveAmountSizeClassName ? styles.selectorRowStacked : ''
+                  )}>
                     <div className={styles.selectorInputWrap}>
                       <input
-                        className={`${styles.amountInput} ${styles.amountInputDisabled}`}
+                        aria-label="Estimated amount to receive"
+                        className={joinClassNames(
+                          styles.amountInput,
+                          styles.amountInputDisabled,
+                          receiveAmountSizeClassName
+                        )}
                         disabled
                         placeholder="0.00"
+                        title={shouldShowReceiveAmount ? liveReceiveAmountDisplay : undefined}
                         type="text"
                         value={shouldShowReceiveAmount ? liveReceiveAmountDisplay : ''}
                       />

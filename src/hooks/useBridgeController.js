@@ -9,6 +9,7 @@ import { VerusdRpcInterface } from 'utils/verusdRpc';
 import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import ERC20_ABI from 'abis/ERC20Abi.json';
 import { useToast } from 'components/Toast/ToastProvider';
+import { injectedConnector } from 'connectors/injectedConnector';
 import {
   BLOCKCHAIN_NAME,
   DELEGATOR_ADD,
@@ -51,6 +52,7 @@ import {
 import { coinsToSats, isETHAddress, uint64ToVerusFloat, validateAddress } from 'utils/rules';
 import { getConfigOptions } from 'utils/txConfig';
 import { resolveVerusDestination } from 'utils/verusDestination';
+import { clearInjectedWalletAutoConnectSuppression } from 'utils/walletConnection';
 import {
   assertBridgeTransactionContext,
   isExpectedWalletChain
@@ -1089,7 +1091,7 @@ export default function useBridgeController({
   const [notarizationLagSeconds, setNotarizationLagSeconds] = useState(null);
   const [verusChainHeight, setVerusChainHeight] = useState(null);
   const [verusTipHeight, setVerusTipHeight] = useState(null);
-  const { account, chainId, library } = useWeb3React();
+  const { account, activate, chainId, library } = useWeb3React();
   const { addToast } = useToast();
   const delegatorContract = useContract(DELEGATOR_ADD, DELEGATOR_ABI);
   const {
@@ -2551,6 +2553,15 @@ export default function useBridgeController({
     setSourceCatalogRetryNonce((currentValue) => currentValue + 1);
   }, []);
 
+  const connectWallet = useCallback(async () => {
+    try {
+      await activate(injectedConnector);
+      clearInjectedWalletAutoConnectSuppression();
+    } catch (connectError) {
+      // web3-react exposes the connector error for the shared header notice.
+    }
+  }, [activate]);
+
   return {
     account,
     address,
@@ -2570,6 +2581,7 @@ export default function useBridgeController({
     canSubmit: !submitDisabledReason && !isRefundSignaturePending && !isTxPending,
     canConfirmReview,
     closeReview,
+    connectWallet,
     conversionWarningGapPercent: conversionWarning.conversionWarningGapPercent,
     conversionWarningKind: conversionWarning.conversionWarningKind,
     conversionWarningMessage: conversionWarning.conversionWarningMessage,
