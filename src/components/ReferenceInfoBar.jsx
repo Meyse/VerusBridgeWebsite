@@ -187,7 +187,7 @@ const ReferenceInfoBar = ({
 
   const activityChip = (
     <div className={`${styles.infoChip} ${styles.activityChip}`}>
-      <span className={styles.activityLabel}>Last confirmed bridge notarization:</span>
+      <span className={styles.activityLabel}>Last notarization confirmed on {ETHEREUM_BLOCKCHAIN_NAME}:</span>
       <div className={styles.activityValueRow}>
         <span className={styles.activityValue}>{formatLagAgo(notarizationLagSeconds)}</span>
         {notarizationTooltipDetails ? (

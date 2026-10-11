@@ -146,11 +146,11 @@ describe('BridgeActivity', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Notarizations 12' }));
     const notarizationPanel = screen.getByRole('tabpanel');
-    expect(within(notarizationPanel).getAllByText(/^(Pending|Confirmed)$/)).toHaveLength(10);
+    expect(within(notarizationPanel).getAllByText(new RegExp(`^(Pending|Confirmed on ${BLOCKCHAIN_NAME})$`))).toHaveLength(10);
 
     fireEvent.click(within(notarizationPanel).getByRole('button', { name: 'Show 2 more' }));
-    expect(within(notarizationPanel).getAllByText(/^(Pending|Confirmed)$/)).toHaveLength(12);
-    expect(within(notarizationPanel).getAllByText('Confirmed')).toHaveLength(1);
+    expect(within(notarizationPanel).getAllByText(new RegExp(`^(Pending|Confirmed on ${BLOCKCHAIN_NAME})$`))).toHaveLength(12);
+    expect(within(notarizationPanel).getAllByText(`Confirmed on ${BLOCKCHAIN_NAME}`)).toHaveLength(1);
   });
 
   test('keeps the loaded chain visible when the other fails and retries only the failed source', async () => {

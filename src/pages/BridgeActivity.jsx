@@ -257,7 +257,7 @@ const NotarizationRow = ({ blockTimes, notarization }) => {
         </p>
         <p className={styles.rowDetail}>
           <span className={isConfirmed ? styles.statusConfirmed : styles.statusPending}>
-            {isConfirmed ? 'Confirmed' : 'Pending'}
+            {isConfirmed ? `Confirmed on ${BLOCKCHAIN_NAME}` : 'Pending'}
           </span>
         </p>
       </div>

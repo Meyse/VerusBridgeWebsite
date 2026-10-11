@@ -2,7 +2,7 @@ import React from 'react';
 
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import { TESTNET } from 'constants/contractAddress';
+import { ETHEREUM_BLOCKCHAIN_NAME, TESTNET } from 'constants/contractAddress';
 
 import ReferenceInfoBar from './ReferenceInfoBar';
 
@@ -48,7 +48,7 @@ describe('ReferenceInfoBar', () => {
 
     expect(screen.getByText('~2h 1m ago')).toBeInTheDocument();
 
-    const activityChip = screen.getByText(/last confirmed bridge notarization:/i).closest('div');
+    const activityChip = screen.getByText(`Last notarization confirmed on ${ETHEREUM_BLOCKCHAIN_NAME}:`).closest('div');
     const toggleButton = screen.getByRole('button', {
       name: /show bridge notarization details/i
     });
