@@ -6,6 +6,7 @@ export const TESTNET = BRIDGE_DEPLOYMENT.isTestnet;
 export const ETHEREUM_BLOCKCHAIN_NAME = BRIDGE_DEPLOYMENT.ethereumBlockchainName;
 export const EXPECTED_ETHEREUM_CHAIN_ID = BRIDGE_DEPLOYMENT.ethereumChainId;
 export const VERUS_RPC_URL = BRIDGE_DEPLOYMENT.verusRpcUrl;
+export const VERUS_EXPLORER_URL = BRIDGE_DEPLOYMENT.verusExplorerUrl;
 
 export const BLOCKCHAIN_NAME = BRIDGE_DEPLOYMENT.verusBlockchainName;
 export const ETHEREUM_NATIVE_ASSET_NAME = TESTNET

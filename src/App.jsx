@@ -9,7 +9,9 @@ import {
 
 import ToastProvider from 'components/Toast/ToastProvider';
 import RouteMetadata from 'components/RouteMetadata';
+import { TESTNET } from 'constants/contractAddress';
 
+import BridgeActivity from './pages/BridgeActivity';
 import BridgeHomePage from './pages/BridgeHomePage';
 import Claim from './pages/Claim';
 import NFT from './pages/NFT';
@@ -230,7 +232,11 @@ const router = createBrowserRouter([
   {
     path: "/nft",
     element: <><RouteMetadata /><NFT /></>
-  }
+  },
+  ...(TESTNET ? [{
+    path: "/activity",
+    element: <><RouteMetadata /><BridgeActivity /></>
+  }] : [])
 ]);
 
 function App() {

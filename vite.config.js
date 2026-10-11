@@ -38,8 +38,8 @@ const legacyEnvironmentKeys = [
 
 export default defineConfig(({ mode }) => {
   const bridgeEnvironment = mode === 'test' ? 'mainnet' : mode;
-  if (!['mainnet', 'testnet'].includes(bridgeEnvironment)) {
-    throw new Error(`Use the explicit mainnet or testnet Vite mode, not "${mode}".`);
+  if (!['mainnet', 'testnet', 'ptest'].includes(bridgeEnvironment)) {
+    throw new Error(`Use the explicit mainnet, testnet, or ptest Vite mode, not "${mode}".`);
   }
 
   const environment = loadEnv(mode, projectRoot, 'REACT_APP_');

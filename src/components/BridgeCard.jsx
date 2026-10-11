@@ -955,6 +955,10 @@ const BridgeCard = ({ controller }) => {
   );
 
   const submitState = useMemo(() => {
+    if (controller.isBridgePaused) {
+      return { disabled: true, label: 'Bridge paused' };
+    }
+
     if (!controller.isWalletConnected) {
       return { disabled: false, label: 'Connect your wallet' };
     }
@@ -1010,6 +1014,7 @@ const BridgeCard = ({ controller }) => {
   }, [
     controller.canSubmit,
     controller.hasFreshReceiveQuote,
+    controller.isBridgePaused,
     controller.isRefundSignaturePending,
     controller.isTxPending,
     controller.isWalletConnected,

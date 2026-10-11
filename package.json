@@ -42,15 +42,17 @@
   "scripts": {
     "start": "vite --host localhost --mode mainnet",
     "start:testnet": "vite --host localhost --mode testnet",
+    "start:ptest": "vite --host localhost --mode ptest",
     "build": "vite build --mode mainnet",
     "build:testnet": "vite build --mode testnet",
+    "build:ptest": "vite build --mode ptest",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
-    "test:testnet": "vitest run src/components/ReferenceInfoBar.test.jsx src/components/ReferenceTrustlessSection.test.jsx src/components/SiteHeader.test.jsx src/hooks/useBridgeController.test.jsx src/hooks/useClaimController.test.jsx src/pages/BridgeHomePage.test.jsx src/pages/Claim.test.jsx src/pages/NFT.test.jsx src/utils/bridgeUi.test.js --mode testnet",
+    "test:testnet": "vitest run src/components/ReferenceInfoBar.test.jsx src/components/ReferenceTrustlessSection.test.jsx src/components/SiteHeader.test.jsx src/hooks/useBridgeController.test.jsx src/hooks/useClaimController.test.jsx src/pages/BridgeActivity.test.jsx src/pages/BridgeHomePage.test.jsx src/pages/Claim.test.jsx src/pages/NFT.test.jsx src/utils/bridgeUi.test.js --mode testnet",
     "test:watch": "vitest",
     "preview": "vite preview --host localhost --mode mainnet",
     "audit:ci": "pnpm audit --audit-level=moderate",
-    "verify": "pnpm lint && pnpm test && pnpm test:testnet && pnpm build && pnpm build:testnet && pnpm run audit:ci"
+    "verify": "pnpm lint && pnpm test && pnpm test:testnet && pnpm build && pnpm build:testnet && pnpm build:ptest && pnpm run audit:ci"
   },
   "browserslist": {
     "production": [

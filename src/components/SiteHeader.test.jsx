@@ -165,6 +165,29 @@ describe('SiteHeader wallet interactions', () => {
     expect(within(navigation).queryByRole('link', {
       name: TESTNET ? 'Refunds & earnings' : 'Refunds'
     })).not.toBeInTheDocument();
+
+    if (TESTNET) {
+      expect(within(navigation).getByRole('link', { name: 'Activity' })).toHaveAttribute('href', '/activity');
+    } else {
+      expect(within(navigation).queryByRole('link', { name: 'Activity' })).not.toBeInTheDocument();
+    }
+  });
+
+  test('uses the abbreviated bridge name only for the compact title', () => {
+    useWeb3React.mockReturnValue({
+      account: null,
+      activate: vi.fn(),
+      deactivate: vi.fn(),
+      error: null
+    });
+
+    renderHeader();
+
+    const titleLink = screen.getByRole('link', { name: 'Verus-Ethereum Bridge' });
+
+    expect(within(titleLink).getByText('Verus-Ethereum Bridge')).toHaveClass(styles.headerTitleFull);
+    expect(within(titleLink).getByText('Verus-ETH Bridge')).toHaveClass(styles.headerTitleCompact);
+    expect(within(titleLink).queryByText('Verus Bridge')).not.toBeInTheDocument();
   });
 
   test('shows the persistent testnet boundary only for the testnet build', () => {

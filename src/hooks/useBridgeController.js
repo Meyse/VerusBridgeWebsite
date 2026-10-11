@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useWeb3React } from '@web3-react/core';
 import BigNumber from 'bignumber.js';
@@ -18,7 +18,6 @@ import {
   ETH_FEES,
   GLOBAL_ADDRESS,
   GLOBAL_IADDRESS,
-  HEIGHT_LOCATION_IN_FORKS,
   TESTNET,
   VERUS_BLOCKCHAIN_DISPLAY_NAME,
   VERUS_RPC_URL
@@ -26,6 +25,7 @@ import {
 import useContract from 'hooks/useContract';
 import { useVerusDestinationResolution } from 'hooks/useVerusDestinationResolution';
 import { toBase58Check } from 'utils/verusAddress';
+import { parseNotarizationHeight } from 'utils/bridgeActivity';
 import { BN, fromWei, toBN, toWei } from 'utils/ethereumUnits';
 import {
   buildDestinationCurrency,
@@ -63,6 +63,9 @@ const maxGas2 = 100000;
 const BRIDGE_STATUS_POLL_INTERVAL_MS = 60_000;
 const BRIDGE_STATUS_RETRY_INTERVAL_MS = 5_000;
 const BRIDGE_STATUS_RPC_TIMEOUT_MS = 8_000;
+// The contract keeps its halt gate flags in claimableFees under VDXF_DISABLE_CONTRACT_KEY.
+const BRIDGE_HALT_FLAGS_KEY = '0x000000000000000000000000b024b1e290c833d9c5703ef6184a7c84e7ddd335';
+const HALT_SEND_TRANSFERS_FLAG = 4;
 const INTERNAL_PRICE_POLL_INTERVAL_MS = 60_000;
 const ESTIMATED_VERUS_BLOCK_TIME_SECONDS = 60;
 const FLAG_DEST_GATEWAY = 128;
@@ -133,17 +136,14 @@ const toFiniteNumber = (value) => {
   return Number.isFinite(parsedValue) ? parsedValue : null;
 };
 
-const parseNotarizationHeight = (forksData) => {
-  if (typeof forksData !== 'string') {
-    return 1;
-  }
-
-  const parsedHeight = toFiniteNumber(parseInt(`0x${forksData.substring(HEIGHT_LOCATION_IN_FORKS, HEIGHT_LOCATION_IN_FORKS + 8)}`, 16));
-  return parsedHeight && parsedHeight > 1 ? parsedHeight : 1;
+const isSendTransferHalted = (haltFlags) => {
+  const flags = toFiniteNumber(haltFlags?.toString());
+  return flags !== null && (flags & HALT_SEND_TRANSFERS_FLAG) !== 0;
 };
 
+// The public Verus APIs reject getblock calls that pass a verbosity; the default (1) includes `time`.
 const getBlockTime = async (height) => {
-  const response = await verusd.getBlock(`${height}`, 1);
+  const response = await verusd.getBlock(`${height}`);
   const blockInfo = response?.result;
 
   if (typeof blockInfo !== 'object' || blockInfo === null) {
@@ -1091,6 +1091,7 @@ export default function useBridgeController({
   const [notarizationLagSeconds, setNotarizationLagSeconds] = useState(null);
   const [verusChainHeight, setVerusChainHeight] = useState(null);
   const [verusTipHeight, setVerusTipHeight] = useState(null);
+  const [isBridgePaused, setIsBridgePaused] = useState(false);
   const { account, activate, chainId, library } = useWeb3React();
   const { addToast } = useToast();
   const delegatorContract = useContract(DELEGATOR_ADD, DELEGATOR_ABI);
@@ -1510,7 +1511,10 @@ export default function useBridgeController({
     return nativeBalanceWei.gte(requiredNativeEthWei);
   }, [account, nativeEthBalanceRaw, requiredNativeEthWei]);
 
-  useEffect(() => {
+  // Correct the selection in the same commit that made it invalid. A passive
+  // effect can run after a newer click and overwrite that choice with a decision
+  // made from the older render.
+  useLayoutEffect(() => {
     if (destinationOptions.length === 1) {
       const onlyDestination = destinationOptions[0].value;
 
@@ -1526,7 +1530,7 @@ export default function useBridgeController({
     }
   }, [destination, destinationOptions]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const nextSelectedToken = getPreferredSourceToken(tokenOptions, selectedToken);
 
     if (nextSelectedToken !== selectedToken) {
@@ -1692,9 +1696,10 @@ export default function useBridgeController({
         return;
       }
 
-      const [forksResult, chainInfoResult] = await Promise.all([
+      const [forksResult, chainInfoResult, haltFlagsResult] = await Promise.all([
         loadBridgeStatusValue(() => delegatorContract.callStatic.bestForks(0), timeoutIds),
-        loadBridgeStatusValue(() => verusd.getInfo(), timeoutIds)
+        loadBridgeStatusValue(() => verusd.getInfo(), timeoutIds),
+        loadBridgeStatusValue(() => delegatorContract.callStatic.claimableFees(BRIDGE_HALT_FLAGS_KEY), timeoutIds)
       ]);
 
       const nextVerusChainHeight = forksResult.status === 'fulfilled'
@@ -1737,6 +1742,11 @@ export default function useBridgeController({
         setVerusTipHeight(hasNextVerusTipHeight ? nextVerusTipHeight : null);
         setNotarizationLagBlocks(hasNextLagBlocks ? nextLagBlocks : null);
         setNotarizationLagSeconds(hasNextLagSeconds ? nextLagSeconds : null);
+
+        // A failed read keeps the last known state so a slow RPC does not block sends.
+        if (haltFlagsResult.status === 'fulfilled') {
+          setIsBridgePaused(isSendTransferHalted(haltFlagsResult.value));
+        }
 
         if (hasNextVerusChainHeight && hasNextLagSeconds) {
           if (retryTimeoutId !== null) {
@@ -2223,6 +2233,10 @@ export default function useBridgeController({
   };
 
   const handleSubmit = async () => {
+    if (isBridgePaused) {
+      return;
+    }
+
     if (isReviewing && reviewSnapshot?.editSignature !== editSignature) {
       setReviewSnapshot(null);
       if (typeof exitReview === 'function') {
@@ -2366,6 +2380,10 @@ export default function useBridgeController({
   };
 
   const submitDisabledReason = useMemo(() => {
+    if (isBridgePaused) {
+      return 'Bridge paused';
+    }
+
     if (!account) {
       return 'Connect wallet in header';
     }
@@ -2422,6 +2440,7 @@ export default function useBridgeController({
     hasFreshReceiveQuote,
     displayAddressError,
     isAddressResolving,
+    isBridgePaused,
     requiresLiveGasEstimate,
     requiresReceiveQuote,
     selectedToken
@@ -2455,6 +2474,10 @@ export default function useBridgeController({
 
   const openReview = useCallback(async () => {
     const requestedEditSignature = editSignature;
+
+    if (isBridgePaused) {
+      return;
+    }
 
     if (!(await validateTransferInputs())) {
       return;
@@ -2513,6 +2536,7 @@ export default function useBridgeController({
     editSignature,
     gasPrice,
     hasFreshReceiveQuote,
+    isBridgePaused,
     isIdentityDestination,
     ensureRefundAddressSignature,
     needsRefundAddressSignature,
@@ -2603,6 +2627,7 @@ export default function useBridgeController({
     hasEnoughNativeEth,
     isRefundSignaturePending,
     isAddressResolving,
+    isBridgePaused,
     isReviewing,
     isSourceCatalogLoading,
     isSourceCurrenciesLoading: isWalletBalancesLoading,

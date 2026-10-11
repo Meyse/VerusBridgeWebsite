@@ -12,6 +12,34 @@
   isolation: isolate;
 }
 
+.heroDecor {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.heroToken {
+  position: absolute;
+  width: min(var(--hero-token-size, 96px), 20vw);
+  height: min(var(--hero-token-size, 96px), 20vw);
+  opacity: var(--hero-token-opacity, 0.35);
+  filter: blur(var(--hero-token-blur, 12px)) saturate(0.92);
+  transform: translate3d(0, 0, 0) rotate(var(--hero-token-rotate, 0deg));
+  transform-origin: center;
+  will-change: transform;
+  animation: heroTokenFloat var(--hero-token-duration, 18s) ease-in-out infinite alternate;
+}
+
+.heroToken img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  user-select: none;
+}
+
 .header {
   width: 100%;
   padding: 6px 0;
@@ -2744,6 +2772,32 @@ a.currencyOptionAddress:focus-visible {
 
   .scrollIndicatorWrap {
     display: flex;
+  }
+}
+
+/* Tablets leave too little room beside the bridge card, so the tokens are desktop-only. */
+@media (min-width: 1024px) {
+  .heroDecor {
+    display: block;
+  }
+}
+
+@keyframes heroTokenFloat {
+  from {
+    transform: translate3d(0, 0, 0) rotate(var(--hero-token-rotate, 0deg)) scale(1);
+  }
+
+  to {
+    transform:
+      translate3d(var(--hero-token-shift-x, 12px), var(--hero-token-shift-y, -10px), 0)
+      rotate(calc(var(--hero-token-rotate, 0deg) + 6deg))
+      scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroToken {
+    animation: none;
   }
 }
 

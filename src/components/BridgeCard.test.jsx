@@ -144,6 +144,22 @@ describe('BridgeCard currency selectors', () => {
     expect(connectWallet).toHaveBeenCalledTimes(1);
   });
 
+  test('disables the primary CTA while the bridge is paused', () => {
+    render(
+      <BridgeCard
+        controller={createController({
+          amount: '1',
+          address: 'iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv',
+          isBridgePaused: true,
+          isWalletConnected: true,
+          selectedDestination: { value: 'VRSC' }
+        })}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'Bridge paused' })).toBeDisabled();
+  });
+
   test('shows Estimating... and disables Review while a conversion quote is pending', () => {
     render(
       <BridgeCard

@@ -1,29 +1,37 @@
-import {
-  TESTNET_DELEGATOR_ADDRESS,
-  TESTNET_VERUS_RPC_URL,
-  createBridgeDeployment
-} from './bridgeDeployment';
+import { createBridgeDeployment } from './bridgeDeployment';
 
 describe('bridge deployment profile', () => {
-  test('pins the complete testnet deployment to Sepolia and VRSCTEST', () => {
-    const deployment = createBridgeDeployment('testnet', {
-      REACT_APP_DELEGATOR_CONTRACT: '0x0000000000000000000000000000000000000001',
-      REACT_APP_MAINNET_SITE_URL: 'https://mainnet.example/',
-      REACT_APP_RPC_URL_MAINNET: 'https://mainnet.example',
-      REACT_APP_RPC_URL_SEPOLIA: 'https://sepolia.example',
-      REACT_APP_VERUS_RPC_URL: 'https://mainnet-verus.example'
-    });
+  const configuration = {
+    REACT_APP_DELEGATOR_CONTRACT: '0x0000000000000000000000000000000000000001',
+    REACT_APP_MAINNET_SITE_URL: 'https://mainnet.example/',
+    REACT_APP_RPC_URL_MAINNET: 'https://mainnet.example',
+    REACT_APP_RPC_URL_SEPOLIA: 'https://sepolia.example',
+    REACT_APP_VERUS_RPC_URL: 'https://mainnet-verus.example'
+  };
+
+  test.each([
+    ['testnet', '0xCaA98A4eC79dAC8A06Cb3BfDcF5351b6576d939f', 'https://api.verustest.net', 'https://testex.verus.io'],
+    // testex.verus.io indexes the public VRSCTEST chain, not ptest.
+    ['ptest', '0x98f58684b05E7d40719E61955015aF91eF7e77d3', 'https://ptestapi.verustest.net', '']
+  ])('pins the complete %s deployment to Sepolia and VRSCTEST', (
+    environment,
+    delegatorAddress,
+    verusRpcUrl,
+    verusExplorerUrl
+  ) => {
+    const deployment = createBridgeDeployment(environment, configuration);
 
     expect(deployment).toEqual({
       alternateSiteUrl: 'https://mainnet.example',
-      delegatorAddress: TESTNET_DELEGATOR_ADDRESS,
-      environment: 'testnet',
+      delegatorAddress,
+      environment,
       ethereumBlockchainName: 'Sepolia',
       ethereumChainId: 11155111,
       ethereumRpcUrl: 'https://sepolia.example',
       isTestnet: true,
       verusBlockchainName: 'VRSCTEST',
-      verusRpcUrl: TESTNET_VERUS_RPC_URL
+      verusExplorerUrl,
+      verusRpcUrl
     });
     expect(Object.isFrozen(deployment)).toBe(true);
   });
@@ -47,6 +55,7 @@ describe('bridge deployment profile', () => {
       ethereumRpcUrl: 'https://mainnet.example',
       isTestnet: false,
       verusBlockchainName: 'VRSC',
+      verusExplorerUrl: 'https://insight.verus.io',
       verusRpcUrl: 'https://verus.example'
     });
   });

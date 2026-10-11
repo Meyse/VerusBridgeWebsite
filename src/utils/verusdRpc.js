@@ -82,6 +82,7 @@ export class VerusdRpcInterface {
   }
 
   estimateConversion(output) {
-    return this.request('estimateconversion', [output]);
+    // The hardened Verus RPC server rejects string amounts. Numbers keep eight decimals exact below 10,000,000.
+    return this.request('estimateconversion', [{ ...output, amount: Number(output.amount) }]);
   }
 }
