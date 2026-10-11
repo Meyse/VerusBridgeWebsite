@@ -51,5 +51,8 @@ jobs:
       - name: Build testnet
         run: pnpm build:testnet
 
+      - name: Build ptest
+        run: pnpm build:ptest
+
       - name: Audit dependencies
         run: pnpm run audit:ci

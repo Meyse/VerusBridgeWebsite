@@ -22,13 +22,19 @@ Copy `.env.example` to `.env` and replace the placeholder RPC project identifier
 
 The values are embedded in the browser bundle. Never put secrets in these variables.
 
-- The command selects an explicit `mainnet` or `testnet` build profile. Network selection is not a runtime toggle.
-- The testnet profile is pinned to Sepolia chain ID `11155111`, delegator `0xCaA98A4eC79dAC8A06Cb3BfDcF5351b6576d939f`, and `https://api.verustest.net` for VRSCTEST.
-- `REACT_APP_RPC_URL_SEPOLIA` provides read-only Sepolia access for the testnet build. `REACT_APP_RPC_URL_MAINNET` provides read-only Ethereum access for mainnet.
+- The command selects an explicit `mainnet`, `testnet`, or `ptest` build profile. Network selection is not a runtime toggle. All profiles build from the same code; do not keep a branch per network.
+- Both testnet profiles are pinned to Sepolia chain ID `11155111` and VRSCTEST:
+
+  | Profile | Delegator | Verus API |
+  | --- | --- | --- |
+  | `testnet` | `0xCaA98A4eC79dAC8A06Cb3BfDcF5351b6576d939f` | `https://api.verustest.net` |
+  | `ptest` | `0x98f58684b05E7d40719E61955015aF91eF7e77d3` | `https://ptestapi.verustest.net` |
+
+- `REACT_APP_RPC_URL_SEPOLIA` provides read-only Sepolia access for both testnet builds. `REACT_APP_RPC_URL_MAINNET` provides read-only Ethereum access for mainnet.
 - `REACT_APP_DELEGATOR_CONTRACT` and `REACT_APP_VERUS_RPC_URL` configure only the mainnet profile. Transaction submission fails closed when the wallet is on another chain, the address is invalid, or no contract code exists at that address.
 - `REACT_APP_VERUS_END_BLOCK` retains the existing bridge synchronization configuration.
-- `REACT_APP_MAINNET_SITE_URL` and `REACT_APP_TESTNET_SITE_URL` optionally configure the counterpart deployment used by the header's Mainnet/Testnet switch. Leave the relevant value empty when no counterpart site should be linked.
-- `REACT_APP_SEARCH_INDEXING_ENABLED` defaults to `false`. Local, community-review, and testnet builds must keep it disabled.
+- `REACT_APP_MAINNET_SITE_URL` and `REACT_APP_TESTNET_SITE_URL` optionally configure the counterpart deployment used by the header's Mainnet/Testnet switch. Testnet and ptest builds link to `REACT_APP_MAINNET_SITE_URL`; the mainnet build links to `REACT_APP_TESTNET_SITE_URL`. Leave the relevant value empty when no counterpart site should be linked.
+- `REACT_APP_SEARCH_INDEXING_ENABLED` defaults to `false`. Local, community-review, testnet, and ptest builds must keep it disabled.
 - `REACT_APP_PUBLIC_SITE_URL` is used only by an explicitly indexable official build. The build rejects indexing for testnet or any origin other than `https://eth.verusbridge.io`.
 
 ## Commands
@@ -36,13 +42,15 @@ The values are embedded in the browser bundle. Never put secrets in these variab
 ```sh
 pnpm start          # mainnet Vite server on http://localhost:5173
 pnpm start:testnet  # Sepolia/VRSCTEST Vite server on http://localhost:5173
+pnpm start:ptest    # Sepolia/ptest VRSCTEST Vite server on http://localhost:5173
 pnpm test           # complete Vitest suite
 pnpm test:watch     # interactive test runner
 pnpm lint           # ESLint with zero warnings
 pnpm build          # mainnet production output in build/
 pnpm build:testnet  # Sepolia/VRSCTEST production output in build/
+pnpm build:ptest    # Sepolia/ptest VRSCTEST production output in build/
 pnpm preview        # serve the production build locally
-pnpm verify         # lint, tests, both production builds, and advisory gate
+pnpm verify         # lint, tests, all three production builds, and advisory gate
 ```
 
 CI uses `pnpm install --frozen-lockfile` and rejects moderate, high, or critical dependency advisories. See `docs/security-modernization-2026-08-27.md` for migration evidence, dependency exceptions, and the remaining low-severity advisory.
@@ -64,9 +72,10 @@ The ordinary build commands fail closed for search indexing:
 ```sh
 pnpm build
 pnpm build:testnet
+pnpm build:ptest
 ```
 
-Both builds emit `noindex, nofollow` metadata, a crawlable `robots.txt` without a sitemap, and no `sitemap.xml`. This is the intended configuration for local previews, community-review deployments, and any other non-official host.
+All three builds emit `noindex, nofollow` metadata, a crawlable `robots.txt` without a sitemap, and no `sitemap.xml`. This is the intended configuration for local previews, community-review deployments, and any other non-official host.
 
 Do not add `Disallow: /` to `robots.txt`: crawlers must be able to fetch the HTML to see `noindex`. As a hosting-level defense in depth, non-official HTML responses may also send:
 
