@@ -1,4 +1,4 @@
-import { getSiteMetadata } from './siteMetadata';
+import { getSiteMetadata, SITE_METADATA } from './siteMetadata';
 
 describe('site metadata', () => {
   test('describes each public route with distinct search metadata', () => {
@@ -18,5 +18,13 @@ describe('site metadata', () => {
       title: 'NFT Bridge | Verus-Ethereum Bridge'
     });
     expect(getSiteMetadata('/unknown')).toBeNull();
+  });
+
+  test('titles the testnet activity route without publishing it in the sitemap list', () => {
+    expect(getSiteMetadata('/activity')).toEqual(expect.objectContaining({
+      pathname: '/activity',
+      title: 'Bridge Activity | Verus-Ethereum Bridge Testnet'
+    }));
+    expect(SITE_METADATA.map(({ pathname }) => pathname)).not.toContain('/activity');
   });
 });

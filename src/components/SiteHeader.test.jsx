@@ -165,6 +165,12 @@ describe('SiteHeader wallet interactions', () => {
     expect(within(navigation).queryByRole('link', {
       name: TESTNET ? 'Refunds & earnings' : 'Refunds'
     })).not.toBeInTheDocument();
+
+    if (TESTNET) {
+      expect(within(navigation).getByRole('link', { name: 'Activity' })).toHaveAttribute('href', '/activity');
+    } else {
+      expect(within(navigation).queryByRole('link', { name: 'Activity' })).not.toBeInTheDocument();
+    }
   });
 
   test('uses the abbreviated bridge name only for the compact title', () => {

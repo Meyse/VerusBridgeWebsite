@@ -18,7 +18,6 @@ import {
   ETH_FEES,
   GLOBAL_ADDRESS,
   GLOBAL_IADDRESS,
-  HEIGHT_LOCATION_IN_FORKS,
   TESTNET,
   VERUS_BLOCKCHAIN_DISPLAY_NAME,
   VERUS_RPC_URL
@@ -26,6 +25,7 @@ import {
 import useContract from 'hooks/useContract';
 import { useVerusDestinationResolution } from 'hooks/useVerusDestinationResolution';
 import { toBase58Check } from 'utils/verusAddress';
+import { parseNotarizationHeight } from 'utils/bridgeActivity';
 import { BN, fromWei, toBN, toWei } from 'utils/ethereumUnits';
 import {
   buildDestinationCurrency,
@@ -131,15 +131,6 @@ const getTokenLabel = (token) => getTokenDisplaySymbol(token) || token?.name || 
 const toFiniteNumber = (value) => {
   const parsedValue = Number(value);
   return Number.isFinite(parsedValue) ? parsedValue : null;
-};
-
-const parseNotarizationHeight = (forksData) => {
-  if (typeof forksData !== 'string') {
-    return 1;
-  }
-
-  const parsedHeight = toFiniteNumber(parseInt(`0x${forksData.substring(HEIGHT_LOCATION_IN_FORKS, HEIGHT_LOCATION_IN_FORKS + 8)}`, 16));
-  return parsedHeight && parsedHeight > 1 ? parsedHeight : 1;
 };
 
 // The public Verus APIs reject getblock calls that pass a verbosity; the default (1) includes `time`.

@@ -16,6 +16,16 @@ const siteMetadataByPathname = Object.freeze({
   })
 });
 
+// Testnet-only routes stay out of SITE_METADATA so the mainnet sitemap and
+// prerendered route documents never list them.
+const testnetSiteMetadataByPathname = Object.freeze({
+  '/activity': Object.freeze({
+    description: 'Review Sepolia and VRSCTEST bridge transfers and notarizations, read from the bridge contract and the Verus testnet API.',
+    pathname: '/activity',
+    title: 'Bridge Activity | Verus-Ethereum Bridge Testnet'
+  })
+});
+
 export const SOCIAL_IMAGE_METADATA = Object.freeze({
   height: 630,
   pathname: '/og/og-image-bridge.png',
@@ -24,4 +34,6 @@ export const SOCIAL_IMAGE_METADATA = Object.freeze({
 
 export const SITE_METADATA = Object.freeze(Object.values(siteMetadataByPathname));
 
-export const getSiteMetadata = (pathname) => siteMetadataByPathname[pathname] || null;
+export const getSiteMetadata = (pathname) => (
+  siteMetadataByPathname[pathname] || testnetSiteMetadataByPathname[pathname] || null
+);

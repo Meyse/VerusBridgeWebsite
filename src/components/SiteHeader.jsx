@@ -43,7 +43,8 @@ import styles from '../styles/ReferenceBridge.module.css';
 const NAV_ITEMS = [
   { id: 'bridge', label: 'Bridge' },
   { id: 'info', label: 'Info' },
-  { id: 'claim', label: TESTNET ? 'Refunds' : 'Refunds & earnings', to: '/claim' }
+  { id: 'claim', label: TESTNET ? 'Refunds' : 'Refunds & earnings', to: '/claim' },
+  ...(TESTNET ? [{ id: 'activity', label: 'Activity', to: '/activity' }] : [])
 ];
 
 const ALTERNATE_BRIDGE = ALTERNATE_BRIDGE_SITE_URL
