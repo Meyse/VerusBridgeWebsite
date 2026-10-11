@@ -36,27 +36,31 @@ describe('Verus JSON-RPC client', () => {
     });
   });
 
-  test('preserves getblock and estimateconversion parameter serialization', async () => {
+  test('serializes getblock and estimateconversion params for the hardened RPC server', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       json: vi.fn().mockResolvedValue({ error: null, id: 0, result: {} }),
       ok: true,
       status: 200
     });
     const client = new VerusdRpcInterface('VRSC', 'https://rpc.example');
-    const conversion = { amount: '1.25', convertto: 'i-destination', currency: 'i-source' };
 
     await client.getBlock('100', 1);
-    await client.estimateConversion(conversion);
+    await client.estimateConversion({
+      amount: '2.29029837',
+      convertto: 'i-destination',
+      currency: 'i-source',
+      via: 'i-via'
+    });
     await client.getIdentity('Max@');
 
     expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({
       method: 'getblock',
       params: ['100', 1]
     });
-    expect(JSON.parse(global.fetch.mock.calls[1][1].body)).toMatchObject({
-      method: 'estimateconversion',
-      params: [conversion]
-    });
+    // The ptest server accepts amount only as a JSON number.
+    expect(global.fetch.mock.calls[1][1].body).toContain(
+      '"params":[{"amount":2.29029837,"convertto":"i-destination","currency":"i-source","via":"i-via"}]'
+    );
     expect(JSON.parse(global.fetch.mock.calls[2][1].body)).toMatchObject({
       method: 'getidentity',
       params: ['Max@']
