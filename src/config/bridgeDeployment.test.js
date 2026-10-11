@@ -10,9 +10,15 @@ describe('bridge deployment profile', () => {
   };
 
   test.each([
-    ['testnet', '0xCaA98A4eC79dAC8A06Cb3BfDcF5351b6576d939f', 'https://api.verustest.net'],
-    ['ptest', '0x98f58684b05E7d40719E61955015aF91eF7e77d3', 'https://ptestapi.verustest.net']
-  ])('pins the complete %s deployment to Sepolia and VRSCTEST', (environment, delegatorAddress, verusRpcUrl) => {
+    ['testnet', '0xCaA98A4eC79dAC8A06Cb3BfDcF5351b6576d939f', 'https://api.verustest.net', 'https://testex.verus.io'],
+    // testex.verus.io indexes the public VRSCTEST chain, not ptest.
+    ['ptest', '0x98f58684b05E7d40719E61955015aF91eF7e77d3', 'https://ptestapi.verustest.net', '']
+  ])('pins the complete %s deployment to Sepolia and VRSCTEST', (
+    environment,
+    delegatorAddress,
+    verusRpcUrl,
+    verusExplorerUrl
+  ) => {
     const deployment = createBridgeDeployment(environment, configuration);
 
     expect(deployment).toEqual({
@@ -24,6 +30,7 @@ describe('bridge deployment profile', () => {
       ethereumRpcUrl: 'https://sepolia.example',
       isTestnet: true,
       verusBlockchainName: 'VRSCTEST',
+      verusExplorerUrl,
       verusRpcUrl
     });
     expect(Object.isFrozen(deployment)).toBe(true);
@@ -48,6 +55,7 @@ describe('bridge deployment profile', () => {
       ethereumRpcUrl: 'https://mainnet.example',
       isTestnet: false,
       verusBlockchainName: 'VRSC',
+      verusExplorerUrl: 'https://insight.verus.io',
       verusRpcUrl: 'https://verus.example'
     });
   });

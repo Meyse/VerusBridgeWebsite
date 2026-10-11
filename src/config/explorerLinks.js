@@ -3,23 +3,24 @@ import {
   BLOCKCHAIN_NAME,
   ETHEREUM_BLOCKCHAIN_NAME,
   GLOBAL_ADDRESS,
-  TESTNET
+  TESTNET,
+  VERUS_EXPLORER_URL
 } from 'constants/contractAddress';
 import { isAddress } from 'utils/contract';
 
 const ETHERSCAN_BASE_URL = TESTNET ? 'https://sepolia.etherscan.io' : 'https://etherscan.io';
-const VERUS_EXPLORER_BASE_URL = TESTNET ? 'https://testex.verus.io' : 'https://insight.verus.io';
 
 const buildAddressUrl = (address) => (isAddress(address) ? `${ETHERSCAN_BASE_URL}/address/${address}` : null);
 export const getEthereumAddressUrl = buildAddressUrl;
 export const getEthereumBlockUrl = (height) => (
   Number.isInteger(height) && height > 0 ? `${ETHERSCAN_BASE_URL}/block/${height}` : null
 );
+// A profile without a Verus explorer renders plain text instead of links.
 export const getVerusAddressUrl = (address) => (
-  address ? `${VERUS_EXPLORER_BASE_URL}/address/${encodeURIComponent(address)}` : null
+  VERUS_EXPLORER_URL && address ? `${VERUS_EXPLORER_URL}/address/${encodeURIComponent(address)}` : null
 );
 export const getVerusTransactionUrl = (txid) => (
-  /^[0-9a-f]{64}$/i.test(txid || '') ? `${VERUS_EXPLORER_BASE_URL}/tx/${txid}` : null
+  VERUS_EXPLORER_URL && /^[0-9a-f]{64}$/i.test(txid || '') ? `${VERUS_EXPLORER_URL}/tx/${txid}` : null
 );
 export const getTokenExplorerUrl = (address) => (
   isAddress(address) ? `${ETHERSCAN_BASE_URL}/token/${address}` : null
