@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useWeb3React } from '@web3-react/core';
 import { BigNumber } from 'ethers';
 import { useForm } from 'react-hook-form';
@@ -97,9 +97,16 @@ describe('NFT bridge transaction boundaries', () => {
       watch: (name) => values[name]
     });
 
+    // Fake only the VerusID lookup debounce so enabling Send does not race wall-clock time.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     render(<NFTForm />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const sendButton = screen.getByRole('button', { name: 'Send' });
+    expect(sendButton).toBeDisabled();
+
+    await act(() => vi.runOnlyPendingTimersAsync());
+    vi.useRealTimers();
+    expect(sendButton).toBeEnabled();
+    fireEvent.click(sendButton);
 
     await waitFor(() => {
       expect(setApprovalForAll).toHaveBeenCalledTimes(1);
