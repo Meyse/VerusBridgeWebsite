@@ -257,6 +257,13 @@
   font-size: 13px;
 }
 
+/* Text without an explorer page keeps the link's size but not its accent. */
+.unlinked,
+.unlinked:hover {
+  color: inherit;
+  text-decoration: none;
+}
+
 .shortText {
   display: none;
 }

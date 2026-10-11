@@ -82,7 +82,7 @@ const ExternalLinkIcon = () => (
 
 const ExternalLink = ({ children, className, href, label }) => {
   if (!href) {
-    return <span className={className}>{children}</span>;
+    return <span className={`${className} ${styles.unlinked}`}>{children}</span>;
   }
 
   return (
