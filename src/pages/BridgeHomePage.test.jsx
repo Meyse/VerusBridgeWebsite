@@ -146,7 +146,7 @@ describe('BridgeHomePage', () => {
     )).toBeInTheDocument();
   });
 
-  test('keeps the landing hero free of decorative token imagery', () => {
+  test('renders decorative tokens for the landing hero but not the review step', () => {
     useBridgeController.mockImplementation((options = {}) => {
       capturedControllerOptions = options;
       return createController({ hasReviewSnapshot: false, isReviewing: false });
@@ -158,7 +158,9 @@ describe('BridgeHomePage', () => {
       </MemoryRouter>
     );
 
-    expect(screen.queryByTestId('hero-token-decor')).not.toBeInTheDocument();
+    const decor = screen.getByTestId('hero-token-decor');
+    expect(decor).toHaveAttribute('aria-hidden', 'true');
+    expect(decor.querySelectorAll('img')).toHaveLength(8);
 
     useBridgeController.mockImplementation((options = {}) => {
       capturedControllerOptions = options;
