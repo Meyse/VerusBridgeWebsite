@@ -142,8 +142,9 @@ const parseNotarizationHeight = (forksData) => {
   return parsedHeight && parsedHeight > 1 ? parsedHeight : 1;
 };
 
+// The public Verus APIs reject getblock calls that pass a verbosity; the default (1) includes `time`.
 const getBlockTime = async (height) => {
-  const response = await verusd.getBlock(`${height}`, 1);
+  const response = await verusd.getBlock(`${height}`);
   const blockInfo = response?.result;
 
   if (typeof blockInfo !== 'object' || blockInfo === null) {

@@ -1150,6 +1150,53 @@ describe('useBridgeController disconnected source bootstrap', () => {
     }
   });
 
+  test('uses the exact notarization block time from a getblock request without verbosity', async () => {
+    const verusRpcUrl = 'https://rpc.example/';
+    const { VerusdRpcInterface: ActualVerusdRpcInterface } = await vi.importActual('utils/verusdRpc');
+    const verusRpcClient = new ActualVerusdRpcInterface(GLOBAL_IADDRESS.VRSC, verusRpcUrl);
+    const library = createLibrary();
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        bestForks: vi.fn().mockResolvedValue(createBestForksData(98))
+      }
+    });
+
+    // The public Verus APIs answer "Method not found" when getblock receives a verbosity.
+    global.fetch = vi.fn((input, init) => {
+      if (input !== verusRpcUrl) {
+        return new Promise(() => {});
+      }
+
+      const { id, method, params } = JSON.parse(init.body);
+      const body = method === 'getblock' && params.length === 1 && params[0] === '98'
+        ? { error: null, id, result: { height: 98, time: 400 } }
+        : { error: { code: -32601, message: 'Method not found' }, id, result: null };
+
+      return Promise.resolve({ json: async () => body, ok: true, status: 200 });
+    });
+    mockVerusd.getBlock.mockImplementation((...args) => verusRpcClient.getBlock(...args));
+    mockVerusd.getInfo.mockResolvedValue({
+      result: {
+        longestchain: 100,
+        tiptime: 1000
+      }
+    });
+
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: null, library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('notarization-lag-seconds')).toHaveTextContent('600');
+    });
+    expect(screen.getByTestId('notarization-height')).toHaveTextContent('98');
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({
+      method: 'getblock',
+      params: ['98']
+    });
+  });
+
   test('uses internal spot pricing for EURC, scrvUSD, and tBTC, keeps USDT pegged, and leaves unsupported assets unpriced', async () => {
     const library = createLibrary({
       getBalance: vi.fn().mockResolvedValue(utils.parseEther('5'))
