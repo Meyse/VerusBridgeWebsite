@@ -426,7 +426,7 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
               to={bridgeHref}
             >
               <span className={styles.headerTitleFull}>Verus-Ethereum Bridge</span>
-              <span className={styles.headerTitleCompact}>Verus Bridge</span>
+              <span className={styles.headerTitleCompact}>Verus-ETH Bridge</span>
             </Link>
 
             <nav aria-label="Primary" className={styles.headerNav}>
