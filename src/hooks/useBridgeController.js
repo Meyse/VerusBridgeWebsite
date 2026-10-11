@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useWeb3React } from '@web3-react/core';
 import BigNumber from 'bignumber.js';
@@ -1511,7 +1511,10 @@ export default function useBridgeController({
     return nativeBalanceWei.gte(requiredNativeEthWei);
   }, [account, nativeEthBalanceRaw, requiredNativeEthWei]);
 
-  useEffect(() => {
+  // Correct the selection in the same commit that made it invalid. A passive
+  // effect can run after a newer click and overwrite that choice with a decision
+  // made from the older render.
+  useLayoutEffect(() => {
     if (destinationOptions.length === 1) {
       const onlyDestination = destinationOptions[0].value;
 
@@ -1527,7 +1530,7 @@ export default function useBridgeController({
     }
   }, [destination, destinationOptions]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const nextSelectedToken = getPreferredSourceToken(tokenOptions, selectedToken);
 
     if (nextSelectedToken !== selectedToken) {

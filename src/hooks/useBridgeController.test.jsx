@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useWeb3React } from '@web3-react/core';
@@ -510,6 +510,32 @@ const HookProbe = ({ controllerOptions = {} }) => {
   );
 };
 
+const SelectWhenCatalogReadyProbe = () => {
+  const controller = useBridgeController();
+  const hasSelectedRef = useRef(false);
+
+  // Layout effects run inside the commit that finishes the catalog load, before
+  // that commit's passive effects, like a click that lands before React flushes them.
+  useLayoutEffect(() => {
+    if (controller.isSourceCatalogLoading || hasSelectedRef.current) {
+      return;
+    }
+
+    hasSelectedRef.current = true;
+    controller.selectToken(DAI_ADDRESS);
+    controller.selectDestination(BLOCKCHAIN_NAME);
+    controller.setAddress('iMEHwE9yPu5HkVbZ9RRLE6ZZpFfLtu4wLv');
+    controller.setAmount('2');
+  });
+
+  return (
+    <div>
+      <div data-testid="selected-value">{controller.selectedToken?.value || ''}</div>
+      <div data-testid="receive-symbol">{controller.receiveCurrency?.symbol || ''}</div>
+    </div>
+  );
+};
+
 describe('useBridgeController disconnected source bootstrap', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -686,6 +712,23 @@ describe('useBridgeController disconnected source bootstrap', () => {
     expect(screen.getByTestId('selected-value')).toHaveTextContent(ETH_ADDRESS);
     expect(screen.getByTestId('token-flags').textContent).toContain(`${ETH_ADDRESS}:9`);
     expect(screen.getByTestId('token-flags').textContent).toContain(`${DAI_ADDRESS}:12`);
+  });
+
+  test('keeps a token and destination chosen before the catalog commit flushes its effects', async () => {
+    const library = createLibrary({
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('1'))
+    });
+
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
+    useContract.mockReturnValue(createDelegatorContract());
+
+    render(<SelectWhenCatalogReadyProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('receive-symbol')).toHaveTextContent('DAI.vETH');
+    });
+
+    expect(screen.getByTestId('selected-value')).toHaveTextContent(DAI_ADDRESS);
   });
 
   test('retries the source catalog once and keeps seeded ETH available after repeated failures', async () => {
@@ -1074,9 +1117,8 @@ describe('useBridgeController disconnected source bootstrap', () => {
     await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
 
     fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
-    await waitFor(() => expect(screen.getByTestId('review-destination-address')).toHaveTextContent(
-      reviewedIdentityAddress
-    ));
+    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes'));
+    expect(screen.getByTestId('review-destination-address')).toHaveTextContent(reviewedIdentityAddress);
     fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
 
     await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no'));
