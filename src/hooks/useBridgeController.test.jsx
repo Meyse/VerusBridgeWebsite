@@ -2,7 +2,7 @@ import React from 'react';
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useWeb3React } from '@web3-react/core';
-import { Wallet, utils } from 'ethers';
+import { BigNumber, Wallet, utils } from 'ethers';
 
 import { useToast } from 'components/Toast/ToastProvider';
 import {
@@ -575,6 +575,30 @@ describe('useBridgeController disconnected source bootstrap', () => {
       expect(screen.getByTestId('alert-message')).toHaveTextContent('Switch MetaMask');
     });
     expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no');
+  });
+
+  test('blocks review while the bridge contract halts sends', async () => {
+    const library = createLibrary();
+    // Halted bridges report gate flags 6 under the contract's VDXF_DISABLE_CONTRACT_KEY.
+    const claimableFees = vi.fn((key) => Promise.resolve(BigNumber.from(
+      key === '0x000000000000000000000000b024b1e290c833d9c5703ef6184a7c84e7ddd335' ? 6 : 0
+    )));
+
+    useWeb3React.mockReturnValue({ account: '0xabc', chainId: EXPECTED_ETHEREUM_CHAIN_ID, library });
+    useContract.mockReturnValue(createDelegatorContract({
+      callStatic: {
+        bestForks: vi.fn().mockResolvedValue(createBestForksData(98)),
+        claimableFees
+      }
+    }));
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Direct DAI' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('submit-disabled-reason')).toHaveTextContent('Bridge paused');
+    });
+    expect(screen.getByTestId('can-submit')).toHaveTextContent('no');
   });
 
   test('seeds ETH immediately before async source bootstrap completes', () => {
