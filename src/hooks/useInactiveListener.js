@@ -7,6 +7,17 @@ import { useToast } from 'components/Toast/ToastProvider';
 import { injectedConnector } from '../connectors/injectedConnector';
 import { isInjectedWalletAutoConnectSuppressed } from '../utils/walletConnection';
 
+// Brave 1.94+ with a Brave Wallet throws when a page reads `on` from
+// window.ethereum (brave/brave-browser#58890). Skip the listeners there so the
+// error does not unmount the app.
+const canListenToProviderEvents = (ethereum) => {
+  try {
+    return Boolean(ethereum?.on);
+  } catch (error) {
+    return false;
+  }
+};
+
 const useInactiveListener = (suppress = false) => {
   const { active, error, activate } = useWeb3React();
   const { addToast } = useToast();
@@ -16,7 +27,7 @@ const useInactiveListener = (suppress = false) => {
     const { ethereum } = window;
     const autoConnectSuppressed = isInjectedWalletAutoConnectSuppressed();
 
-    if (ethereum && ethereum.on && !active && !error && !suppress && !autoConnectSuppressed) {
+    if (canListenToProviderEvents(ethereum) && !active && !error && !suppress && !autoConnectSuppressed) {
       const handleConnect = () => {
         addToast({ type: 'info', description: 'connected to wallet'});
         activate(injectedConnector);
