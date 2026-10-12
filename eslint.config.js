@@ -4,7 +4,7 @@ import globals from 'globals';
 
 export default [
   {
-    ignores: ['build/**', 'coverage/**', 'node_modules/**']
+    ignores: ['.claude/**', 'build/**', 'coverage/**', 'node_modules/**']
   },
   eslint.configs.recommended,
   {
