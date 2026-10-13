@@ -213,7 +213,7 @@ New tokens for `src/index.css`, in both themes:
 | Token | Light | Dark | Use |
 |---|---|---|---|
 | `--theme-success-solid` | `#15803d` | `#15803d` | Mark disc and ring for T2 |
-| `--theme-warning-solid` | `#b45309` | `#b45309` | Mark disc and ring for T3, T5, T6, W3 |
+| `--theme-warning-solid` | `#b45309` | `#b45309` | Mark disc and ring for T3, T5, T6, T7, W3, X14, X15, X16 |
 | `--theme-danger-solid` | `#dc2626` | `#dc2626` | Mark disc and ring for T4 |
 | `--theme-link` | `#2b5cc2` | `#8ab0ff` | Link values and the explorer links |
 | `--theme-accent-bright` | `#3165d4` | `#4f7fff` | Spinner arc, wallet pulse, progress bar |
@@ -232,7 +232,7 @@ White glyphs on the solid tones keep a contrast of at least 4.5 to 1.
   - 560 ms: the glyph draws (320 ms, ease-out). The glyph is white, stroke 5.2, round caps and joins.
   - The old title and body fade out and move up 8 px (160 ms). The new text fades in from 8 px below (220 ms, after a 240 ms delay).
   - The action area fades in and rises 8 px (320 ms, after a 720 ms delay).
-- *Glyph paths* (in the 72 unit box): check `M22.5 37.5l9.5 9.5 18-20`. Cross `M27 27l18 18` and `M45 27L27 45`. Clock `M36 22.5V37l9.5 6`. Exclamation `M36 23.5v15` and `M36 48.5v.1`.
+- *Glyph paths* (in the 72 unit box): check `M22.5 37.5l9.5 9.5 18-20`. Cross `M27 27l18 18` and `M45 27L27 45`. Clock `M36 22.5V37l9.5 6`. Exclamation `M36 23.5v15` and `M36 48.5v.1`. The glyph for each screen: check for T2, clock for T3 and X14, cross for T4, exclamation for T5, T6, T7, W3, X15, and X16. C1 and T1 show the spinner only.
 - *Wallet mark (W1, W2).* A circle tile in `--theme-track`, with the wallet's icon at 40 px in the middle (D11). A wallet without a usable icon shows the tile alone, with no glyph (3.1, icon fallback). Two rings pulse outward: 2 px `--theme-accent-bright`, scale 1 to 1.55, opacity 0.45 to 0, 2.4 s, ease-out, repeating. The second ring starts 1.2 s later.
 - *Restored screens* (D22) render in their settled state, with no animation.
 - *Reduced motion.* With `prefers-reduced-motion: reduce`, the spinner becomes a static arc, the pulse stops, and all transitions are instant. The text "Confirming…" still shows the state.
