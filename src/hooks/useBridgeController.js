@@ -44,6 +44,7 @@ import {
   REFUND_ADDRESS_STATE_EVENT,
   REFUND_ADDRESS_STATUS_FAILED,
   REFUND_ADDRESS_STATUS_REQUIRED,
+  RefundKeyMismatchError,
   getCachedRefundAddress,
   getStoredRefundAddresses,
   requestAndCacheRefundAddressData,
@@ -2062,7 +2063,7 @@ export default function useBridgeController({
     setRefundSignaturePendingAccount(pendingAccountKey);
 
     try {
-      const nextDetails = await requestAndCacheRefundAddressData(account);
+      const nextDetails = await requestAndCacheRefundAddressData(account, library);
 
       setPubkey((currentItems) => ({
         ...currentItems,
@@ -2075,11 +2076,17 @@ export default function useBridgeController({
       return true;
     } catch (error) {
       setRefundAddressSignatureStatus(account, REFUND_ADDRESS_STATUS_FAILED);
-      setAlert({
-        code: REFUND_SIGNATURE_ALERT_CODE,
-        severity: 'warning',
-        message: 'Public key signature is required for bounceback refunds. Retry signing from the wallet menu, or click Review again.'
-      });
+      setAlert(error instanceof RefundKeyMismatchError
+        ? {
+          code: REFUND_SIGNATURE_ALERT_CODE,
+          severity: 'error',
+          message: error.message
+        }
+        : {
+          code: REFUND_SIGNATURE_ALERT_CODE,
+          severity: 'warning',
+          message: 'Public key signature is required for bounceback refunds. Retry signing from the wallet menu, or click Review again.'
+        });
 
       return false;
     } finally {
@@ -2087,7 +2094,7 @@ export default function useBridgeController({
         currentAccountKey === pendingAccountKey ? '' : currentAccountKey
       ));
     }
-  }, [account, needsRefundAddressSignature, refundAddress]);
+  }, [account, library, needsRefundAddressSignature, refundAddress]);
 
   const reviewRouteLabel = useMemo(() => getRouteLabel(destination), [destination]);
   const reviewTimeEstimate = getRouteTimeEstimate(destination);

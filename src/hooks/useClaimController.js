@@ -497,10 +497,10 @@ export default function useClaimController() {
       return walletAddressDetails;
     }
 
-    const nextDetails = await requestRefundAddressData(account);
+    const nextDetails = await requestRefundAddressData(account, library);
     setWalletAddressDetails(nextDetails);
     return nextDetails;
-  }, [account, walletAddressDetails]);
+  }, [account, library, walletAddressDetails]);
 
   const handleWalletAddressAction = useCallback(async () => {
     if (!account) {

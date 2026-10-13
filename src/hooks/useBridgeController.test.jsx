@@ -19,7 +19,8 @@ import { getContract, getMaxAmount } from 'utils/contract';
 import { convertVerusAddressToEthAddress } from 'utils/convert';
 import {
   REFUND_ADDRESS_SIGNATURE_STATUS_KEY,
-  REFUND_ADDRESS_STORAGE_KEY
+  REFUND_ADDRESS_STORAGE_KEY,
+  REFUND_ADDRESS_V2_STORAGE_KEY
 } from 'utils/refundAddress';
 import { hash160, toBase58Check } from 'utils/verusAddress';
 
@@ -194,6 +195,19 @@ const createLibrary = (overrides = {}) => ({
   getNetwork: vi.fn().mockResolvedValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID }),
   getTransaction: vi.fn(() => new Promise(() => {})),
   ...overrides
+});
+
+// Signing goes through the connected wallet's library (G1), not window.ethereum.
+const createWalletSend = (request, account) => vi.fn(async (method, params) => {
+  if (method === 'eth_chainId') {
+    return EXPECTED_ETHEREUM_CHAIN_ID;
+  }
+
+  if (method === 'eth_accounts') {
+    return [account];
+  }
+
+  return request({ method, params });
 });
 
 const createDelegatorContract = (overrides = {}) => {
@@ -1784,8 +1798,8 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
   test('defers public key signing until a bounceback review needs it', async () => {
     const request = vi.fn().mockRejectedValue(new Error('User rejected request'));
-    window.ethereum = { request };
     const library = createLibrary({
+      send: createWalletSend(request, '0xabc'),
       getBalance: vi.fn().mockResolvedValue(utils.parseEther('1')),
       getBlockNumber: vi.fn().mockResolvedValue(100),
       getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
@@ -1830,8 +1844,8 @@ describe('useBridgeController disconnected source bootstrap', () => {
       return new Promise(() => {});
     });
     const request = vi.fn().mockRejectedValue(new Error('User rejected request'));
-    window.ethereum = { request };
     const library = createLibrary({
+      send: createWalletSend(request, '0xabc'),
       getBalance: vi.fn().mockResolvedValue(utils.parseEther('1')),
       getBlockNumber: vi.fn().mockResolvedValue(100),
       getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
@@ -1891,8 +1905,8 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const request = vi.fn().mockResolvedValue(signature);
     const wait = vi.fn().mockResolvedValue({ status: 1 });
     const sendTransfer = vi.fn().mockResolvedValue({ wait });
-    window.ethereum = { request };
     const library = createLibrary({
+      send: createWalletSend(request, wallet.address),
       getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
       getBlockNumber: vi.fn().mockResolvedValue(100),
       getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
@@ -1926,8 +1940,12 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
 
     expect(request).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(window.localStorage.getItem(REFUND_ADDRESS_STORAGE_KEY))).toEqual({
-      [wallet.address]: expectedRefundAddress
+    const storedRecords = Object.values(JSON.parse(window.localStorage.getItem(REFUND_ADDRESS_V2_STORAGE_KEY)));
+    expect(storedRecords).toHaveLength(1);
+    expect(storedRecords[0]).toMatchObject({
+      account: wallet.address,
+      refundAddress: expectedRefundAddress,
+      version: 2
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
@@ -1936,7 +1954,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       expect(sendTransfer).toHaveBeenCalledTimes(1);
     });
 
-    expect(library.getNetwork).toHaveBeenCalled();
+    expect(library.send).toHaveBeenCalledWith('eth_chainId', []);
     expect(library.getCode).toHaveBeenCalled();
 
     const [reserveTransfer, txOptions] = sendTransfer.mock.calls[0];
@@ -1946,7 +1964,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     expect(txOptions.from).toBe(wallet.address);
   });
 
-  test('submits bounceback with a legacy cached refund address without requesting a signature', async () => {
+  test('asks for a new signature when only a legacy cached refund address exists', async () => {
     global.fetch = vi.fn((input) => {
       if (input === './exclude.json') {
         return Promise.resolve({
@@ -1958,12 +1976,14 @@ describe('useBridgeController disconnected source bootstrap', () => {
       return new Promise(() => {});
     });
     const wallet = new Wallet('0x2222222222222222222222222222222222222222222222222222222222222222');
-    const request = vi.fn();
+    const signature = await wallet.signMessage(REFUND_ADDRESS_MESSAGE);
+    const expectedRefundAddress = getRefundAddressFromSignature(signature);
+    const request = vi.fn().mockResolvedValue(signature);
     const wait = vi.fn().mockResolvedValue({ status: 1 });
     const sendTransfer = vi.fn().mockResolvedValue({ wait });
-    window.ethereum = { request };
     cacheRefundAddress(wallet.address);
     const library = createLibrary({
+      send: createWalletSend(request, wallet.address),
       getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
       getBlockNumber: vi.fn().mockResolvedValue(100),
       getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
@@ -1996,7 +2016,12 @@ describe('useBridgeController disconnected source bootstrap', () => {
       expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes');
     });
 
-    expect(request).not.toHaveBeenCalled();
+    // The old address-only entry was never checked against the account, so the
+    // site asks for a new signature and leaves the old entry untouched.
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(window.localStorage.getItem(REFUND_ADDRESS_STORAGE_KEY))).toEqual({
+      [wallet.address]: VALID_REFUND_ADDRESS
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
 
@@ -2006,8 +2031,67 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
     const [reserveTransfer] = sendTransfer.mock.calls[0];
     expect(reserveTransfer.destination.destinationaddress).toContain(
+      convertVerusAddressToEthAddress(expectedRefundAddress).slice(2)
+    );
+    expect(reserveTransfer.destination.destinationaddress).not.toContain(
       convertVerusAddressToEthAddress(VALID_REFUND_ADDRESS).slice(2)
     );
+  });
+
+  test('does not open the review when the wallet signs with a key that is not the account key', async () => {
+    global.fetch = vi.fn((input) => {
+      if (input === './exclude.json') {
+        return Promise.resolve({
+          json: async () => ({ ETH: [] }),
+          ok: true
+        });
+      }
+
+      return new Promise(() => {});
+    });
+    const account = new Wallet('0x4444444444444444444444444444444444444444444444444444444444444444');
+    const otherKey = new Wallet('0x5555555555555555555555555555555555555555555555555555555555555555');
+    const request = vi.fn().mockResolvedValue(await otherKey.signMessage(REFUND_ADDRESS_MESSAGE));
+    const sendTransfer = vi.fn();
+    const library = createLibrary({
+      send: createWalletSend(request, account.address),
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
+      getBlockNumber: vi.fn().mockResolvedValue(100),
+      getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
+      getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
+    });
+    const delegatorContract = createDelegatorContract({ sendTransfer });
+
+    mockVerusd.estimateConversion.mockResolvedValue({
+      result: { estimatedcurrencyout: 0.00107949 }
+    });
+
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: account.address, library });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure ETH Swap DAI' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('submit-disabled-reason')).toBeEmptyDOMElement();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('alert-message')).toHaveTextContent(
+        "Your wallet did not sign with this account's key."
+      );
+    });
+
+    expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no');
+    expect(sendTransfer).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(REFUND_ADDRESS_V2_STORAGE_KEY)).toBeNull();
   });
 
   test('blocks bounceback submit when public key signing is rejected', async () => {
@@ -2023,8 +2107,8 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
     const request = vi.fn().mockRejectedValue(new Error('User rejected request'));
     const sendTransfer = vi.fn();
-    window.ethereum = { request };
     const library = createLibrary({
+      send: createWalletSend(request, '0x1234567890123456789012345678901234567890'),
       getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
       getBlockNumber: vi.fn().mockResolvedValue(100),
       getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
@@ -2079,8 +2163,8 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const signature = await wallet.signMessage(REFUND_ADDRESS_MESSAGE);
     const signingRequest = createDeferred();
     const request = vi.fn().mockReturnValue(signingRequest.promise);
-    window.ethereum = { request };
     const library = createLibrary({
+      send: createWalletSend(request, wallet.address),
       getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
       getBlockNumber: vi.fn().mockResolvedValue(100),
       getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
@@ -2139,8 +2223,8 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const signature = await wallet.signMessage(REFUND_ADDRESS_MESSAGE);
     const signingRequest = createDeferred();
     const request = vi.fn().mockReturnValue(signingRequest.promise);
-    window.ethereum = { request };
     const library = createLibrary({
+      send: createWalletSend(request, wallet.address),
       getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
       getBlockNumber: vi.fn().mockResolvedValue(100),
       getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),

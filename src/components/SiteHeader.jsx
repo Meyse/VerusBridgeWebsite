@@ -161,7 +161,7 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
   const headerRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { account, activate, deactivate, error } = useWeb3React();
+  const { account, activate, deactivate, error, library } = useWeb3React();
   const { addToast } = useToast();
   const isWrongNetwork = error instanceof UnsupportedChainIdError;
 
@@ -333,7 +333,7 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
     setIsRetryingRefundSignature(true);
 
     try {
-      await requestAndCacheRefundAddressData(account);
+      await requestAndCacheRefundAddressData(account, library);
       setRefundSignatureStatus('');
       addToast({ type: 'success', description: 'Public key signature confirmed.' });
     } catch (signingError) {

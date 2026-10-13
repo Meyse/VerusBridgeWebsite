@@ -483,6 +483,7 @@ describe('SiteHeader wallet interactions', () => {
 
   test('shows a public key signing alert on the wallet button and retries from the menu', async () => {
     const account = '0x1234567890123456789012345678901234567890';
+    const library = { send: vi.fn() };
 
     requestAndCacheRefundAddressData.mockResolvedValue({
       publicKey: `0x04${'11'.repeat(64)}`,
@@ -492,7 +493,8 @@ describe('SiteHeader wallet interactions', () => {
       account,
       activate: vi.fn(),
       deactivate: vi.fn(),
-      error: null
+      error: null,
+      library
     });
 
     renderHeader();
@@ -506,7 +508,7 @@ describe('SiteHeader wallet interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: /retry signing/i }));
 
     await waitFor(() => {
-      expect(requestAndCacheRefundAddressData).toHaveBeenCalledWith(account);
+      expect(requestAndCacheRefundAddressData).toHaveBeenCalledWith(account, library);
     });
 
     expect(mockAddToast).toHaveBeenCalledWith({
