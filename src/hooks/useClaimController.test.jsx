@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useWeb3React } from '@web3-react/core';
 
 import { useToast } from 'components/Toast/ToastProvider';
-import { EXPECTED_ETHEREUM_CHAIN_ID, TESTNET } from 'constants/contractAddress';
+import { ETHEREUM_BLOCKCHAIN_NAME, EXPECTED_ETHEREUM_CHAIN_ID, TESTNET } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import { requestRefundAddressData } from 'utils/refundAddress';
 import { toBase58Check } from 'utils/verusAddress';
@@ -68,6 +68,10 @@ const createDelegatorContract = (overrides = {}) => ({
     ...overrides.callStatic
   },
   claimRefund: vi.fn(),
+  estimateGas: {
+    claimRefund: vi.fn().mockResolvedValue(60000),
+    sendfees: vi.fn().mockResolvedValue(60000)
+  },
   sendfees: vi.fn(),
   ...overrides
 });
@@ -191,6 +195,38 @@ describe('useClaimController', () => {
     expect(mockVerusd.getIdentity.mock.invocationCallOrder[1])
       .toBeLessThan(delegatorContract.callStatic.sendfees.mock.invocationCallOrder[0]);
     expect(transactionWait).toHaveBeenCalledTimes(1);
+  });
+
+  mainnetTest('reports a reverted earnings claim as a failure and never as a success', async () => {
+    const addToast = vi.fn();
+    const delegatorContract = createDelegatorContract({
+      callStatic: {
+        claimableFees: vi.fn().mockResolvedValue('1000000'),
+        getTokenList: vi.fn().mockResolvedValue([]),
+        sendfees: vi.fn().mockResolvedValue(undefined)
+      },
+      sendfees: vi.fn().mockResolvedValue({ wait: vi.fn().mockResolvedValue({ status: 0 }) })
+    });
+    mockVerusd.getIdentity.mockResolvedValue({
+      result: {
+        fullyqualifiedname: 'Max.VRSC@',
+        identity: { identityaddress: VALID_I_ADDRESS },
+        status: 'active'
+      }
+    });
+    useToast.mockReturnValue({ addToast });
+    useContract.mockReturnValue(delegatorContract);
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect VerusID' }));
+    await waitFor(() => expect(screen.getByTestId('can-claim-earnings')).toHaveTextContent('yes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Claim earnings' }));
+
+    await waitFor(() => expect(addToast).toHaveBeenCalledWith({
+      type: 'error',
+      description: `The transaction failed on ${ETHEREUM_BLOCKCHAIN_NAME}. Nothing was claimed.`
+    }));
+    expect(addToast).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
   });
 
   mainnetTest('keeps earnings lookup available while refund token metadata is still loading', async () => {

@@ -35,6 +35,7 @@ import {
   sortSourceCurrencies
 } from 'utils/bridgeUi';
 import { getContract, getMaxAmount } from 'utils/contract';
+import { assertTransactionSucceeded, estimateGasLimit } from 'utils/transactions';
 import {
   getDestinationOptions,
   getTokenOptions,
@@ -2213,10 +2214,15 @@ export default function useBridgeController({
     }
 
     const bigAmount = new BN(wholePart).mul(base).add(new BN(fraction));
+    const approvalOverrides = { from: account };
+    const approvalGasLimit = await estimateGasLimit(
+      () => tokenContract.estimateGas.approve(DELEGATOR_ADD, bigAmount.toString(), approvalOverrides),
+      maxGas2
+    );
     await assertBridgeTransactionContext(library);
     const approval = await tokenContract.approve(DELEGATOR_ADD, bigAmount.toString(), {
-      from: account,
-      gasLimit: maxGas2
+      ...approvalOverrides,
+      gasLimit: approvalGasLimit
     });
 
     setAlert({ severity: 'warning', message: 'Authorising ERC20 token. Please wait…' });
@@ -2358,14 +2364,26 @@ export default function useBridgeController({
         }, 240000);
       });
 
+      const transferOverrides = {
+        from: account,
+        value: metaMaskFee.toString()
+      };
+      const transferGasLimit = await estimateGasLimit(
+        () => delegatorContract.estimateGas.sendTransfer(reserveTransfer, transferOverrides),
+        maxGas
+      );
+
       await assertBridgeTransactionContext(library);
       const txResult = await delegatorContract.sendTransfer(reserveTransfer, {
-        from: account,
-        gasLimit: maxGas,
-        value: metaMaskFee.toString()
+        ...transferOverrides,
+        gasLimit: transferGasLimit
       });
 
-      await Promise.race([txResult.wait(), timeoutPromise]);
+      const receipt = await Promise.race([txResult.wait(), timeoutPromise]);
+      assertTransactionSucceeded(
+        receipt,
+        `The transaction failed on ${ETHEREUM_BLOCKCHAIN_NAME}. Your funds were not bridged.`
+      );
       addToast({ type: 'success', description: 'Bridge transaction submitted successfully.' });
       setAlert(null);
     } catch (error) {

@@ -58,6 +58,9 @@ describe('NFT bridge transaction boundaries', () => {
         balanceOf: vi.fn().mockResolvedValue(2),
         isApprovedForAll: vi.fn().mockResolvedValue(false)
       },
+      estimateGas: {
+        setApprovalForAll: vi.fn().mockResolvedValue(50000)
+      },
       setApprovalForAll
     };
     const transferWait = vi.fn().mockResolvedValue({ status: 1 });
@@ -65,6 +68,9 @@ describe('NFT bridge transaction boundaries', () => {
       callStatic: {
         bestForks: vi.fn().mockResolvedValue('0'.repeat(200)),
         bridgeConverterActive: vi.fn().mockResolvedValue(true)
+      },
+      estimateGas: {
+        sendTransfer: vi.fn().mockResolvedValue(700000)
       },
       sendTransfer: vi.fn().mockResolvedValue({ wait: transferWait })
     };

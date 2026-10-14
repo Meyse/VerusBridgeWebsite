@@ -207,6 +207,9 @@ const createDelegatorContract = (overrides = {}) => {
       verusToERC20mapping: vi.fn().mockResolvedValue({ flags: '1' }),
       ...callStaticOverrides
     },
+    estimateGas: {
+      sendTransfer: vi.fn().mockResolvedValue(BigNumber.from(600000))
+    },
     ...contractOverrides
   };
 };
@@ -1071,6 +1074,126 @@ describe('useBridgeController disconnected source bootstrap', () => {
     expect(mockVerusd.getIdentity).toHaveBeenCalledTimes(2);
     expect(mockVerusd.getIdentity.mock.invocationCallOrder[1])
       .toBeLessThan(sendTransfer.mock.invocationCallOrder[0]);
+  });
+
+  test('sends the transfer with the estimated gas plus a 30% margin', async () => {
+    const identityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
+    const sendTransfer = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ status: 1 })
+    });
+    const estimateSendTransfer = vi.fn().mockResolvedValue(BigNumber.from(1898412));
+    const library = createLibrary({
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('10'))
+    });
+
+    mockVerusd.getIdentity.mockResolvedValue({
+      result: {
+        fullyqualifiedname: 'Max.VRSC@',
+        identity: { identityaddress: identityAddress },
+        status: 'active'
+      }
+    });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
+    useContract.mockReturnValue(createDelegatorContract({
+      estimateGas: { sendTransfer: estimateSendTransfer },
+      sendTransfer
+    }));
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Configure VerusID Direct' }));
+    await waitFor(() => expect(screen.getByTestId('address-resolution')).toHaveTextContent('Max.VRSC@'));
+    fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
+    await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    await waitFor(() => expect(sendTransfer).toHaveBeenCalledTimes(1));
+    const [reserveTransfer, txOptions] = sendTransfer.mock.calls[0];
+    // 1,898,412 x 1.3 = 2,467,935.6, rounded down.
+    expect(txOptions.gasLimit.toString()).toBe('2467935');
+    expect(estimateSendTransfer).toHaveBeenCalledWith(reserveTransfer, {
+      from: '0xabc',
+      value: txOptions.value
+    });
+  });
+
+  test('reports a reverted transfer as a failure and never as a success', async () => {
+    const identityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
+    const addToast = vi.fn();
+    const sendTransfer = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ status: 0 })
+    });
+    const library = createLibrary({
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('10'))
+    });
+
+    mockVerusd.getIdentity.mockResolvedValue({
+      result: {
+        fullyqualifiedname: 'Max.VRSC@',
+        identity: { identityaddress: identityAddress },
+        status: 'active'
+      }
+    });
+    useToast.mockReturnValue({ addToast });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
+    useContract.mockReturnValue(createDelegatorContract({ sendTransfer }));
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Configure VerusID Direct' }));
+    await waitFor(() => expect(screen.getByTestId('address-resolution')).toHaveTextContent('Max.VRSC@'));
+    fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
+    await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    await waitFor(() => expect(addToast).toHaveBeenCalledWith({
+      type: 'error',
+      description: `The transaction failed on ${ETHEREUM_BLOCKCHAIN_NAME}. Your funds were not bridged.`
+    }));
+    expect(addToast).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
+  });
+
+  test('sends nothing when the gas estimate fails', async () => {
+    const identityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
+    const addToast = vi.fn();
+    const sendTransfer = vi.fn();
+    const library = createLibrary({
+      getBalance: vi.fn().mockResolvedValue(utils.parseEther('10'))
+    });
+
+    mockVerusd.getIdentity.mockResolvedValue({
+      result: {
+        fullyqualifiedname: 'Max.VRSC@',
+        identity: { identityaddress: identityAddress },
+        status: 'active'
+      }
+    });
+    useToast.mockReturnValue({ addToast });
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
+    useContract.mockReturnValue(createDelegatorContract({
+      estimateGas: { sendTransfer: vi.fn().mockRejectedValue(new Error('cannot estimate gas')) },
+      sendTransfer
+    }));
+
+    render(<HookProbe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Configure VerusID Direct' }));
+    await waitFor(() => expect(screen.getByTestId('address-resolution')).toHaveTextContent('Max.VRSC@'));
+    fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
+    await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    await waitFor(() => expect(addToast).toHaveBeenCalledWith({
+      type: 'error',
+      description: 'The network fee could not be estimated, so nothing was sent. The transaction would probably fail.'
+    }));
+    expect(sendTransfer).not.toHaveBeenCalled();
   });
 
   test('requires a fresh review when a VerusID resolves to a different address before submission', async () => {
