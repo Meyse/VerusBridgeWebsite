@@ -107,7 +107,9 @@ const sanitizeRequest = (request) => {
 };
 
 const OPTIONAL_FIELD_RULES = {
+  approvalDecimals: (value) => Number.isInteger(value) && value >= 0 && value <= 36,
   approvalRecordId: (value) => isString(value, 80),
+  approvalSymbol: (value) => isString(value, 16),
   broadcastError: (value) => isString(value, 200),
   confirmedCap: (value) => isString(value, 48),
   feePaid: (value) => isString(value, 24),

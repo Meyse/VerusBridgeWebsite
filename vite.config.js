@@ -24,6 +24,7 @@ const sourceAliases = [
   'pages',
   'providers',
   'styles',
+  'testUtils',
   'utils',
   'wallets'
 ];
