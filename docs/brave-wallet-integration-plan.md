@@ -4,7 +4,7 @@ Date: 2026-10-13
 
 Base: `main` at `79d6685`
 
-Status: plan only. No code is written yet. Revision 11. Codex (`gpt-6-astra`) approved revision 5 after 5 review rounds on 2026-10-13. Revision 6 applied the owner's decision D18 (no wrong-chain risk). The Codex review of revision 6 found a Brave hardware-account case (2.6). Revisions 7 and 8 apply the owner's decision D20 and the other review points. Codex approved revision 8 after 3 more review rounds on 2026-10-13. Revision 9 applies the owner's decision to list only supported wallets (D2). It changes the wallet list and its tests, not the transaction guards. Revision 10 adds the send screens (section 3.2), decisions D21 to D26, work phase S, and their tests, checks, and risks. The owner chose design A and the reload rule on 2026-10-13 (D21, D22). Revision 10 changes how the G6 states reach the user. It does not change the guards. Codex reviewed revisions 9 and 10 together in four rounds on 2026-10-13. Revision 11 applies those reviews: approval outcomes (T7, C1, rule 8), one error classifier (D23), the screen selection order, the notice lifecycle, the routing and history rules, the records store flags, and the stored fields. Codex approved revision 11 on 2026-10-13.
+Status: implemented on branch `claude/brave-wallet-eip6963` (2026-10-14), not merged or released. Section 13 lists what the implementation decided or changed. The requirements below are revision 11, unchanged. Revision 11. Codex (`gpt-6-astra`) approved revision 5 after 5 review rounds on 2026-10-13. Revision 6 applied the owner's decision D18 (no wrong-chain risk). The Codex review of revision 6 found a Brave hardware-account case (2.6). Revisions 7 and 8 apply the owner's decision D20 and the other review points. Codex approved revision 8 after 3 more review rounds on 2026-10-13. Revision 9 applies the owner's decision to list only supported wallets (D2). It changes the wallet list and its tests, not the transaction guards. Revision 10 adds the send screens (section 3.2), decisions D21 to D26, work phase S, and their tests, checks, and risks. The owner chose design A and the reload rule on 2026-10-13 (D21, D22). Revision 10 changes how the G6 states reach the user. It does not change the guards. Codex reviewed revisions 9 and 10 together in four rounds on 2026-10-13. Revision 11 applies those reviews: approval outcomes (T7, C1, rule 8), one error classifier (D23), the screen selection order, the notice lifecycle, the routing and history rules, the records store flags, and the stored fields. Codex approved revision 11 on 2026-10-13.
 
 Audience: an agent or developer who implements or reviews this work. The plan is self-contained:
 
@@ -1156,3 +1156,34 @@ Record what you saw for each check. A screenshot proves only the state it shows.
 - For the send screens (phase S), build S1 and S5 with their tests first. S1 fixes the copy. Then S2, S3, S4. Fix the A3 and A5 event interfaces before S2. Compare the result with the [Bridge Send States](https://claude.ai/artifact/3hpu2geTsnxakK8KhHStBD) preview, if it opens for you. The text in 3.2 wins where they differ.
 - Phase S needs the A5 records. Do not build a second record store for the screens.
 - Reuse existing patterns: CSS modules in `src/styles/ReferenceBridge.module.css`, theme tokens in `src/index.css`, and storage helpers in `src/utils/walletConnection.js`.
+
+## 13. Implementation notes (2026-10-14)
+
+The code on `claude/brave-wallet-eip6963` follows revision 11. These points were decided during the implementation, or they differ from the text above. The owner has not reviewed them yet.
+
+**Decisions inside the plan's scope**
+
+1. **Activity link.** The `/activity` route exists only in testnet builds. T2 shows the quiet action "View bridge activity" only there (`BRIDGE_ACTIVITY_AVAILABLE`). Mainnet T2 shows "New transfer" alone.
+2. **W1 without a wallet name.** "Check the your wallet window" does not read well. Without an announced name, W1 says "Check your wallet and confirm the transaction."
+3. **X18.** A build without a valid site RPC URL (D19) cannot track or broadcast. Confirm then stops before any wallet request with the blocking notice X18: "This site is not set up to send transactions. Nothing was sent."
+4. **Copy direction.** `sendScreens.js` holds every string. `guardedSend.js`, `operationLock.js`, `submittedOperations.js`, and the connector import their messages from it. So `sendScreens.js` does not import the classifier from `guardedSend.js` (S1 says it does), because that import would be circular. The classifier stays the only one (D23).
+5. **Gas estimates.** `guardedSend` estimates gas through the site RPC provider, with the 30 % margin and the old fixed limits as floors (the gas fix, risk 22).
+6. **Claim and NFT results.** They use one shared guarded operation (`utils/guardedOperation.js`) and show their states in their own status lines, with an explorer link (risk 21). A step without an outcome after 240 s shows the "No confirmation yet" text. NFT sends read the approval back through the site RPC (A4).
+
+**Differences from the text**
+
+7. **New transfer resets the receive currency.** 3.2 says that New transfer keeps the chosen currencies. The form lists receive currencies only after an address is entered, so clearing the address also clears the receive currency. The send currency stays. To keep both, the destination list must stop depending on the address. That is a form change outside this plan.
+8. **Notices on the form.** A notice whose main action is `confirm` (N1), or a blocking notice, can reach the form when the review closes. On the form there is no review to confirm, so its main button says "Review" (enabled when the inputs are valid, or disabled for a blocking notice). N6 keeps "Bridge paused".
+9. **Edits end notices.** A change of the inputs, the account, or the network ends the notice of the last stop. N3, X1, and X17 stay until the next review, because a session change causes them.
+
+**Behavior found in the browser check**
+
+10. **Router timing.** React Router 7 finishes a navigation asynchronously. One render then showed the old step with the new send state: the form flashed, and focus was lost. The page now renders the step that it navigates to until the router catches up.
+11. **Rejected request.** The records store resolves a rejected or discarded request a moment before the flow ends. The wallet screen now stays until the notice replaces it.
+12. **StrictMode.** The development build runs effects twice. Route decisions read the pending step from a ref, so a reload at `?step=status` keeps the restored screen.
+
+**Not verified**
+
+- No real wallet was used. The browser check used a test-only EIP-1193 provider and a scripted chain in the page, on the testnet build. It covered W1, T1, T2 with its animation, N1, N8, X1, T4, T3 after a reload, Check again, Back to bridge, New transfer, Try again, 320 px, and both themes.
+- Section 9 (manual checks with MetaMask and Brave Wallet) is still open. So are W2, C1, W3, T5, T6, X14 to X16 in a browser. The automated tests cover their selection and copy.
+
