@@ -609,6 +609,24 @@ export const getOutcomeNotice = ({ approvalConfirmed = false, record, wallet }) 
   return null;
 };
 
+// D22 considers only bridge sends on the build's chain. Claim and NFT records
+// never open the send screens.
+export const BRIDGE_SEND_TYPES = Object.freeze(['transfer', 'erc20-approval']);
+
+export const isBridgeSendRecord = (record, chainId) => (
+  Boolean(record) && BRIDGE_SEND_TYPES.includes(record.type) && record.chainId === chainId
+);
+
+// The record that a load reopens (D22): the newest unresolved bridge send.
+export const pickReopenRecord = ({ chainId, isDismissed = () => false, records }) => records
+  .filter((record) => (
+    isBridgeSendRecord(record, chainId) && record.state !== 'resolved' && !isDismissed(record.id)
+  ))
+  .sort((left, right) => right.startedAt - left.startedAt)[0] || null;
+
+// The outcomes that have a result screen. The others end in a notice.
+export const RESULT_SCREEN_OUTCOMES = Object.freeze(['success', 'reverted', 'cancelled', 'replaced', 'confirmed-unexpected']);
+
 // The text that "Copy details" puts on the clipboard (3.2, "Actions"). No
 // account address and no key.
 export const getCopyDetails = ({ chainId, record, wallet }) => [

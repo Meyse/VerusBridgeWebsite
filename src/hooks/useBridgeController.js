@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore
+} from 'react';
 
 import { useWeb3React } from '@web3-react/core';
 import BigNumber from 'bignumber.js';
@@ -8,19 +10,20 @@ import { VerusdRpcInterface } from 'utils/verusdRpc';
 
 import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import ERC20_ABI from 'abis/ERC20Abi.json';
-import { useToast } from 'components/Toast/ToastProvider';
 import {
   BLOCKCHAIN_NAME,
   DELEGATOR_ADD,
   ETHEREUM_BLOCKCHAIN_NAME,
   ETHEREUM_NATIVE_ASSET_NAME,
   ETH_FEES,
+  EXPECTED_ETHEREUM_CHAIN_ID,
   GLOBAL_ADDRESS,
   GLOBAL_IADDRESS,
   TESTNET,
   VERUS_BLOCKCHAIN_DISPLAY_NAME,
   VERUS_RPC_URL
 } from 'constants/contractAddress';
+import useBridgeSendFlow from 'hooks/useBridgeSendFlow';
 import useContract from 'hooks/useContract';
 import { useOptionalWalletContext } from 'providers/WalletProvider';
 import { useVerusDestinationResolution } from 'hooks/useVerusDestinationResolution';
@@ -35,12 +38,13 @@ import {
   sortSourceCurrencies
 } from 'utils/bridgeUi';
 import { getContract, getMaxAmount } from 'utils/contract';
-import { assertTransactionSucceeded, estimateGasLimit } from 'utils/transactions';
 import {
   getDestinationOptions,
   getTokenOptions,
   supportsOnlyDirectVerusDestination
 } from 'utils/options';
+import { clearSendNotice, getSendScreenState, setSendNotice } from 'utils/sendScreenState';
+import { getNotice } from 'utils/sendScreens';
 import {
   REFUND_ADDRESS_STATE_EVENT,
   REFUND_ADDRESS_STATUS_FAILED,
@@ -55,12 +59,13 @@ import { coinsToSats, isETHAddress, uint64ToVerusFloat, validateAddress } from '
 import { getConfigOptions } from 'utils/txConfig';
 import { resolveVerusDestination } from 'utils/verusDestination';
 import {
-  assertBridgeTransactionContext,
-  isExpectedWalletChain
+  isExpectedWalletChain,
+  requestExpectedWalletChain
 } from 'utils/walletNetwork';
+import { findBlockingRecord } from 'wallets/submittedOperations';
+import { walletName } from 'wallets/walletNames';
+import { getWalletSession, getWalletSessionId, subscribeWalletSession } from 'wallets/walletSession';
 
-const maxGas = 1000000;
-const maxGas2 = 100000;
 const BRIDGE_STATUS_POLL_INTERVAL_MS = 60_000;
 const BRIDGE_STATUS_RETRY_INTERVAL_MS = 5_000;
 const BRIDGE_STATUS_RPC_TIMEOUT_MS = 8_000;
@@ -93,7 +98,6 @@ const SEND_AMOUNT_PRESET_FRACTIONS = [
 ];
 const BOUNCEBACK_ROUTE_TIME_ESTIMATE = '2-10 hours';
 const DIRECT_ROUTE_TIME_ESTIMATE = '1-6 hours';
-const REFUND_SIGNATURE_ALERT_CODE = 'refund-signature-required';
 const STATIC_USD_PRICE_BY_SYMBOL = {
   DAI: 1,
   USDC: 1,
@@ -1060,8 +1064,10 @@ const enrichTokenChoices = async (library, tokenOptions) => Promise.all(
 
 export default function useBridgeController({
   enterReview,
+  enterStatus,
   exitReview,
-  isReviewRequested = false
+  isReviewRequested = false,
+  isStatusRequested = false
 } = {}) {
   const [alert, setAlert] = useState(null);
   const [amount, setAmount] = useState('');
@@ -1074,15 +1080,16 @@ export default function useBridgeController({
   const [internalPricingSnapshot, setInternalPricingSnapshot] = useState(() => createInternalPricingSnapshot());
   const [isSourceCatalogLoading, setIsSourceCatalogLoading] = useState(true);
   const [refundSignaturePendingAccount, setRefundSignaturePendingAccount] = useState('');
-  const [isTxPending, setIsTxPending] = useState(false);
   const [isWalletBalancesLoading, setIsWalletBalancesLoading] = useState(false);
   const [natiCurrencyId, setNatiCurrencyId] = useState(null);
   const [natiComparisonQuote, setNatiComparisonQuote] = useState(() => createAsyncValueState());
   const [poolAvailable, setPoolAvailable] = useState(false);
   const [pubkey, setPubkey] = useState({});
   const [reviewSnapshot, setReviewSnapshot] = useState(null);
-  const hasReviewSnapshot = Boolean(reviewSnapshot);
-  const isReviewing = Boolean(isReviewRequested && reviewSnapshot);
+  // A review is `ready` until its first wallet request, then `in-flight` (3.2,
+  // "Review snapshot status"). Only a ready review can show or send.
+  const hasReviewSnapshot = reviewSnapshot?.status === 'ready';
+  const isReviewing = Boolean(isReviewRequested && hasReviewSnapshot);
   const [selectedToken, setSelectedToken] = useState(() => createSeededEthToken());
   const [sourceCatalogError, setSourceCatalogError] = useState(null);
   const [sourceCatalogRetryNonce, setSourceCatalogRetryNonce] = useState(0);
@@ -1095,7 +1102,9 @@ export default function useBridgeController({
   const [isBridgePaused, setIsBridgePaused] = useState(false);
   const { account, chainId, library } = useWeb3React();
   const walletContext = useOptionalWalletContext();
-  const { addToast } = useToast();
+  const connectedWallet = walletContext?.connectedWallet || null;
+  const walletSessionId = useSyncExternalStore(subscribeWalletSession, getWalletSessionId, getWalletSessionId);
+  const sendFlow = useBridgeSendFlow({ enterStatus, wallet: connectedWallet });
   const delegatorContract = useContract(DELEGATOR_ADD, DELEGATOR_ABI);
   const {
     address: resolvedAddress,
@@ -1153,10 +1162,20 @@ export default function useBridgeController({
     selectedToken?.value || ''
   ].join('|'), [account, address, amount, chainId, destination, resolvedAddress, selectedToken]);
   const editSignatureRef = useRef(editSignature);
+  const reviewSnapshotRef = useRef(reviewSnapshot);
+  const isStatusRequestedRef = useRef(isStatusRequested);
 
   useEffect(() => {
     editSignatureRef.current = editSignature;
   }, [editSignature]);
+
+  useEffect(() => {
+    reviewSnapshotRef.current = reviewSnapshot;
+  }, [reviewSnapshot]);
+
+  useEffect(() => {
+    isStatusRequestedRef.current = isStatusRequested;
+  }, [isStatusRequested]);
 
   const tokenBalance = useMemo(() => {
     if (!account || !selectedToken) {
@@ -2017,10 +2036,8 @@ export default function useBridgeController({
       const cachedItems = getStoredRefundAddresses();
       setPubkey(cachedItems);
 
-      if (account && getCachedRefundAddress(account, cachedItems)) {
-        setAlert((currentAlert) => (
-          currentAlert?.code === REFUND_SIGNATURE_ALERT_CODE ? null : currentAlert
-        ));
+      if (account && getCachedRefundAddress(account, cachedItems) && getSendScreenState().notice?.id === 'N7') {
+        clearSendNotice();
       }
     };
 
@@ -2070,24 +2087,15 @@ export default function useBridgeController({
         ...currentItems,
         [account]: nextDetails.refundAddress
       }));
-      setAlert((currentAlert) => (
-        currentAlert?.code === REFUND_SIGNATURE_ALERT_CODE ? null : currentAlert
-      ));
+      if (['N7', 'X2'].includes(getSendScreenState().notice?.id)) {
+        clearSendNotice();
+      }
 
       return true;
     } catch (error) {
       setRefundAddressSignatureStatus(account, REFUND_ADDRESS_STATUS_FAILED);
-      setAlert(error instanceof RefundKeyMismatchError
-        ? {
-          code: REFUND_SIGNATURE_ALERT_CODE,
-          severity: 'error',
-          message: error.message
-        }
-        : {
-          code: REFUND_SIGNATURE_ALERT_CODE,
-          severity: 'warning',
-          message: 'Public key signature is required for bounceback refunds. Retry signing from the wallet menu, or click Review again.'
-        });
+      // N7 asks for the signature again. X2: the wallet signed with another key.
+      setSendNotice({ id: error instanceof RefundKeyMismatchError ? 'X2' : 'N7' });
 
       return false;
     } finally {
@@ -2143,7 +2151,7 @@ export default function useBridgeController({
     if (!isExpectedWalletChain(chainId)) {
       setAlert({
         severity: 'warning',
-        message: `Switch MetaMask to ${ETHEREUM_BLOCKCHAIN_NAME} before bridging assets.`
+        message: `Switch ${walletName(connectedWallet)} to ${ETHEREUM_BLOCKCHAIN_NAME} before bridging assets.`
       });
       return false;
     }
@@ -2185,6 +2193,7 @@ export default function useBridgeController({
     addressResolutionError,
     amount,
     chainId,
+    connectedWallet,
     delegatorContract,
     destination,
     isAddressResolving,
@@ -2193,17 +2202,11 @@ export default function useBridgeController({
     selectedToken
   ]);
 
-  const authoriseOneTokenAmount = async (tokenToAuthorise, amountToAuthorise) => {
-    await assertBridgeTransactionContext(library);
-    const tokenLabel = getTokenLabel(tokenToAuthorise);
-
-    setAlert({
-      severity: 'warning',
-      message: `MetaMask will now allow the bridge contract to spend ${amountToAuthorise} ${tokenLabel} from your ${ETHEREUM_BLOCKCHAIN_NAME} balance.`
-    });
-
+  // The approval request of an ERC-20 send. The amount is in token base units,
+  // as before. G5 reads the allowance back after the approval confirms.
+  const buildApprovalRequest = async (tokenToAuthorise, amountToAuthorise) => {
     const tokenContract = getContract(tokenToAuthorise.erc20address, ERC20_ABI, library, account);
-    const decimals = toBN(await tokenContract.decimals());
+    const decimals = Number(toBN(await tokenContract.decimals()).toString());
     const base = new BN(10).pow(new BN(decimals));
     const [wholePart = '0', fractionPart = '0'] = amountToAuthorise.split('.');
 
@@ -2215,139 +2218,62 @@ export default function useBridgeController({
       throw new Error('Too many decimal places');
     }
 
-    let fraction = fractionPart;
-    while (fraction.length < decimals) {
-      fraction += '0';
-    }
+    const tokenLabel = getTokenLabel(tokenToAuthorise);
 
-    const bigAmount = new BN(wholePart).mul(base).add(new BN(fraction));
-    const approvalOverrides = { from: account };
-    const approvalGasLimit = await estimateGasLimit(
-      () => tokenContract.estimateGas.approve(DELEGATOR_ADD, bigAmount.toString(), approvalOverrides),
-      maxGas2
-    );
-    await assertBridgeTransactionContext(library);
-    const approval = await tokenContract.approve(DELEGATOR_ADD, bigAmount.toString(), {
-      ...approvalOverrides,
-      gasLimit: approvalGasLimit
-    });
-
-    setAlert({ severity: 'warning', message: 'Authorising ERC20 token. Please wait…' });
-    const reply = await approval.wait();
-
-    if (reply.status === 0) {
-      throw new Error('Authorising ERC20 token spend failed. Please check your balance.');
-    }
-
-    setAlert({
-      severity: 'info',
-      message: `Authorisation confirmed. Review the amount in MetaMask before sending the bridge transaction.`
-    });
+    return {
+      amount: new BN(wholePart).mul(base).add(new BN(fractionPart.padEnd(decimals, '0'))).toString(),
+      capDisplay: `${amountToAuthorise} ${tokenLabel}`,
+      decimals,
+      symbol: tokenLabel,
+      tokenAddress: tokenToAuthorise.erc20address
+    };
   };
 
-  const handleSubmit = async () => {
-    if (isBridgePaused) {
-      return;
+  // The bridge transfer and the ETH value of the wallet request. It throws when
+  // the inputs cannot form a transfer. Nothing is sent then.
+  const buildBridgeTransfer = (destinationAddress, transferRefundAddress) => {
+    const result = getConfigOptions({
+      address: destinationAddress,
+      amount,
+      destination,
+      poolAvailable,
+      token: selectedToken,
+      GASPrice: gasPrice,
+      auxDest: transferRefundAddress
+    });
+
+    if (!result) {
+      throw new Error('Unable to prepare the bridge transfer.');
     }
 
-    if (isReviewing && reviewSnapshot?.editSignature !== editSignature) {
-      setReviewSnapshot(null);
-      if (typeof exitReview === 'function') {
-        exitReview({ hash: '' });
-      }
-      return;
+    const {
+      destinationaddress,
+      destinationcurrency,
+      destinationtype,
+      feecurrency,
+      fees,
+      flagvalue,
+      secondreserveid
+    } = result;
+
+    if (selectedToken.value === secondreserveid) {
+      throw new Error('Cannot bounce back to the same currency.');
     }
 
-    if (!(await validateTransferInputs())) {
-      return;
+    let walletValue = new BN(toWei(ETH_FEES.ETH, 'ether'));
+    if (hasGatewayFlag(destinationtype)) {
+      walletValue = walletValue.add(new BN(gasPrice.WEICOST));
+      if (!transferRefundAddress) {
+        throw new Error('No refund address is available for this wallet.');
+      }
     }
 
-    if (requiresLiveGasEstimate && !hasLiveGasEstimate(gasPrice)) {
-      addToast({
-        type: 'error',
-        description: `${ETHEREUM_BLOCKCHAIN_NAME} network cost is still loading. Try again in a moment.`
-      });
-      return;
+    if (selectedToken.value === GLOBAL_ADDRESS.ETH) {
+      walletValue = walletValue.add(new BN(toWei(amount, 'ether')));
     }
 
-    if (!hasEnoughNativeEth) {
-      addToast({
-        type: 'error',
-        description: 'Not enough ETH to cover bridge fees.'
-      });
-      return;
-    }
-
-    if (!(await ensureRefundAddressSignature())) {
-      return;
-    }
-
-    const currentReviewSnapshot = reviewSnapshot?.editSignature === editSignature ? reviewSnapshot : null;
-    const transferRefundAddress = currentReviewSnapshot?.refundAddress || getCachedRefundAddress(account) || refundAddress;
-
-    setAlert(null);
-    setIsTxPending(true);
-
-    try {
-      const transactionDestination = await resolveVerusDestination(address, verusd, BLOCKCHAIN_NAME);
-
-      if (
-        currentReviewSnapshot?.destinationIdentityName
-        && transactionDestination.address !== currentReviewSnapshot.destinationAddress
-      ) {
-        clearReview(true, { hash: '' });
-        throw new Error(
-          `${currentReviewSnapshot.destinationIdentityName} now resolves to a different address. Review the destination again before continuing.`
-        );
-      }
-
-      await assertBridgeTransactionContext(library);
-
-      if (selectedToken.value !== GLOBAL_ADDRESS.ETH) {
-        await authoriseOneTokenAmount(selectedToken, amount);
-      }
-
-      const result = getConfigOptions({
-        address: transactionDestination.address,
-        amount,
-        destination,
-        poolAvailable,
-        token: selectedToken,
-        GASPrice: gasPrice,
-        auxDest: transferRefundAddress
-      });
-
-      if (!result) {
-        throw new Error('Unable to prepare the bridge transfer.');
-      }
-
-      const {
-        destinationaddress,
-        destinationcurrency,
-        destinationtype,
-        feecurrency,
-        fees,
-        flagvalue,
-        secondreserveid
-      } = result;
-
-      if (selectedToken.value === secondreserveid) {
-        throw new Error('Cannot bounce back to the same currency.');
-      }
-
-      let metaMaskFee = new BN(toWei(ETH_FEES.ETH, 'ether'));
-      if (hasGatewayFlag(destinationtype)) {
-        metaMaskFee = metaMaskFee.add(new BN(gasPrice.WEICOST));
-        if (!transferRefundAddress) {
-          throw new Error('No refund address is available for this wallet.');
-        }
-      }
-
-      if (selectedToken.value === GLOBAL_ADDRESS.ETH) {
-        metaMaskFee = metaMaskFee.add(new BN(toWei(amount, 'ether')));
-      }
-
-      const reserveTransfer = {
+    return {
+      reserveTransfer: {
         version: 1,
         currencyvalue: {
           currency: selectedToken.value,
@@ -2361,46 +2287,135 @@ export default function useBridgeController({
           destinationaddress
         },
         destcurrencyid: destinationcurrency,
-        destsystemid: '0x0000000000000000000000000000000000000000',
+        destsystemid: ZERO_ADDRESS,
         secondreserveid
-      };
+      },
+      value: walletValue.toString()
+    };
+  };
 
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(new Error('Transaction timeout exceeded.'));
-        }, 240000);
+  // A notice ends the flow (3.2, history table). Review shows it when the
+  // review is still valid in an unchanged session. Otherwise the form shows it.
+  const showNoticeSurface = (surface) => {
+    const currentSnapshot = reviewSnapshotRef.current;
+    const reviewStaysValid = Boolean(
+      surface === 'review'
+      && currentSnapshot
+      && currentSnapshot.sessionId === getWalletSessionId()
+      && currentSnapshot.editSignature === editSignatureRef.current
+    );
+
+    if (!reviewStaysValid) {
+      clearReview(true, { hash: '' });
+      return;
+    }
+
+    setReviewSnapshot({ ...currentSnapshot, status: 'ready' });
+    if (isStatusRequestedRef.current && typeof enterReview === 'function') {
+      enterReview({ replace: true });
+    }
+  };
+
+  const submitLockRef = useRef(false);
+
+  // Confirm (plan S2). It runs the checks of Review, then the send flow. The
+  // send screens show every result. This function only places the notices.
+  const handleSubmit = async ({ allowSendAnyway = false } = {}) => {
+    if (submitLockRef.current || isBridgePaused || sendFlow.isFlowLive) {
+      return;
+    }
+
+    const snapshot = reviewSnapshotRef.current;
+    if (
+      !snapshot
+      || snapshot.status !== 'ready'
+      || snapshot.editSignature !== editSignature
+      || snapshot.sessionId !== getWalletSessionId()
+    ) {
+      clearReview(true, { hash: '' });
+      return;
+    }
+
+    // Set before the first await, so a second click finds the flow busy.
+    submitLockRef.current = true;
+    const flowId = sendFlow.beginSend({ account, chainId });
+    setAlert(null);
+
+    const stopBeforeSend = (notice = null, surface = 'review') => {
+      sendFlow.stopSend(flowId, notice);
+      if (surface === 'form') {
+        clearReview(true, { hash: '' });
+      }
+    };
+
+    try {
+      if (!(await validateTransferInputs())) {
+        stopBeforeSend();
+        return;
+      }
+
+      if (requiresLiveGasEstimate && !hasLiveGasEstimate(gasPrice)) {
+        stopBeforeSend({ details: `The ${ETHEREUM_BLOCKCHAIN_NAME} network cost is still loading.`, id: 'N8' });
+        return;
+      }
+
+      if (!hasEnoughNativeEth || !(await ensureRefundAddressSignature())) {
+        stopBeforeSend();
+        return;
+      }
+
+      const session = getWalletSession();
+      if (session.id !== snapshot.sessionId || !session.account) {
+        stopBeforeSend({ id: 'X1' }, 'form');
+        return;
+      }
+
+      const transferRefundAddress = snapshot.refundAddress || getCachedRefundAddress(account) || refundAddress;
+      const transactionDestination = await resolveVerusDestination(address, verusd, BLOCKCHAIN_NAME);
+
+      if (snapshot.destinationIdentityName && transactionDestination.address !== snapshot.destinationAddress) {
+        stopBeforeSend({ id: 'N5', identityName: snapshot.destinationIdentityName }, 'form');
+        return;
+      }
+
+      const transfer = buildBridgeTransfer(transactionDestination.address, transferRefundAddress);
+      const approval = selectedToken.value === GLOBAL_ADDRESS.ETH
+        ? null
+        : await buildApprovalRequest(selectedToken, amount);
+      const receiveSymbol = receiveCurrency?.symbol || '';
+      const hasReceiveAmount = snapshot.receiveAmountDisplay && snapshot.receiveAmountDisplay !== '--';
+
+      const result = await sendFlow.runSend(flowId, {
+        allowSendAnyway,
+        approval,
+        display: {
+          destination: transactionDestination.address,
+          destinationName: snapshot.destinationIdentityName || '',
+          feeRows: reviewFeeRows.map(({ label, value }) => ({ label, value })),
+          receive: hasReceiveAmount
+            ? `${requiresReceiveQuote ? '~' : ''}${snapshot.receiveAmountDisplay} ${receiveSymbol}`.trim()
+            : '',
+          send: `${amount} ${getTokenLabel(selectedToken)}`,
+          timeEstimate: reviewTimeEstimate
+        },
+        onFirstDispatch: () => {
+          setReviewSnapshot((current) => (current ? { ...current, status: 'in-flight' } : current));
+        },
+        reviewIdentity: snapshot.editSignature,
+        session,
+        transfer,
+        // D25: "Total in {wallet}" is the value of the request, for ETH sends.
+        walletTotal: approval ? null : formatEthFromWei(transfer.value)
       });
 
-      const transferOverrides = {
-        from: account,
-        value: metaMaskFee.toString()
-      };
-      const transferGasLimit = await estimateGasLimit(
-        () => delegatorContract.estimateGas.sendTransfer(reserveTransfer, transferOverrides),
-        maxGas
-      );
-
-      await assertBridgeTransactionContext(library);
-      const txResult = await delegatorContract.sendTransfer(reserveTransfer, {
-        ...transferOverrides,
-        gasLimit: transferGasLimit
-      });
-
-      const receipt = await Promise.race([txResult.wait(), timeoutPromise]);
-      assertTransactionSucceeded(
-        receipt,
-        `The transaction failed on ${ETHEREUM_BLOCKCHAIN_NAME}. Your funds were not bridged.`
-      );
-      addToast({ type: 'success', description: 'Bridge transaction submitted successfully.' });
-      setAlert(null);
+      if (result.status === 'notice') {
+        showNoticeSurface(result.surface);
+      }
     } catch (error) {
-      addToast({
-        type: 'error',
-        description: error.message || 'Bridge transaction failed.'
-      });
-      setAlert(null);
+      // A check before the wallet request failed (N8). Nothing was sent.
+      stopBeforeSend({ details: error?.message || String(error), id: 'N8' });
     } finally {
-      setIsTxPending(false);
+      submitLockRef.current = false;
     }
   };
 
@@ -2487,7 +2502,12 @@ export default function useBridgeController({
       return;
     }
 
-    if (!submitDisabledReason && reviewSnapshot.editSignature === editSignature) {
+    // N3, N5, N6, X1, and X17 close the review. N4 and N9 keep it (3.2).
+    if (
+      !submitDisabledReason
+      && reviewSnapshot.editSignature === editSignature
+      && reviewSnapshot.sessionId === walletSessionId
+    ) {
       return;
     }
 
@@ -2495,21 +2515,25 @@ export default function useBridgeController({
       isReviewRequested,
       isReviewRequested ? { hash: '' } : undefined
     );
-  }, [clearReview, editSignature, isReviewRequested, reviewSnapshot, submitDisabledReason]);
+  }, [clearReview, editSignature, isReviewRequested, reviewSnapshot, submitDisabledReason, walletSessionId]);
 
-  const openReview = useCallback(async () => {
+  // Opens a fresh review. Returns true when the review opened. `replace`
+  // replaces the current entry (a retry from the status step).
+  const openReview = useCallback(async ({ replace = false } = {}) => {
     const requestedEditSignature = editSignature;
 
     if (isBridgePaused) {
-      return;
+      return false;
     }
 
+    clearSendNotice();
+
     if (!(await validateTransferInputs())) {
-      return;
+      return false;
     }
 
     if (requiresReceiveQuote && !hasFreshReceiveQuote) {
-      return;
+      return false;
     }
 
     if (requiresLiveGasEstimate && !hasLiveGasEstimate(gasPrice)) {
@@ -2517,15 +2541,15 @@ export default function useBridgeController({
         severity: 'info',
         message: `Estimating the ${ETHEREUM_BLOCKCHAIN_NAME} network cost for this bounceback route. Try again in a moment.`
       });
-      return;
+      return false;
     }
 
     if (!(await ensureRefundAddressSignature())) {
-      return;
+      return false;
     }
 
     if (editSignatureRef.current !== requestedEditSignature) {
-      return;
+      return false;
     }
 
     const nextReviewSnapshot = {
@@ -2535,7 +2559,10 @@ export default function useBridgeController({
       exchangeRate: conversionExchangeRate,
       refundAddress: needsRefundAddressSignature ? getCachedRefundAddress(account) || refundAddress : '',
       receiveAmountDisplay,
-      receiveFiatLabel
+      receiveFiatLabel,
+      // G3: the review belongs to one wallet session.
+      sessionId: getWalletSessionId(),
+      status: 'ready'
     };
 
     setAlert(null);
@@ -2546,11 +2573,12 @@ export default function useBridgeController({
       flushSync(() => {
         setReviewSnapshot(nextReviewSnapshot);
       });
-      enterReview();
-      return;
+      enterReview({ replace });
+      return true;
     }
 
     setReviewSnapshot(nextReviewSnapshot);
+    return true;
   }, [
     account,
     address,
@@ -2580,15 +2608,17 @@ export default function useBridgeController({
 
   const canConfirmReview = Boolean(
     isReviewing
+    && reviewSnapshot.sessionId === walletSessionId
     && !submitDisabledReason
     && hasEnoughNativeEth
     && !isRefundSignaturePending
-    && !isTxPending
+    && !sendFlow.isPreparing
+    && !sendFlow.isFlowLive
   );
 
   const reviewConfirmLabel = useMemo(() => {
-    if (isTxPending) {
-      return 'Submitting...';
+    if (sendFlow.isPreparing) {
+      return 'Checking…';
     }
 
     if (!isExpectedWalletChain(chainId)) {
@@ -2596,7 +2626,218 @@ export default function useBridgeController({
     }
 
     return hasEnoughNativeEth ? 'Confirm' : 'Not enough ETH';
-  }, [chainId, hasEnoughNativeEth, isTxPending]);
+  }, [chainId, hasEnoughNativeEth, sendFlow.isPreparing]);
+
+  // The blocking record of this account (G6). It keeps Review not sendable
+  // and shows N9.
+  const blockingRecord = useMemo(() => (
+    account ? findBlockingRecord(sendFlow.records, { account, chainId: EXPECTED_ETHEREUM_CHAIN_ID }) : null
+  ), [account, sendFlow.records]);
+
+  // The notice above the main button (3.2, "Notices"). A stop notice comes
+  // first. N3 ends when the wallet is on the expected network, and N9 when no
+  // record blocks.
+  const notice = useMemo(() => {
+    const { stopNotice } = sendFlow;
+    const allowSendAnyway = Boolean(blockingRecord && !blockingRecord.raw && sendFlow.canMutateRecords);
+
+    if (isBridgePaused) {
+      return getNotice({ id: 'N6', wallet: connectedWallet });
+    }
+
+    if (
+      stopNotice
+      && !(stopNotice.id === 'N3' && isExpectedWalletChain(chainId))
+      && !(stopNotice.id === 'N9' && !blockingRecord)
+    ) {
+      return getNotice({ ...stopNotice, allowSendAnyway, wallet: connectedWallet });
+    }
+
+    if (!isReviewing) {
+      return null;
+    }
+
+    if (blockingRecord && !sendFlow.isFlowLive) {
+      return getNotice({ allowSendAnyway, id: 'N9', wallet: connectedWallet });
+    }
+
+    if (account && !hasEnoughNativeEth && requiredNativeEth !== null) {
+      return getNotice({
+        balance: formatEthValue(nativeEthBalance),
+        id: 'N4',
+        required: formatEthValue(requiredNativeEth),
+        wallet: connectedWallet
+      });
+    }
+
+    return null;
+  }, [
+    account,
+    blockingRecord,
+    chainId,
+    connectedWallet,
+    hasEnoughNativeEth,
+    isBridgePaused,
+    isReviewing,
+    nativeEthBalance,
+    requiredNativeEth,
+    sendFlow
+  ]);
+
+  const closeStatus = useCallback(() => {
+    setReviewSnapshot(null);
+    if (typeof exitReview === 'function') {
+      exitReview({ hash: '' });
+    }
+  }, [exitReview]);
+
+  // Try again and Review again (3.2, Actions). A ready review in the same
+  // session sends again. Otherwise a fresh review opens. Without form inputs,
+  // the form opens.
+  const tryAgain = useCallback(async () => {
+    if (canConfirmReview) {
+      handleSubmit();
+      return;
+    }
+
+    const leavingStatus = isStatusRequested;
+    sendFlow.closeScreen();
+    const opened = await openReview({ replace: leavingStatus });
+    if (!opened && leavingStatus) {
+      closeStatus();
+    }
+  }, [canConfirmReview, closeStatus, handleSubmit, isStatusRequested, openReview, sendFlow]);
+
+  const switchNetwork = useCallback(async () => {
+    try {
+      await requestExpectedWalletChain(walletContext?.getActiveProvider?.());
+    } catch (error) {
+      // The notice stays. The wallet shows its own error.
+    }
+  }, [walletContext]);
+
+  const newTransfer = useCallback(() => {
+    sendFlow.closeScreen();
+    clearSendNotice();
+    setAmount('');
+    setAddress('');
+    closeStatus();
+  }, [closeStatus, sendFlow]);
+
+  const backToBridge = useCallback(() => {
+    sendFlow.dismissScreen();
+    closeStatus();
+  }, [closeStatus, sendFlow]);
+
+  const clearRecord = useCallback(async () => {
+    const recordId = sendFlow.selectedRecord?.id;
+    if (recordId && await sendFlow.clearRecord(recordId)) {
+      closeStatus();
+    }
+  }, [closeStatus, sendFlow]);
+
+  const checkAgain = useCallback(() => {
+    const recordId = isStatusRequested ? sendFlow.selectedRecord?.id : blockingRecord?.id;
+    if (recordId) {
+      sendFlow.checkAgain(recordId);
+    }
+  }, [blockingRecord, isStatusRequested, sendFlow]);
+
+  const sendAnyway = useCallback(() => {
+    clearSendNotice();
+    handleSubmit({ allowSendAnyway: true });
+  }, [handleSubmit]);
+
+  const runAction = useCallback((action) => {
+    switch (action) {
+      case 'backToBridge':
+        backToBridge();
+        break;
+      case 'checkAgain':
+        checkAgain();
+        break;
+      case 'clearRecord':
+        clearRecord();
+        break;
+      case 'confirm':
+        handleSubmit();
+        break;
+      case 'newTransfer':
+        newTransfer();
+        break;
+      case 'openReview':
+      case 'tryAgain':
+        tryAgain();
+        break;
+      case 'sendAnyway':
+        sendAnyway();
+        break;
+      case 'signRefundKey':
+        ensureRefundAddressSignature();
+        break;
+      case 'switchNetwork':
+        switchNetwork();
+        break;
+      default:
+        break;
+    }
+  }, [
+    backToBridge,
+    checkAgain,
+    clearRecord,
+    ensureRefundAddressSignature,
+    handleSubmit,
+    newTransfer,
+    sendAnyway,
+    switchNetwork,
+    tryAgain
+  ]);
+
+  // The main button of the form or Review follows the notice (3.2, notice
+  // lifecycle). Only `confirm` submits the form.
+  const mainAction = useMemo(() => {
+    if (!notice) {
+      return isReviewing
+        ? {
+          action: 'confirm',
+          disabled: !canConfirmReview,
+          isLoading: sendFlow.isPreparing,
+          isSubmit: true,
+          label: reviewConfirmLabel
+        }
+        : null;
+    }
+
+    const { action, disabled, label } = notice.mainAction;
+    const formInputsValid = !submitDisabledReason && !isRefundSignaturePending;
+    const enabledByAction = {
+      checkAgain: true,
+      confirm: canConfirmReview,
+      openReview: formInputsValid,
+      signRefundKey: !isRefundSignaturePending,
+      switchNetwork: true,
+      tryAgain: formInputsValid
+    };
+
+    return {
+      action,
+      disabled: Boolean(disabled || !action || !enabledByAction[action]),
+      isLoading: (action === 'checkAgain' && sendFlow.busyAction === 'checkAgain')
+        || (action === 'signRefundKey' && isRefundSignaturePending)
+        || (action === 'confirm' && sendFlow.isPreparing),
+      isSubmit: action === 'confirm',
+      label
+    };
+  }, [
+    canConfirmReview,
+    isRefundSignaturePending,
+    isReviewing,
+    notice,
+    reviewConfirmLabel,
+    sendFlow.busyAction,
+    sendFlow.isPreparing,
+    submitDisabledReason
+  ]);
 
   const retrySourceCatalog = useCallback(() => {
     setSourceCatalogRetryNonce((currentValue) => currentValue + 1);
@@ -2624,7 +2865,7 @@ export default function useBridgeController({
     baseBridgeFeeDisplay: formatFeeEstimate('', gasPrice),
     bounceBackFeeDisplay: formatFeeEstimate('swaptoETH', gasPrice),
     bounceBackFeeValue: getFeeEstimateValue('swaptoETH', gasPrice),
-    canSubmit: !submitDisabledReason && !isRefundSignaturePending && !isTxPending,
+    canSubmit: !submitDisabledReason && !isRefundSignaturePending && !sendFlow.isPreparing,
     canConfirmReview,
     closeReview,
     connectWallet,
@@ -2646,6 +2887,21 @@ export default function useBridgeController({
     },
     handleSubmit,
     hasReviewSnapshot,
+    hasSendScreen: Boolean(sendFlow.sendScreen),
+    isSendStoreReady: sendFlow.isReady,
+    mainAction,
+    notice,
+    runAction,
+    canMutateRecords: sendFlow.canMutateRecords,
+    copyDetailsText: sendFlow.copyDetailsText,
+    sendBusyAction: sendFlow.busyAction,
+    sendFlowRecords: sendFlow.records,
+    sendScreen: sendFlow.sendScreen,
+    selectSendRecord: sendFlow.selectRecord,
+    dismissSendScreen: sendFlow.dismissScreen,
+    selectedSendRecordId: sendFlow.selectedRecord?.id || null,
+    walletIcon: connectedWallet?.icon || null,
+    walletName: walletName(connectedWallet),
     hasEnoughNativeEth,
     isRefundSignaturePending,
     isAddressResolving,
@@ -2653,7 +2909,8 @@ export default function useBridgeController({
     isReviewing,
     isSourceCatalogLoading,
     isSourceCurrenciesLoading: isWalletBalancesLoading,
-    isTxPending,
+    isSendPreparing: sendFlow.isPreparing,
+    isShowingStatus: Boolean(isStatusRequested && sendFlow.sendScreen),
     isWalletConnected: Boolean(account),
     nativeEthBalance,
     notarizationLagBlocks,

@@ -7,10 +7,16 @@ import { BigNumber, Contract } from 'ethers';
 import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import ERC20_ABI from 'abis/ERC20Abi.json';
 import { DELEGATOR_ADD } from 'constants/contractAddress';
-import { GuardStopError, guardedSend } from 'utils/guardedSend';
+import {
+  GuardStopError,
+  RequestDiscardedError,
+  UnresolvedRequestError,
+  WalletRequestRejectedError,
+  guardedSend
+} from 'utils/guardedSend';
 import { MESSAGES } from 'utils/sendScreens';
-import { runWithFlowLock } from 'wallets/operationLock';
-import { SendBlockedError } from 'wallets/submittedOperations';
+import { OperationLockError, runWithFlowLock } from 'wallets/operationLock';
+import { SendBlockedError, StorageUnavailableError } from 'wallets/submittedOperations';
 import { getWalletSessionId } from 'wallets/walletSession';
 
 // The old fixed limits stay as floors (see utils/transactions).
@@ -139,3 +145,68 @@ export const runBridgeSend = ({
 
   return { ...transferResult, approvalRecordId };
 });
+
+const DISCARD_NOTICE_IDS = {
+  chain: 'X10', earlier: 'X12', fields: 'X11', held: 'N9', latch: 'X17', nonce: 'X13'
+};
+const GUARD_NOTICE_IDS = {
+  configuration: 'X18', 'no-send-path': 'X8', session: 'X1', storage: 'X5', 'wrong-network': 'N3'
+};
+// The notices that close the review and show on the form (3.2, notice
+// lifecycle). Every other notice shows on Review.
+const FORM_NOTICE_IDS = ['N3', 'X1', 'X17'];
+
+const noticeStop = (id, details) => ({
+  kind: 'notice',
+  notice: { details: details || null, id },
+  surface: FORM_NOTICE_IDS.includes(id) ? 'form' : 'review'
+});
+
+// What the bridge card shows after runBridgeSend stops (3.2, rule 3, D23).
+// A stop that proves nothing was sent is a notice. Any other stop shows the
+// screen of its record.
+export const describeSendStop = (error) => {
+  if (error instanceof WalletRequestRejectedError) {
+    return noticeStop(error.reason === 'unsupported' ? 'X9' : 'N1');
+  }
+
+  if (error instanceof RequestDiscardedError) {
+    return noticeStop(DISCARD_NOTICE_IDS[error.reason] || 'X11');
+  }
+
+  if (error instanceof UnresolvedRequestError) {
+    return { kind: 'screen', recordId: error.recordId };
+  }
+
+  if (error instanceof ApprovalNotConfirmedError) {
+    return { kind: 'screen', recordId: error.record?.id || null };
+  }
+
+  if (error instanceof FlowStoppedError) {
+    return { kind: 'screen', recordId: error.recordId };
+  }
+
+  if (error instanceof AllowanceTooLowError) {
+    return noticeStop('X6');
+  }
+
+  if (error instanceof SendBlockedError) {
+    return noticeStop('N9');
+  }
+
+  if (error instanceof StorageUnavailableError) {
+    return noticeStop('X5');
+  }
+
+  if (error instanceof OperationLockError) {
+    return noticeStop(error.reason === 'held' ? 'X3' : 'X4');
+  }
+
+  if (error instanceof GuardStopError && GUARD_NOTICE_IDS[error.reason]) {
+    return noticeStop(GUARD_NOTICE_IDS[error.reason]);
+  }
+
+  // A failed check or read before dispatch (N8). The message shows only in the
+  // "Details" fold.
+  return noticeStop('N8', error?.message || String(error));
+};

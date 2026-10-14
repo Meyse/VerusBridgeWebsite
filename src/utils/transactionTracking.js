@@ -109,6 +109,59 @@ export const classifyOutcome = ({ error, observed, receipt, record }) => {
   return { feePaid, outcome: 'confirmed-unexpected' };
 };
 
+// "Check again" without canMutateRecords (3.2, Actions): RPC reads only. The
+// result is for the display. It changes no record and broadcasts nothing.
+export const readRecordOutcome = async ({ record, siteProvider }) => {
+  if (!record?.hash) {
+    return null;
+  }
+
+  const [observed, receipt] = await Promise.all([
+    siteProvider.getTransaction(record.hash),
+    siteProvider.getTransactionReceipt(record.hash)
+  ]);
+
+  return receipt ? classifyOutcome({ observed, receipt, record }) : null;
+};
+
+// G6 step 5: for a record without a hash, transactions from the account to the
+// same contract since the record's start block. A listed match never changes
+// the record. The scan is short, so it does not load the RPC.
+export const POSSIBLE_MATCH_BLOCK_LIMIT = 64;
+const POSSIBLE_MATCH_BATCH_SIZE = 8;
+const MAX_POSSIBLE_MATCHES = 3;
+
+const sameAddress = (left, right) => String(left || '').toLowerCase() === String(right || '').toLowerCase();
+
+export const findPossibleMatches = async ({ maxBlocks = POSSIBLE_MATCH_BLOCK_LIMIT, record, siteProvider }) => {
+  if (!Number.isInteger(record?.startBlock) || !record.request?.to) {
+    return [];
+  }
+
+  const latest = await siteProvider.getBlockNumber();
+  const last = Math.min(latest, record.startBlock + maxBlocks);
+  const numbers = [];
+  for (let number = record.startBlock; number <= last; number += 1) {
+    numbers.push(number);
+  }
+
+  const matches = [];
+  for (let index = 0; index < numbers.length; index += POSSIBLE_MATCH_BATCH_SIZE) {
+    // eslint-disable-next-line no-await-in-loop
+    const blocks = await Promise.all(numbers.slice(index, index + POSSIBLE_MATCH_BATCH_SIZE)
+      .map((number) => siteProvider.getBlockWithTransactions(number).catch(() => null)));
+    blocks.forEach((block) => {
+      (block?.transactions || []).forEach((tx) => {
+        if (sameAddress(tx.from, record.account) && sameAddress(tx.to, record.request.to)) {
+          matches.push(tx.hash);
+        }
+      });
+    });
+  }
+
+  return matches.reverse().slice(0, MAX_POSSIBLE_MATCHES);
+};
+
 const wait = (ms) => new Promise((resolve) => {
   setTimeout(resolve, ms);
 });

@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useWeb3React } from '@web3-react/core';
 import { BigNumber, Wallet, utils } from 'ethers';
 
+import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import { useToast } from 'components/Toast/ToastProvider';
 import {
   BLOCKCHAIN_NAME,
@@ -15,6 +16,8 @@ import {
   TESTNET
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
+import { createScriptedChain } from 'testUtils/scriptedChain';
+import { connectTestWallet, createSigningMetaMask, installSendRuntime } from 'testUtils/sendFixtures';
 import { getContract, getMaxAmount } from 'utils/contract';
 import { convertVerusAddressToEthAddress } from 'utils/convert';
 import {
@@ -22,7 +25,9 @@ import {
   REFUND_ADDRESS_STORAGE_KEY,
   REFUND_ADDRESS_V2_STORAGE_KEY
 } from 'utils/refundAddress';
+import { resetSendScreenStateForTests } from 'utils/sendScreenState';
 import { hash160, toBase58Check } from 'utils/verusAddress';
+import { resetWalletSessionForTests } from 'wallets/walletSession';
 
 import useBridgeController from './useBridgeController';
 
@@ -68,6 +73,8 @@ const TBTC_ADDRESS = '0x18084fbA666A33d37592fA2633fD49A74dD93a88';
 const originalFetch = global.fetch;
 const REFUND_ADDRESS_MESSAGE = 'Agreeing to this will create a public key address for Verus Refunds.';
 const VALID_REFUND_ADDRESS = toBase58Check(Buffer.alloc(20, 1), 60);
+const DELEGATOR_INTERFACE = new utils.Interface(DELEGATOR_ABI);
+const SIGNER = new Wallet(`0x${'0'.repeat(63)}1`);
 const directRouteLabel = `${ETHEREUM_BLOCKCHAIN_NAME} -> ${TESTNET ? BLOCKCHAIN_NAME : 'Verus'}`;
 const bouncebackRouteLabel = `${directRouteLabel} -> ${ETHEREUM_BLOCKCHAIN_NAME}`;
 
@@ -276,6 +283,14 @@ const HookProbe = ({ controllerOptions = {} }) => {
       <div data-testid="address-error">{controller.addressError || ''}</div>
       <div data-testid="address-resolution">{controller.addressResolutionMessage || ''}</div>
       <div data-testid="alert-message">{controller.alert?.message || ''}</div>
+      <div data-testid="notice-id">{controller.notice?.id || ''}</div>
+      <div data-testid="notice-title">{controller.notice?.title || ''}</div>
+      <div data-testid="notice-body">{controller.notice?.body || ''}</div>
+      <div data-testid="notice-details">{controller.notice?.details || ''}</div>
+      <div data-testid="main-action-label">{controller.mainAction?.label || ''}</div>
+      <div data-testid="send-screen-id">{controller.sendScreen?.id || ''}</div>
+      <div data-testid="send-screen-title">{controller.sendScreen?.title || ''}</div>
+      <div data-testid="send-screen-body">{controller.sendScreen?.body || ''}</div>
       <div data-testid="destination-count">{controller.destinationOptions.length}</div>
       <div data-testid="source-count">{controller.sourceCurrencies.length}</div>
       <div data-testid="source-symbols">{controller.sourceCurrencies.map((currency) => currency.symbol).join(',')}</div>
@@ -553,11 +568,34 @@ const SelectWhenCatalogReadyProbe = () => {
   );
 };
 
+// The decoded sendTransfer requests that the fake MetaMask received.
+const getSentTransfers = (wallet) => wallet.sentRequests
+  .filter((request) => request.data.startsWith(DELEGATOR_INTERFACE.getSighash('sendTransfer')))
+  .map((request) => ({ request, reserveTransfer: DELEGATOR_INTERFACE.decodeFunctionData('sendTransfer', request.data)[0] }));
+
 describe('useBridgeController disconnected source bootstrap', () => {
+  let sendChain;
+  let sendRuntime;
+
+  // Connects a fake MetaMask that signs with real ethers on the scripted chain.
+  const connectSigningWallet = (signer = SIGNER, options = {}) => {
+    const wallet = createSigningMetaMask({ chain: sendChain, signer, ...options });
+    connectTestWallet({ provider: wallet, signer });
+    return wallet;
+  };
+
+  afterEach(() => {
+    sendRuntime.cleanup();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
     delete window.ethereum;
+    resetSendScreenStateForTests();
+    resetWalletSessionForTests();
+    sendChain = createScriptedChain({ chainId: EXPECTED_ETHEREUM_CHAIN_ID });
+    sendRuntime = installSendRuntime({ chain: sendChain });
 
     global.fetch = vi.fn(() => new Promise(() => {}));
     useToast.mockReturnValue({ addToast: vi.fn() });
@@ -615,7 +653,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('alert-message')).toHaveTextContent('Switch MetaMask');
+      expect(screen.getByTestId('alert-message')).toHaveTextContent(`Switch your wallet to ${ETHEREUM_BLOCKCHAIN_NAME}`);
     });
     expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no');
   });
@@ -1051,216 +1089,126 @@ describe('useBridgeController disconnected source bootstrap', () => {
     expect(screen.getByTestId('review-destination-address')).toHaveTextContent(identityAddress);
   });
 
-  test('re-resolves a VerusID before submitting a transfer to its canonical i-address', async () => {
-    const identityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
-    const sendTransfer = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({ status: 1 })
-    });
-    const library = createLibrary({
-      getBalance: vi.fn().mockResolvedValue(utils.parseEther('10'))
-    });
+  const identityResult = (identityAddress) => ({
+    result: {
+      fullyqualifiedname: 'Max.VRSC@',
+      identity: { identityaddress: identityAddress },
+      status: 'active'
+    }
+  });
 
-    mockVerusd.getIdentity.mockResolvedValue({
-      result: {
-        fullyqualifiedname: 'Max.VRSC@',
-        identity: { identityaddress: identityAddress },
-        status: 'active'
-      }
+  // Opens the review of a direct ETH send to Max@ with 10 ETH in the wallet.
+  const openVerusIdReview = async ({ account = SIGNER.address, configure = 'Configure VerusID Direct' } = {}) => {
+    useWeb3React.mockReturnValue({
+      account,
+      chainId: EXPECTED_ETHEREUM_CHAIN_ID,
+      library: createLibrary({ getBalance: vi.fn().mockResolvedValue(utils.parseEther('10')) })
     });
-    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
-    useContract.mockReturnValue(createDelegatorContract({ sendTransfer }));
+    useContract.mockReturnValue(createDelegatorContract());
 
     render(<HookProbe />);
-    fireEvent.click(screen.getByRole('button', { name: 'Configure VerusID Direct' }));
+    fireEvent.click(screen.getByRole('button', { name: configure }));
     await waitFor(() => expect(screen.getByTestId('address-resolution')).toHaveTextContent('Max.VRSC@'));
     fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
     await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
-
     fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
     await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes'));
+  };
+
+  test('re-resolves a VerusID before submitting a transfer to its canonical i-address', async () => {
+    const identityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
+    mockVerusd.getIdentity.mockResolvedValue(identityResult(identityAddress));
+    const wallet = connectSigningWallet();
+    const walletRequest = vi.spyOn(wallet, 'request');
+
+    await openVerusIdReview();
     fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
 
-    await waitFor(() => expect(sendTransfer).toHaveBeenCalledTimes(1));
-    expect(sendTransfer.mock.calls[0][0].destination).toEqual({
-      destinationaddress: convertVerusAddressToEthAddress(identityAddress),
-      destinationtype: 4
-    });
+    await waitFor(() => expect(getSentTransfers(wallet)).toHaveLength(1));
+    const [{ reserveTransfer }] = getSentTransfers(wallet);
+    expect(reserveTransfer.destination.destinationaddress.toLowerCase())
+      .toBe(convertVerusAddressToEthAddress(identityAddress).toLowerCase());
+    expect(reserveTransfer.destination.destinationtype).toBe(4);
     expect(mockVerusd.getIdentity).toHaveBeenCalledTimes(2);
+    const sendCallIndex = walletRequest.mock.calls.findIndex(([{ method }]) => method === 'eth_sendTransaction');
     expect(mockVerusd.getIdentity.mock.invocationCallOrder[1])
-      .toBeLessThan(sendTransfer.mock.invocationCallOrder[0]);
+      .toBeLessThan(walletRequest.mock.invocationCallOrder[sendCallIndex]);
   });
 
   test('sends the transfer with the estimated gas plus a 30% margin', async () => {
-    const identityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
-    const sendTransfer = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({ status: 1 })
-    });
-    const estimateSendTransfer = vi.fn().mockResolvedValue(BigNumber.from(1898412));
-    const library = createLibrary({
-      getBalance: vi.fn().mockResolvedValue(utils.parseEther('10'))
-    });
+    mockVerusd.getIdentity.mockResolvedValue(identityResult('iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX'));
+    sendChain.setGasEstimate(1898412);
+    const wallet = connectSigningWallet();
 
-    mockVerusd.getIdentity.mockResolvedValue({
-      result: {
-        fullyqualifiedname: 'Max.VRSC@',
-        identity: { identityaddress: identityAddress },
-        status: 'active'
-      }
-    });
-    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
-    useContract.mockReturnValue(createDelegatorContract({
-      estimateGas: { sendTransfer: estimateSendTransfer },
-      sendTransfer
-    }));
-
-    render(<HookProbe />);
-    fireEvent.click(screen.getByRole('button', { name: 'Configure VerusID Direct' }));
-    await waitFor(() => expect(screen.getByTestId('address-resolution')).toHaveTextContent('Max.VRSC@'));
-    fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
-    await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
-    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes'));
+    await openVerusIdReview();
     fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
 
-    await waitFor(() => expect(sendTransfer).toHaveBeenCalledTimes(1));
-    const [reserveTransfer, txOptions] = sendTransfer.mock.calls[0];
+    await waitFor(() => expect(getSentTransfers(wallet)).toHaveLength(1));
+    const [{ request }] = getSentTransfers(wallet);
     // 1,898,412 x 1.3 = 2,467,935.6, rounded down.
-    expect(txOptions.gasLimit.toString()).toBe('2467935');
-    expect(estimateSendTransfer).toHaveBeenCalledWith(reserveTransfer, {
-      from: '0xabc',
-      value: txOptions.value
-    });
+    expect(BigNumber.from(request.gas).toString()).toBe('2467935');
+    expect(BigNumber.from(request.chainId).toNumber()).toBe(EXPECTED_ETHEREUM_CHAIN_ID);
   });
 
   test('reports a reverted transfer as a failure and never as a success', async () => {
-    const identityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
-    const addToast = vi.fn();
-    const sendTransfer = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({ status: 0 })
-    });
-    const library = createLibrary({
-      getBalance: vi.fn().mockResolvedValue(utils.parseEther('10'))
-    });
+    mockVerusd.getIdentity.mockResolvedValue(identityResult('iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX'));
+    const wallet = connectSigningWallet(SIGNER, { mineStatus: () => 0 });
+    const screenTitles = new Set();
 
-    mockVerusd.getIdentity.mockResolvedValue({
-      result: {
-        fullyqualifiedname: 'Max.VRSC@',
-        identity: { identityaddress: identityAddress },
-        status: 'active'
-      }
-    });
-    useToast.mockReturnValue({ addToast });
-    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
-    useContract.mockReturnValue(createDelegatorContract({ sendTransfer }));
-
-    render(<HookProbe />);
-    fireEvent.click(screen.getByRole('button', { name: 'Configure VerusID Direct' }));
-    await waitFor(() => expect(screen.getByTestId('address-resolution')).toHaveTextContent('Max.VRSC@'));
-    fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
-    await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
-    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes'));
+    await openVerusIdReview();
     fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
 
-    await waitFor(() => expect(addToast).toHaveBeenCalledWith({
-      type: 'error',
-      description: `The transaction failed on ${ETHEREUM_BLOCKCHAIN_NAME}. Your funds were not bridged.`
-    }));
-    expect(addToast).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
+    await waitFor(() => {
+      screenTitles.add(screen.getByTestId('send-screen-title').textContent);
+      expect(screen.getByTestId('send-screen-id')).toHaveTextContent('T4');
+    });
+    expect(screen.getByTestId('send-screen-title')).toHaveTextContent('Transaction failed');
+    expect(screen.getByTestId('send-screen-body')).toHaveTextContent('Your funds were not bridged.');
+    expect(screenTitles.has('Sent')).toBe(false);
+    expect(getSentTransfers(wallet)).toHaveLength(1);
   });
 
   test('sends nothing when the gas estimate fails', async () => {
-    const identityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
-    const addToast = vi.fn();
-    const sendTransfer = vi.fn();
-    const library = createLibrary({
-      getBalance: vi.fn().mockResolvedValue(utils.parseEther('10'))
-    });
+    mockVerusd.getIdentity.mockResolvedValue(identityResult('iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX'));
+    sendChain.setGasEstimate(new Error('execution reverted'));
+    const wallet = connectSigningWallet();
 
-    mockVerusd.getIdentity.mockResolvedValue({
-      result: {
-        fullyqualifiedname: 'Max.VRSC@',
-        identity: { identityaddress: identityAddress },
-        status: 'active'
-      }
-    });
-    useToast.mockReturnValue({ addToast });
-    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
-    useContract.mockReturnValue(createDelegatorContract({
-      estimateGas: { sendTransfer: vi.fn().mockRejectedValue(new Error('cannot estimate gas')) },
-      sendTransfer
-    }));
-
-    render(<HookProbe />);
-    fireEvent.click(screen.getByRole('button', { name: 'Configure VerusID Direct' }));
-    await waitFor(() => expect(screen.getByTestId('address-resolution')).toHaveTextContent('Max.VRSC@'));
-    fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
-    await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
-    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes'));
+    await openVerusIdReview();
     fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
 
-    await waitFor(() => expect(addToast).toHaveBeenCalledWith({
-      type: 'error',
-      description: 'The network fee could not be estimated, so nothing was sent. The transaction would probably fail.'
-    }));
-    expect(sendTransfer).not.toHaveBeenCalled();
+    // N8: a failed check before the wallet request. Nothing was sent.
+    await waitFor(() => expect(screen.getByTestId('notice-id')).toHaveTextContent('N8'));
+    expect(screen.getByTestId('notice-body')).toHaveTextContent('Nothing was sent. Try again.');
+    expect(screen.getByTestId('notice-details'))
+      .toHaveTextContent('The network fee could not be estimated, so nothing was sent.');
+    expect(wallet.sentRequests).toHaveLength(0);
+    expect(screen.getByTestId('send-screen-id')).toBeEmptyDOMElement();
   });
 
   test('requires a fresh review when a VerusID resolves to a different address before submission', async () => {
     const reviewedIdentityAddress = 'iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX';
     const changedIdentityAddress = toBase58Check(Buffer.alloc(20, 2), 102);
-    const approve = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({ status: 1 })
-    });
-    const sendTransfer = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({ status: 1 })
-    });
-    const library = createLibrary({
-      getBalance: vi.fn().mockResolvedValue(utils.parseEther('10'))
-    });
+    const wallet = connectSigningWallet();
 
     getContract.mockImplementation(() => ({
-      approve,
       decimals: vi.fn().mockResolvedValue(18),
       name: vi.fn().mockResolvedValue('Dai Stablecoin'),
       symbol: vi.fn().mockResolvedValue('DAI')
     }));
     mockVerusd.getIdentity
-      .mockResolvedValueOnce({
-        result: {
-          fullyqualifiedname: 'Max.VRSC@',
-          identity: { identityaddress: reviewedIdentityAddress },
-          status: 'active'
-        }
-      })
-      .mockResolvedValueOnce({
-        result: {
-          fullyqualifiedname: 'Max.VRSC@',
-          identity: { identityaddress: changedIdentityAddress },
-          status: 'active'
-        }
-      });
-    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0xabc', library });
-    useContract.mockReturnValue(createDelegatorContract({ sendTransfer }));
+      .mockResolvedValueOnce(identityResult(reviewedIdentityAddress))
+      .mockResolvedValueOnce(identityResult(changedIdentityAddress));
 
-    render(<HookProbe />);
-    fireEvent.click(screen.getByRole('button', { name: 'Configure VerusID ERC20 Direct' }));
-    await waitFor(() => expect(screen.getByTestId('address-resolution')).toHaveTextContent('Max.VRSC@'));
-    fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
-    await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
-    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes'));
+    await openVerusIdReview({ configure: 'Configure VerusID ERC20 Direct' });
     expect(screen.getByTestId('review-destination-address')).toHaveTextContent(reviewedIdentityAddress);
     fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
 
-    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no'));
-    expect(approve).not.toHaveBeenCalled();
-    expect(sendTransfer).not.toHaveBeenCalled();
+    // N5 closes the review and shows on the form. No approval, no transfer.
+    await waitFor(() => expect(screen.getByTestId('notice-id')).toHaveTextContent('N5'));
+    expect(screen.getByTestId('notice-title')).toHaveTextContent('Max.VRSC@ now points to a new address');
+    expect(screen.getByTestId('main-action-label')).toHaveTextContent('Review again');
+    expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no');
+    expect(wallet.sentRequests).toHaveLength(0);
   });
 
   test('derives internal Bridge and Floralis USD prices while keeping DAI, USDT, and USDC pegged', async () => {
@@ -2005,7 +1953,9 @@ describe('useBridgeController disconnected source bootstrap', () => {
     });
 
     expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no');
-    expect(screen.getByTestId('alert-message')).toHaveTextContent('Public key signature is required');
+    await waitFor(() => expect(screen.getByTestId('notice-id')).toHaveTextContent('N7'));
+    expect(screen.getByTestId('notice-title')).toHaveTextContent('One more signature needed');
+    expect(screen.getByTestId('main-action-label')).toHaveTextContent('Sign in your wallet');
     expect(JSON.parse(window.localStorage.getItem(REFUND_ADDRESS_SIGNATURE_STATUS_KEY))).toEqual({
       '0xabc': 'failed'
     });
@@ -2026,8 +1976,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const signature = await wallet.signMessage(REFUND_ADDRESS_MESSAGE);
     const expectedRefundAddress = getRefundAddressFromSignature(signature);
     const request = vi.fn().mockResolvedValue(signature);
-    const wait = vi.fn().mockResolvedValue({ status: 1 });
-    const sendTransfer = vi.fn().mockResolvedValue({ wait });
+    const sendingWallet = connectSigningWallet(wallet);
     const library = createLibrary({
       send: createWalletSend(request, wallet.address),
       getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
@@ -2035,7 +1984,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
       getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
-    const delegatorContract = createDelegatorContract({ sendTransfer });
+    const delegatorContract = createDelegatorContract();
 
     mockVerusd.estimateConversion.mockResolvedValue({
       result: { estimatedcurrencyout: 0.00107949 }
@@ -2074,17 +2023,14 @@ describe('useBridgeController disconnected source bootstrap', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
 
     await waitFor(() => {
-      expect(sendTransfer).toHaveBeenCalledTimes(1);
+      expect(getSentTransfers(sendingWallet)).toHaveLength(1);
     });
 
-    expect(library.send).toHaveBeenCalledWith('eth_chainId', []);
-    expect(library.getCode).toHaveBeenCalled();
-
-    const [reserveTransfer, txOptions] = sendTransfer.mock.calls[0];
-    expect(reserveTransfer.destination.destinationaddress).toContain(
-      convertVerusAddressToEthAddress(expectedRefundAddress).slice(2)
+    const [{ request: sentRequest, reserveTransfer }] = getSentTransfers(sendingWallet);
+    expect(reserveTransfer.destination.destinationaddress.toLowerCase()).toContain(
+      convertVerusAddressToEthAddress(expectedRefundAddress).slice(2).toLowerCase()
     );
-    expect(txOptions.from).toBe(wallet.address);
+    expect(sentRequest.from.toLowerCase()).toBe(wallet.address.toLowerCase());
   });
 
   test('asks for a new signature when only a legacy cached refund address exists', async () => {
@@ -2102,8 +2048,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const signature = await wallet.signMessage(REFUND_ADDRESS_MESSAGE);
     const expectedRefundAddress = getRefundAddressFromSignature(signature);
     const request = vi.fn().mockResolvedValue(signature);
-    const wait = vi.fn().mockResolvedValue({ status: 1 });
-    const sendTransfer = vi.fn().mockResolvedValue({ wait });
+    const sendingWallet = connectSigningWallet(wallet);
     cacheRefundAddress(wallet.address);
     const library = createLibrary({
       send: createWalletSend(request, wallet.address),
@@ -2112,7 +2057,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
       getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
-    const delegatorContract = createDelegatorContract({ sendTransfer });
+    const delegatorContract = createDelegatorContract();
 
     mockVerusd.estimateConversion.mockResolvedValue({
       result: { estimatedcurrencyout: 0.00107949 }
@@ -2149,15 +2094,15 @@ describe('useBridgeController disconnected source bootstrap', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
 
     await waitFor(() => {
-      expect(sendTransfer).toHaveBeenCalledTimes(1);
+      expect(getSentTransfers(sendingWallet)).toHaveLength(1);
     });
 
-    const [reserveTransfer] = sendTransfer.mock.calls[0];
-    expect(reserveTransfer.destination.destinationaddress).toContain(
-      convertVerusAddressToEthAddress(expectedRefundAddress).slice(2)
+    const [{ reserveTransfer }] = getSentTransfers(sendingWallet);
+    expect(reserveTransfer.destination.destinationaddress.toLowerCase()).toContain(
+      convertVerusAddressToEthAddress(expectedRefundAddress).slice(2).toLowerCase()
     );
-    expect(reserveTransfer.destination.destinationaddress).not.toContain(
-      convertVerusAddressToEthAddress(VALID_REFUND_ADDRESS).slice(2)
+    expect(reserveTransfer.destination.destinationaddress.toLowerCase()).not.toContain(
+      convertVerusAddressToEthAddress(VALID_REFUND_ADDRESS).slice(2).toLowerCase()
     );
   });
 
@@ -2175,7 +2120,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const account = new Wallet('0x4444444444444444444444444444444444444444444444444444444444444444');
     const otherKey = new Wallet('0x5555555555555555555555555555555555555555555555555555555555555555');
     const request = vi.fn().mockResolvedValue(await otherKey.signMessage(REFUND_ADDRESS_MESSAGE));
-    const sendTransfer = vi.fn();
+    const sendingWallet = connectSigningWallet(account);
     const library = createLibrary({
       send: createWalletSend(request, account.address),
       getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
@@ -2183,7 +2128,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
       getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
-    const delegatorContract = createDelegatorContract({ sendTransfer });
+    const delegatorContract = createDelegatorContract();
 
     mockVerusd.estimateConversion.mockResolvedValue({
       result: { estimatedcurrencyout: 0.00107949 }
@@ -2207,13 +2152,13 @@ describe('useBridgeController disconnected source bootstrap', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('alert-message')).toHaveTextContent(
-        "Your wallet did not sign with this account's key."
-      );
+      expect(screen.getByTestId('notice-id')).toHaveTextContent('X2');
     });
+    expect(screen.getByTestId('notice-title')).toHaveTextContent("Your wallet did not sign with this account's key");
 
     expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no');
-    expect(sendTransfer).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+    expect(sendingWallet.sentRequests).toHaveLength(0);
     expect(window.localStorage.getItem(REFUND_ADDRESS_V2_STORAGE_KEY)).toBeNull();
   });
 
@@ -2228,23 +2173,23 @@ describe('useBridgeController disconnected source bootstrap', () => {
 
       return new Promise(() => {});
     });
+    const signer = new Wallet(`0x${'3'.repeat(64)}`);
     const request = vi.fn().mockRejectedValue(new Error('User rejected request'));
-    const sendTransfer = vi.fn();
+    const sendingWallet = connectSigningWallet(signer);
     const library = createLibrary({
-      send: createWalletSend(request, '0x1234567890123456789012345678901234567890'),
+      send: createWalletSend(request, signer.address),
       getBalance: vi.fn().mockResolvedValue(utils.parseEther('3')),
       getBlockNumber: vi.fn().mockResolvedValue(100),
       getBlock: vi.fn().mockResolvedValue({ transactions: ['0xtx1', '0xtx2', '0xtx3'] }),
       getTransaction: vi.fn().mockResolvedValue({ gasPrice: '10000000000' })
     });
-    const delegatorContract = createDelegatorContract({ sendTransfer });
 
     mockVerusd.estimateConversion.mockResolvedValue({
       result: { estimatedcurrencyout: 0.00107949 }
     });
 
-    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: '0x1234567890123456789012345678901234567890', library });
-    useContract.mockReturnValue(delegatorContract);
+    useWeb3React.mockReturnValue({ chainId: EXPECTED_ETHEREUM_CHAIN_ID, account: signer.address, library });
+    useContract.mockReturnValue(createDelegatorContract());
 
     render(<HookProbe />);
 
@@ -2258,7 +2203,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
       expect(screen.getByTestId('submit-disabled-reason')).toBeEmptyDOMElement();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
 
     await waitFor(() => {
       expect(request).toHaveBeenCalledWith({
@@ -2266,9 +2211,12 @@ describe('useBridgeController disconnected source bootstrap', () => {
         params: expect.any(Array)
       });
     });
+    await waitFor(() => expect(screen.getByTestId('notice-id')).toHaveTextContent('N7'));
 
-    expect(sendTransfer).not.toHaveBeenCalled();
-    expect(screen.getByTestId('alert-message')).toHaveTextContent('Public key signature is required');
+    // Without a review, Confirm sends nothing.
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+    expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no');
+    expect(sendingWallet.sentRequests).toHaveLength(0);
   });
 
   test('reuses an in-flight public key signing request for repeated bounceback review attempts', async () => {

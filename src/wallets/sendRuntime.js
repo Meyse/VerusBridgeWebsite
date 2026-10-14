@@ -34,8 +34,12 @@ export const createSiteProvider = (deployment = BRIDGE_DEPLOYMENT) => {
 
 const TRACKED_STATES = ['signed', 'submitted', 'observed'];
 
-export const createSendRuntime = ({ siteProvider = createSiteProvider(), store = createSubmittedOperations() } = {}) => {
-  const tracker = siteProvider ? createTransactionTracker({ siteProvider, store }) : null;
+export const createSendRuntime = ({
+  pollIntervalMs,
+  siteProvider = createSiteProvider(),
+  store = createSubmittedOperations()
+} = {}) => {
+  const tracker = siteProvider ? createTransactionTracker({ pollIntervalMs, siteProvider, store }) : null;
 
   // Every record that gets a hash starts tracking at once (G6 step 1).
   store.onTransition(({ recordId, to }) => {

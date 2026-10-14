@@ -14,6 +14,7 @@ export const createScriptedChain = ({ chainId, startBlock = 100, code = '0x6000'
   const minedNonces = new Map();
   const allowances = new Map();
   let height = startBlock;
+  let gasEstimate = 300000;
 
   const addBlock = (number, entries) => {
     blocks.set(number, { entries, number });
@@ -129,7 +130,10 @@ export const createScriptedChain = ({ chainId, startBlock = 100, code = '0x6000'
       case 'eth_gasPrice':
         return hex(1000000000);
       case 'eth_estimateGas':
-        return hex(300000);
+        if (gasEstimate instanceof Error) {
+          throw gasEstimate;
+        }
+        return hex(gasEstimate);
       case 'eth_getTransactionCount': {
         const mined = minedNonces.get(String(params[0]).toLowerCase()) || 0;
         if (params[1] !== 'pending') {
@@ -178,6 +182,11 @@ export const createScriptedChain = ({ chainId, startBlock = 100, code = '0x6000'
     allowances.set(String(token).toLowerCase(), value);
   };
 
+  // The gas estimate for every call, or an Error that the estimate throws.
+  const setGasEstimate = (value) => {
+    gasEstimate = value;
+  };
+
   // The next nonce of an address, counting known pending transactions.
   const nextNonce = async (address) => BigNumber.from(await rpc('eth_getTransactionCount', [address, 'pending'])).toNumber();
 
@@ -186,6 +195,7 @@ export const createScriptedChain = ({ chainId, startBlock = 100, code = '0x6000'
     forget,
     nextNonce,
     setAllowance,
+    setGasEstimate,
     getHeight: () => height,
     mine,
     provider,
