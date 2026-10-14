@@ -11,6 +11,13 @@
 import { BigNumber, providers, utils } from 'ethers';
 
 import { DELEGATOR_ADD, ETHEREUM_BLOCKCHAIN_NAME, EXPECTED_ETHEREUM_CHAIN_ID } from 'constants/contractAddress';
+import {
+  MESSAGES,
+  getDiscardMessage,
+  getLatchMessage,
+  getRejectionMessage,
+  getWrongNetworkMessage
+} from 'utils/sendScreens';
 import { estimateGasLimit } from 'utils/transactions';
 import { normalizeChainId } from 'utils/walletNetwork';
 import { BRAVE_WALLET_RDNS, METAMASK_RDNS } from 'wallets/supportedWallets';
@@ -41,9 +48,9 @@ export const getSendPath = (rdns) => {
   return null;
 };
 
-export const SESSION_CHANGED_MESSAGE = 'Your wallet, account, or network changed. Review the transfer again.';
-export const NO_SEND_PATH_MESSAGE = 'The bridge can send only with MetaMask or Brave Wallet. Connect one of them to send.';
-export const INTERRUPTED_MESSAGE = "A transfer was started, but the site did not get its transaction from your wallet. Check your wallet's activity before you send again.";
+export const SESSION_CHANGED_MESSAGE = MESSAGES.sessionChanged;
+export const NO_SEND_PATH_MESSAGE = MESSAGES.noSendPath;
+export const INTERRUPTED_MESSAGE = MESSAGES.interrupted;
 
 // A stop before dispatch. Nothing reached the wallet.
 export class GuardStopError extends Error {
@@ -101,40 +108,7 @@ export const classifyWalletRequestError = (error) => {
   return { kind: 'unknown' };
 };
 
-export const getRejectionMessage = (reason, wallet) => (
-  reason === 'unsupported'
-    ? `${walletNameAtStart(wallet)} does not support this request. Update ${walletName(wallet)}, then try again.`
-    : `Cancelled in ${walletName(wallet)}. Nothing was sent.`
-);
-
-export const getDiscardMessage = (reason, wallet) => {
-  switch (reason) {
-    case 'chain':
-      return `${walletNameAtStart(wallet)} signed for another network. Nothing was sent. Switch ${walletName(wallet)} to ${ETHEREUM_BLOCKCHAIN_NAME}, then try again.`;
-    case 'earlier':
-      return 'This account has a transaction that is not confirmed yet. Nothing was sent. Wait until it confirms, then try again.';
-    case 'nonce':
-      return `${walletNameAtStart(wallet)} and the bridge do not agree on the next transaction number. Nothing was sent. Wait a minute, then try again.`;
-    case 'held':
-      return 'A transfer from this account is not confirmed yet. Wait for it, or check it again.';
-    case 'latch':
-      return 'Your wallet, account, or network changed. Nothing was sent. Review the transfer again.';
-    default:
-      return `${walletNameAtStart(wallet)} changed the transaction. Nothing was sent.`;
-  }
-};
-
-export const getLatchMessage = (reason, wallet) => {
-  if (reason === 'account') {
-    return `The account in ${walletName(wallet)} changed while the request was open. Reject the request in ${walletName(wallet)}, then start again.`;
-  }
-
-  if (reason === 'unconfirmed') {
-    return `${walletNameAtStart(wallet)} did not confirm its network while the request was open. Reject the request in ${walletName(wallet)}, then start again.`;
-  }
-
-  return `The network in ${walletName(wallet)} changed while the request was open. Reject the request in ${walletName(wallet)}, then start again.`;
-};
+export { getDiscardMessage, getLatchMessage, getRejectionMessage };
 
 const sameAddress = (left, right) => String(left || '').toLowerCase() === String(right || '').toLowerCase();
 const toHexQuantity = (value) => BigNumber.from(value || 0).toHexString();
@@ -264,10 +238,7 @@ export const guardedSend = async ({
   }
 
   if (normalizeChainId(liveChainId) !== EXPECTED_ETHEREUM_CHAIN_ID) {
-    throw new GuardStopError(
-      `Switch ${walletName(wallet)} to ${ETHEREUM_BLOCKCHAIN_NAME} before bridging assets.`,
-      'wrong-network'
-    );
+    throw new GuardStopError(getWrongNetworkMessage(wallet), 'wrong-network');
   }
 
   if (!bridgeCode || /^0x0*$/i.test(bridgeCode)) {
@@ -503,10 +474,7 @@ export const guardedSend = async ({
     });
 
     if (!signed) {
-      throw new GuardStopError(
-        'This browser does not let the site save data, so the bridge cannot protect you from sending twice. Allow site data for this site, then try again.',
-        'storage'
-      );
+      throw new GuardStopError(MESSAGES.storageUnavailable, 'storage');
     }
 
     events.onHash?.({ hash, hashAt: signed.hashAt, recordId: record.id });

@@ -2,6 +2,7 @@ import { AbstractConnector } from '@web3-react/abstract-connector';
 import { utils } from 'ethers';
 
 import { EXPECTED_ETHEREUM_CHAIN_ID } from 'constants/contractAddress';
+import { getWalletEventsUnavailableMessage } from 'utils/sendScreens';
 import { normalizeChainId } from 'utils/walletNetwork';
 import { walletNameAtStart } from 'wallets/walletNames';
 
@@ -23,7 +24,7 @@ export class UserRejectedRequestError extends Error {
 // the session check (G3) current, so activation fails closed.
 export class WalletEventsUnavailableError extends Error {
   constructor(wallet) {
-    super(`${walletNameAtStart(wallet)} does not report account or network changes, so the bridge cannot use it.`);
+    super(getWalletEventsUnavailableMessage(wallet));
     this.name = 'WalletEventsUnavailableError';
   }
 }

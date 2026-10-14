@@ -2,8 +2,10 @@
 // named after the chain and the account for its whole flow, so a second tab
 // cannot send from the same account at the same time.
 
-export const ANOTHER_TAB_MESSAGE = 'A transfer from this account is in progress in another tab. Finish it there first.';
-export const NO_TAB_LOCK_MESSAGE = 'This browser cannot stop two tabs from sending at once, so the bridge cannot send. Update your browser, then try again.';
+import { MESSAGES } from 'utils/sendScreens';
+
+export const ANOTHER_TAB_MESSAGE = MESSAGES.anotherTab;
+export const NO_TAB_LOCK_MESSAGE = MESSAGES.noTabLock;
 
 export class OperationLockError extends Error {
   constructor(message, reason) {

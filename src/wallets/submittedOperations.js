@@ -12,11 +12,13 @@
 // - Without navigator.locks, the store changes no records. It shows restored
 //   records read-only.
 
+import { MESSAGES } from 'utils/sendScreens';
+
 export const SUBMITTED_OPERATIONS_STORAGE_KEY = 'verus-bridge.submitted-operations';
 export const STORAGE_LOCK_NAME = 'verus-bridge.submitted-operations';
 export const RESOLVED_RECORD_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-export const STORAGE_UNAVAILABLE_MESSAGE = 'This browser does not let the site save data, so the bridge cannot protect you from sending twice. Allow site data for this site, then try again.';
-export const SEND_BLOCKED_MESSAGE = 'A transfer from this account is not confirmed yet. Wait for it, or check it again.';
+export const STORAGE_UNAVAILABLE_MESSAGE = MESSAGES.storageUnavailable;
+export const SEND_BLOCKED_MESSAGE = MESSAGES.sendBlocked;
 
 export const RECORD_STATES = Object.freeze(['awaiting-wallet', 'signed', 'submitted', 'observed', 'resolved']);
 export const RECORD_TYPES = Object.freeze(['erc20-approval', 'erc721-approval', 'erc1155-approval', 'transfer', 'claim', 'nft']);

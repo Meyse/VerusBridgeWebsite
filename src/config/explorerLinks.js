@@ -22,6 +22,11 @@ export const getVerusAddressUrl = (address) => (
 export const getVerusTransactionUrl = (txid) => (
   VERUS_EXPLORER_URL && /^[0-9a-f]{64}$/i.test(txid || '') ? `${VERUS_EXPLORER_URL}/tx/${txid}` : null
 );
+// A transaction link on the build's Ethereum explorer (plan S5). An invalid
+// hash gives no link.
+export const getEthereumTransactionUrl = (hash) => (
+  /^0x[0-9a-fA-F]{64}$/.test(hash || '') ? `${ETHERSCAN_BASE_URL}/tx/${hash}` : null
+);
 export const getTokenExplorerUrl = (address) => (
   isAddress(address) ? `${ETHERSCAN_BASE_URL}/token/${address}` : null
 );
