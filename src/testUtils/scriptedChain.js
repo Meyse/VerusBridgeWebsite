@@ -13,6 +13,7 @@ export const createScriptedChain = ({ chainId, startBlock = 100, code = '0x6000'
   const receipts = new Map();
   const minedNonces = new Map();
   const allowances = new Map();
+  const callAnswers = new Map();
   let height = startBlock;
   let gasEstimate = 300000;
 
@@ -169,7 +170,11 @@ export const createScriptedChain = ({ chainId, startBlock = 100, code = '0x6000'
           const allowance = await (allowances.get(String(to).toLowerCase()) ?? 0);
           return utils.hexZeroPad(BigNumber.from(allowance).toHexString(), 32);
         }
-        throw new Error(`Scripted chain does not answer eth_call ${String(data).slice(0, 10)}`);
+        const selector = String(data).slice(0, 10);
+        if (callAnswers.has(selector)) {
+          return callAnswers.get(selector);
+        }
+        throw new Error(`Scripted chain does not answer eth_call ${selector}`);
       }
       default:
         throw new Error(`Scripted chain does not answer ${method}`);
@@ -189,6 +194,11 @@ export const createScriptedChain = ({ chainId, startBlock = 100, code = '0x6000'
     allowances.set(String(token).toLowerCase(), value);
   };
 
+  // The ABI-encoded answer of every eth_call with this 4-byte selector.
+  const setCallAnswer = (selector, encodedResult) => {
+    callAnswers.set(selector, encodedResult);
+  };
+
   // The gas estimate for every call, or an Error that the estimate throws.
   const setGasEstimate = (value) => {
     gasEstimate = value;
@@ -202,6 +212,7 @@ export const createScriptedChain = ({ chainId, startBlock = 100, code = '0x6000'
     forget,
     nextNonce,
     setAllowance,
+    setCallAnswer,
     setGasEstimate,
     getHeight: () => height,
     mine,

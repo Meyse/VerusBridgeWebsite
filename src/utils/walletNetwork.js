@@ -5,6 +5,7 @@ import {
   ETHEREUM_BLOCKCHAIN_NAME,
   EXPECTED_ETHEREUM_CHAIN_ID
 } from 'constants/contractAddress';
+import { walletName } from 'wallets/walletNames';
 
 const EMPTY_CODE = /^0x0*$/i;
 
@@ -34,11 +35,11 @@ const getLiveChainId = async (library) => {
   return null;
 };
 
-export const assertExpectedWalletChain = async (library) => {
+export const assertExpectedWalletChain = async (library, wallet) => {
   const chainId = await getLiveChainId(library);
 
   if (chainId !== EXPECTED_ETHEREUM_CHAIN_ID) {
-    throw new Error(`Switch MetaMask to ${ETHEREUM_BLOCKCHAIN_NAME} before continuing.`);
+    throw new Error(`Switch ${walletName(wallet)} to ${ETHEREUM_BLOCKCHAIN_NAME} before continuing.`);
   }
 
   return chainId;
@@ -46,7 +47,7 @@ export const assertExpectedWalletChain = async (library) => {
 
 export const requestExpectedWalletChain = async (provider) => {
   if (!provider || typeof provider.request !== 'function') {
-    throw new Error('MetaMask is not available in this browser.');
+    throw new Error('No supported wallet found in this browser.');
   }
 
   await provider.request({
@@ -57,8 +58,8 @@ export const requestExpectedWalletChain = async (provider) => {
   return EXPECTED_ETHEREUM_CHAIN_ID;
 };
 
-export const assertBridgeTransactionContext = async (library) => {
-  await assertExpectedWalletChain(library);
+export const assertBridgeTransactionContext = async (library, wallet) => {
+  await assertExpectedWalletChain(library, wallet);
 
   let bridgeAddress;
   try {

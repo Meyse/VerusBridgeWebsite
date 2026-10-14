@@ -24,14 +24,3 @@ export const estimateGasLimit = async (estimateCall, floor) => {
 
   return withMargin.gt(minimum) ? withMargin : minimum;
 };
-
-// The site's signer uses connectUnchecked() (utils/contract.js), so wait()
-// resolves a reverted receipt instead of rejecting it. Check the status before
-// reporting success.
-export const assertTransactionSucceeded = (receipt, failureMessage) => {
-  if (!receipt || receipt.status === 0) {
-    throw new Error(failureMessage);
-  }
-
-  return receipt;
-};

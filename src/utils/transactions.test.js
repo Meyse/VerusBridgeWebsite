@@ -1,6 +1,6 @@
 import { BigNumber } from 'ethers';
 
-import { assertTransactionSucceeded, estimateGasLimit } from './transactions';
+import { estimateGasLimit } from './transactions';
 
 describe('estimateGasLimit', () => {
   test('adds a 30% margin to the estimate', async () => {
@@ -31,23 +31,5 @@ describe('estimateGasLimit', () => {
     await expect(estimateGasLimit(() => Promise.reject(new Error('network error')), 100000)).rejects.toThrow(
       'The network fee could not be estimated, so nothing was sent. The transaction would probably fail.'
     );
-  });
-});
-
-describe('assertTransactionSucceeded', () => {
-  test('returns a successful receipt', () => {
-    const receipt = { status: 1, transactionHash: '0xabc' };
-
-    expect(assertTransactionSucceeded(receipt, 'failed')).toBe(receipt);
-  });
-
-  test('throws the given message for a reverted receipt', () => {
-    expect(() => assertTransactionSucceeded({ status: 0 }, 'The transaction failed on Sepolia.')).toThrow(
-      'The transaction failed on Sepolia.'
-    );
-  });
-
-  test('throws when there is no receipt', () => {
-    expect(() => assertTransactionSucceeded(null, 'No receipt.')).toThrow('No receipt.');
   });
 });

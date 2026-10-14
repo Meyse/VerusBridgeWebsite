@@ -18,13 +18,17 @@ export const BRIDGE_ACTIVITY_AVAILABLE = TESTNET;
 export const MESSAGES = Object.freeze({
   anotherTab: 'A transfer from this account is in progress in another tab. Finish it there first.',
   approvalStaysInPlace: 'The approval stays in place.',
+  confirmedUnexpected: 'A different transaction than the one you reviewed was confirmed. Check it before you continue.',
   interrupted: "A transfer was started, but the site did not get its transaction from your wallet. Check your wallet's activity before you send again.",
   noSendPath: 'The bridge can send only with MetaMask or Brave Wallet. Connect one of them to send.',
   noTabLock: 'This browser cannot stop two tabs from sending at once, so the bridge cannot send. Update your browser, then try again.',
+  notConfirmed: 'No confirmation yet. The transfer can still go through.',
+  replaced: 'Your wallet replaced this transaction with a different one. Check the replacement before you send again.',
   sendBlocked: 'A transfer from this account is not confirmed yet. Wait for it, or check it again.',
   sessionChanged: 'Your wallet, account, or network changed. Review the transfer again.',
   siteRpcMissing: 'This site is not set up to send transactions. Nothing was sent.',
-  storageUnavailable: 'This browser does not let the site save data, so the bridge cannot protect you from sending twice. Allow site data for this site, then try again.'
+  storageUnavailable: 'This browser does not let the site save data, so the bridge cannot protect you from sending twice. Allow site data for this site, then try again.',
+  waitingForConfirmation: 'Transaction sent. Waiting for confirmation.'
 });
 
 export const getRejectionMessage = (reason, wallet) => (
@@ -268,7 +272,7 @@ const resultScreen = ({ approvalConfirmed, record }) => {
       return screen({
         body: history(approval
           ? 'Your wallet replaced this approval with a different transaction. Check the replacement before you send again.'
-          : 'Your wallet replaced this transaction with a different one. Check the replacement before you send again.'),
+          : MESSAGES.replaced),
         id: 'T5',
         mark: 'bang',
         primary: { action: 'openExplorer', href: getEthereumTransactionUrl(record.replacementHash), label: 'View replacement' },
@@ -282,7 +286,7 @@ const resultScreen = ({ approvalConfirmed, record }) => {
       });
     case 'confirmed-unexpected':
       return screen({
-        body: 'A different transaction than the one you reviewed was confirmed. Check it before you continue.',
+        body: MESSAGES.confirmedUnexpected,
         id: 'X16',
         mark: 'bang',
         primary: {

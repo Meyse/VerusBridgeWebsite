@@ -21,9 +21,11 @@ export const isApprovalRequest = (request) => String(request?.data || '').starts
 // null to leave the transaction pending, or the receipt status to mine it at
 // once. `reject(request)` returns an error to reject the request with.
 // `beforeSend(request)` can hold the answer until the test releases it.
+// `chainId` is the network that the wallet reports.
 export const createSigningMetaMask = ({
   beforeSend = async () => {},
   chain,
+  chainId = EXPECTED_ETHEREUM_CHAIN_ID,
   mineStatus = () => null,
   reject = () => null,
   signer
@@ -43,7 +45,7 @@ export const createSigningMetaMask = ({
       }
 
       if (method === 'eth_chainId') {
-        return utils.hexValue(EXPECTED_ETHEREUM_CHAIN_ID);
+        return utils.hexValue(chainId);
       }
 
       if (method === 'eth_sendTransaction') {

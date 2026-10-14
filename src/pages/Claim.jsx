@@ -97,6 +97,12 @@ const StatusMessage = ({ status }) => {
   return (
     <p className={`${styles.claimStatus} ${statusToneClassNames[status.severity] || styles.claimStatusInfo}`}>
       {status.message}
+      {status.href ? (
+        <>
+          {' '}
+          <a href={status.href} rel="noopener noreferrer" target="_blank">View on Etherscan</a>
+        </>
+      ) : null}
     </p>
   );
 };
@@ -176,7 +182,7 @@ const CLAIM_FAQ_ITEMS = [
         <div className={styles.faqAnswerCopy}>
           <p className={styles.faqBulletCopy}>
             When you are using an R-address, you must connect an Ethereum wallet whose signed public key derives
-            that same payout address. In practice, that usually means importing that private key into MetaMask. After
+            that same payout address. In practice, that usually means importing that private key into your wallet. After
             you verify it with <strong>Use connected wallet</strong>, the earnings are paid to the connected Ethereum
             wallet.
           </p>

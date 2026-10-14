@@ -2,11 +2,17 @@ import React from 'react';
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useWeb3React } from '@web3-react/core';
+import { Wallet, utils } from 'ethers';
 
 import { useToast } from 'components/Toast/ToastProvider';
 import { ETHEREUM_BLOCKCHAIN_NAME, EXPECTED_ETHEREUM_CHAIN_ID, TESTNET } from 'constants/contractAddress';
+import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import useContract from 'hooks/useContract';
+import { createScriptedChain } from 'testUtils/scriptedChain';
+import { connectTestWallet, createSigningMetaMask, installSendRuntime } from 'testUtils/sendFixtures';
 import { requestRefundAddressData } from 'utils/refundAddress';
+import { resetSendScreenStateForTests } from 'utils/sendScreenState';
+import { resetWalletSessionForTests } from 'wallets/walletSession';
 import { toBase58Check } from 'utils/verusAddress';
 
 import useClaimController from './useClaimController';
@@ -36,6 +42,9 @@ vi.mock('utils/verusdRpc', () => ({
 }));
 
 const createAddress = (version, fill) => toBase58Check(Buffer.alloc(20, fill), version);
+const SIGNER = new Wallet(`0x${'0'.repeat(63)}1`);
+const SENDFEES_SELECTOR = new utils.Interface(DELEGATOR_ABI).getSighash('sendfees');
+const CLAIM_FAILED_MESSAGE = `The transaction failed on ${ETHEREUM_BLOCKCHAIN_NAME}. Nothing was claimed.`;
 
 const VALID_I_ADDRESS = createAddress(102, 2);
 const VALID_R_ADDRESS = createAddress(60, 1);
@@ -119,8 +128,28 @@ const mainnetTest = TESTNET ? test.skip : test;
 const testnetTest = TESTNET ? test : test.skip;
 
 describe('useClaimController', () => {
+  let sendChain;
+  let sendRuntime;
+
+  // A fake MetaMask that signs with real ethers on the scripted chain.
+  const connectSigningWallet = (options = {}) => {
+    const wallet = createSigningMetaMask({ chain: sendChain, signer: SIGNER, ...options });
+    connectTestWallet({ provider: wallet, signer: SIGNER });
+    useWeb3React.mockReturnValue({ account: SIGNER.address, chainId: EXPECTED_ETHEREUM_CHAIN_ID, library });
+    return wallet;
+  };
+
+  afterEach(() => {
+    sendRuntime.cleanup();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
+    resetSendScreenStateForTests();
+    resetWalletSessionForTests();
+    sendChain = createScriptedChain({ chainId: EXPECTED_ETHEREUM_CHAIN_ID });
+    sendRuntime = installSendRuntime({ chain: sendChain });
 
     useWeb3React.mockReturnValue({
       account: '0x1234567890abcdef1234567890abcdef12345678',
@@ -167,14 +196,12 @@ describe('useClaimController', () => {
   });
 
   mainnetTest('re-resolves a VerusID before submitting an earnings claim', async () => {
-    const transactionWait = vi.fn().mockResolvedValue({ status: 1 });
     const delegatorContract = createDelegatorContract({
       callStatic: {
         claimableFees: vi.fn().mockResolvedValue('1000000'),
         getTokenList: vi.fn().mockResolvedValue([]),
         sendfees: vi.fn().mockResolvedValue(undefined)
-      },
-      sendfees: vi.fn().mockResolvedValue({ wait: transactionWait })
+      }
     });
     mockVerusd.getIdentity.mockResolvedValue({
       result: {
@@ -184,28 +211,29 @@ describe('useClaimController', () => {
       }
     });
     useContract.mockReturnValue(delegatorContract);
+    const wallet = connectSigningWallet({ mineStatus: () => 1 });
+    const walletRequest = vi.spyOn(wallet, 'request');
 
     render(<HookProbe />);
     fireEvent.click(screen.getByRole('button', { name: 'Inspect VerusID' }));
     await waitFor(() => expect(screen.getByTestId('can-claim-earnings')).toHaveTextContent('yes'));
     fireEvent.click(screen.getByRole('button', { name: 'Claim earnings' }));
 
-    await waitFor(() => expect(delegatorContract.sendfees).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('earnings-status')).toHaveTextContent('Bridgekeeper earnings claimed successfully.'));
+    expect(wallet.sentRequests.map((request) => request.data.slice(0, 10))).toEqual([SENDFEES_SELECTOR]);
     expect(mockVerusd.getIdentity).toHaveBeenCalledTimes(2);
+    const sendCallIndex = walletRequest.mock.calls.findIndex(([{ method }]) => method === 'eth_sendTransaction');
     expect(mockVerusd.getIdentity.mock.invocationCallOrder[1])
-      .toBeLessThan(delegatorContract.callStatic.sendfees.mock.invocationCallOrder[0]);
-    expect(transactionWait).toHaveBeenCalledTimes(1);
+      .toBeLessThan(walletRequest.mock.invocationCallOrder[sendCallIndex]);
   });
 
   mainnetTest('reports a reverted earnings claim as a failure and never as a success', async () => {
-    const addToast = vi.fn();
     const delegatorContract = createDelegatorContract({
       callStatic: {
         claimableFees: vi.fn().mockResolvedValue('1000000'),
         getTokenList: vi.fn().mockResolvedValue([]),
         sendfees: vi.fn().mockResolvedValue(undefined)
-      },
-      sendfees: vi.fn().mockResolvedValue({ wait: vi.fn().mockResolvedValue({ status: 0 }) })
+      }
     });
     mockVerusd.getIdentity.mockResolvedValue({
       result: {
@@ -214,19 +242,20 @@ describe('useClaimController', () => {
         status: 'active'
       }
     });
-    useToast.mockReturnValue({ addToast });
     useContract.mockReturnValue(delegatorContract);
+    const statuses = [];
+    connectSigningWallet({ mineStatus: () => 0 });
 
     render(<HookProbe />);
     fireEvent.click(screen.getByRole('button', { name: 'Inspect VerusID' }));
     await waitFor(() => expect(screen.getByTestId('can-claim-earnings')).toHaveTextContent('yes'));
     fireEvent.click(screen.getByRole('button', { name: 'Claim earnings' }));
 
-    await waitFor(() => expect(addToast).toHaveBeenCalledWith({
-      type: 'error',
-      description: `The transaction failed on ${ETHEREUM_BLOCKCHAIN_NAME}. Nothing was claimed.`
-    }));
-    expect(addToast).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
+    await waitFor(() => {
+      statuses.push(screen.getByTestId('earnings-status').textContent);
+      expect(screen.getByTestId('earnings-status')).toHaveTextContent(CLAIM_FAILED_MESSAGE);
+    });
+    expect(statuses.some((status) => status.includes('successfully'))).toBe(false);
   });
 
   mainnetTest('keeps earnings lookup available while refund token metadata is still loading', async () => {
@@ -350,28 +379,15 @@ describe('useClaimController', () => {
 
   mainnetTest('rechecks the live chain before submitting an earnings transaction', async () => {
     const wrongChainId = EXPECTED_ETHEREUM_CHAIN_ID === 1 ? 11155111 : 1;
-    const changingLibrary = {
-      getCode: vi.fn().mockResolvedValue('0x60006000'),
-      getNetwork: vi.fn()
-        .mockResolvedValueOnce({ chainId: EXPECTED_ETHEREUM_CHAIN_ID })
-        .mockResolvedValueOnce({ chainId: wrongChainId })
-    };
     const delegatorContract = createDelegatorContract({
       callStatic: {
         claimableFees: vi.fn().mockResolvedValue('1000000'),
         sendfees: vi.fn().mockResolvedValue(undefined)
-      },
-      sendfees: vi.fn()
+      }
     });
-    const addToast = vi.fn();
-
-    useWeb3React.mockReturnValue({
-      account: '0x1234567890abcdef1234567890abcdef12345678',
-      chainId: EXPECTED_ETHEREUM_CHAIN_ID,
-      library: changingLibrary
-    });
-    useToast.mockReturnValue({ addToast });
     useContract.mockReturnValue(delegatorContract);
+    // The wallet moved to another network after the page read it.
+    const wallet = connectSigningWallet({ chainId: wrongChainId });
 
     render(<HookProbe />);
     fireEvent.click(screen.getByRole('button', { name: 'Inspect i-address' }));
@@ -383,14 +399,11 @@ describe('useClaimController', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Claim earnings' }));
 
     await waitFor(() => {
-      expect(delegatorContract.callStatic.sendfees).toHaveBeenCalledTimes(1);
+      // The guard names the connected wallet (C3, C4).
+      expect(screen.getByTestId('earnings-status')).toHaveTextContent(`Switch MetaMask to ${ETHEREUM_BLOCKCHAIN_NAME}`);
     });
-
-    expect(delegatorContract.sendfees).not.toHaveBeenCalled();
-    expect(addToast).toHaveBeenCalledWith(expect.objectContaining({
-      description: expect.stringMatching(/Switch MetaMask/),
-      type: 'error'
-    }));
+    expect(delegatorContract.callStatic.sendfees).toHaveBeenCalledTimes(1);
+    expect(wallet.sentRequests).toHaveLength(0);
   });
 
   testnetTest('uses refund-only lookup state and never inspects or claims earnings', async () => {
