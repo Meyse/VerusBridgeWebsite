@@ -15,6 +15,11 @@ export const getWalletDiscovery = () => {
   return sharedDiscovery;
 };
 
+export const resetWalletDiscoveryForTests = () => {
+  sharedDiscovery?.stop();
+  sharedDiscovery = null;
+};
+
 const useWalletDiscovery = () => {
   const discovery = getWalletDiscovery();
   return useSyncExternalStore(discovery.subscribe, discovery.getSnapshot, discovery.getSnapshot);

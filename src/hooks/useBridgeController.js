@@ -9,7 +9,6 @@ import { VerusdRpcInterface } from 'utils/verusdRpc';
 import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import ERC20_ABI from 'abis/ERC20Abi.json';
 import { useToast } from 'components/Toast/ToastProvider';
-import { injectedConnector } from 'connectors/injectedConnector';
 import {
   BLOCKCHAIN_NAME,
   DELEGATOR_ADD,
@@ -23,6 +22,7 @@ import {
   VERUS_RPC_URL
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
+import { useOptionalWalletContext } from 'providers/WalletProvider';
 import { useVerusDestinationResolution } from 'hooks/useVerusDestinationResolution';
 import { toBase58Check } from 'utils/verusAddress';
 import { parseNotarizationHeight } from 'utils/bridgeActivity';
@@ -54,7 +54,6 @@ import {
 import { coinsToSats, isETHAddress, uint64ToVerusFloat, validateAddress } from 'utils/rules';
 import { getConfigOptions } from 'utils/txConfig';
 import { resolveVerusDestination } from 'utils/verusDestination';
-import { clearInjectedWalletAutoConnectSuppression } from 'utils/walletConnection';
 import {
   assertBridgeTransactionContext,
   isExpectedWalletChain
@@ -1094,7 +1093,8 @@ export default function useBridgeController({
   const [verusChainHeight, setVerusChainHeight] = useState(null);
   const [verusTipHeight, setVerusTipHeight] = useState(null);
   const [isBridgePaused, setIsBridgePaused] = useState(false);
-  const { account, activate, chainId, library } = useWeb3React();
+  const { account, chainId, library } = useWeb3React();
+  const walletContext = useOptionalWalletContext();
   const { addToast } = useToast();
   const delegatorContract = useContract(DELEGATOR_ADD, DELEGATOR_ABI);
   const {
@@ -2602,14 +2602,11 @@ export default function useBridgeController({
     setSourceCatalogRetryNonce((currentValue) => currentValue + 1);
   }, []);
 
-  const connectWallet = useCallback(async () => {
-    try {
-      await activate(injectedConnector);
-      clearInjectedWalletAutoConnectSuppression();
-    } catch (connectError) {
-      // web3-react exposes the connector error for the shared header notice.
-    }
-  }, [activate]);
+  // The card button opens the header's wallet menu (plan C2). It never connects
+  // a wallet directly, so the user always picks the wallet.
+  const connectWallet = useCallback(() => {
+    walletContext?.openPicker();
+  }, [walletContext]);
 
   return {
     account,

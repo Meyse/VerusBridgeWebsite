@@ -160,3 +160,7 @@ export const getConnectorForWallet = (wallet) => {
 
   return connectorsByWalletId.get(wallet.id);
 };
+
+export const resetConnectorsForTests = () => {
+  connectorsByWalletId.clear();
+};
