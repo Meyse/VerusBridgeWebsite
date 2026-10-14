@@ -197,6 +197,7 @@ export const guardedSend = async ({
   method,
   now = () => Date.now(),
   overrides = {},
+  recordFields = {},
   reviewIdentity = '',
   session,
   siteProvider,
@@ -293,6 +294,7 @@ export const guardedSend = async ({
       assertSession(session.id);
 
       const record = store.writeIntentInside(context, {
+        ...recordFields,
         account,
         approvalRecordId,
         chainId: EXPECTED_ETHEREUM_CHAIN_ID,

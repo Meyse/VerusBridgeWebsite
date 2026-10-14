@@ -23,6 +23,7 @@ export const MESSAGES = Object.freeze({
   noTabLock: 'This browser cannot stop two tabs from sending at once, so the bridge cannot send. Update your browser, then try again.',
   sendBlocked: 'A transfer from this account is not confirmed yet. Wait for it, or check it again.',
   sessionChanged: 'Your wallet, account, or network changed. Review the transfer again.',
+  siteRpcMissing: 'This site is not set up to send transactions. Nothing was sent.',
   storageUnavailable: 'This browser does not let the site save data, so the bridge cannot protect you from sending twice. Allow site data for this site, then try again.'
 });
 
@@ -459,7 +460,7 @@ const NOTICE_ACTIONS = {
   X13: { action: 'tryAgain', label: 'Try again' },
   X17: { action: 'openReview', label: 'Review again' }
 };
-const BLOCKING_NOTICES = ['X2', 'X3', 'X4', 'X5', 'X7', 'X8', 'X9'];
+const BLOCKING_NOTICES = ['X2', 'X3', 'X4', 'X5', 'X7', 'X8', 'X9', 'X18'];
 
 const DISCARD_NOTICE_IDS = {
   chain: 'X10', earlier: 'X12', fields: 'X11', held: 'N9', latch: 'X17', nonce: 'X13'
@@ -588,6 +589,8 @@ export const getNotice = ({
       return noticeFromMessage({
         approvalConfirmed, id, message: getDiscardMessage('latch', wallet), wallet
       });
+    case 'X18':
+      return noticeFromMessage({ id, message: MESSAGES.siteRpcMissing, wallet });
     default:
       return null;
   }

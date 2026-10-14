@@ -12,6 +12,7 @@ export const createScriptedChain = ({ chainId, startBlock = 100, code = '0x6000'
   const transactions = new Map();
   const receipts = new Map();
   const minedNonces = new Map();
+  const allowances = new Map();
   let height = startBlock;
 
   const addBlock = (number, entries) => {
@@ -151,6 +152,14 @@ export const createScriptedChain = ({ chainId, startBlock = 100, code = '0x6000'
       }
       case 'eth_sendRawTransaction':
         return addPending(params[0]);
+      case 'eth_call': {
+        // ERC-20 allowance(owner, spender): the value the test set for the token.
+        const { data, to } = params[0];
+        if (String(data).startsWith('0xdd62ed3e')) {
+          return utils.hexZeroPad(BigNumber.from(allowances.get(String(to).toLowerCase()) || 0).toHexString(), 32);
+        }
+        throw new Error(`Scripted chain does not answer eth_call ${String(data).slice(0, 10)}`);
+      }
       default:
         throw new Error(`Scripted chain does not answer ${method}`);
     }
@@ -165,9 +174,18 @@ export const createScriptedChain = ({ chainId, startBlock = 100, code = '0x6000'
   const provider = new ScriptedProvider('http://scripted.invalid', { chainId, name: 'scripted' });
   provider.pollingInterval = 20;
 
+  const setAllowance = (token, value) => {
+    allowances.set(String(token).toLowerCase(), value);
+  };
+
+  // The next nonce of an address, counting known pending transactions.
+  const nextNonce = async (address) => BigNumber.from(await rpc('eth_getTransactionCount', [address, 'pending'])).toNumber();
+
   return {
     addPending,
     forget,
+    nextNonce,
+    setAllowance,
     getHeight: () => height,
     mine,
     provider,
