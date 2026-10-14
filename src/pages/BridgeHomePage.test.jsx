@@ -72,7 +72,7 @@ const LocationProbe = () => {
   return <div data-testid="location-display">{`${location.pathname}${location.search}${location.hash}`}</div>;
 };
 
-const renderRoute = (initialEntries = ['/']) => {
+const renderRoute = (initialEntries = ['/'], { strict = false } = {}) => {
   const router = createMemoryRouter(
     [{
       element: (
@@ -86,9 +86,11 @@ const renderRoute = (initialEntries = ['/']) => {
     { initialEntries }
   );
 
+  const tree = <RouterProvider router={router} />;
+
   return {
     router,
-    ...render(<RouterProvider router={router} />)
+    ...render(strict ? <React.StrictMode>{tree}</React.StrictMode> : tree)
   };
 };
 
@@ -359,6 +361,19 @@ describe('BridgeHomePage', () => {
       });
       expect(router.state.historyAction).toBe('REPLACE');
       expect(getSendScreenState().selectedRecordId).toBe('new');
+    });
+
+    test('a reload at ?step=status reopens the screen also when effects run twice (StrictMode)', async () => {
+      mockSendController({ records: [record({ id: 'restored' })] });
+      renderRoute(['/?step=status'], { strict: true });
+
+      await act(async () => {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 20);
+        });
+      });
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/?step=status');
+      expect(getSendScreenState().selectedRecordId).toBe('restored');
     });
 
     test('a resolved record does not reopen, and an empty status step goes to the form', async () => {

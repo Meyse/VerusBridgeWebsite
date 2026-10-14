@@ -44,7 +44,7 @@ import {
   supportsOnlyDirectVerusDestination
 } from 'utils/options';
 import { clearSendNotice, getSendScreenState, setSendNotice } from 'utils/sendScreenState';
-import { getNotice } from 'utils/sendScreens';
+import { SESSION_NOTICE_IDS, getNotice } from 'utils/sendScreens';
 import {
   REFUND_ADDRESS_STATE_EVENT,
   REFUND_ADDRESS_STATUS_FAILED,
@@ -2310,13 +2310,13 @@ export default function useBridgeController({
       sendFlow.endWithNotice(flowId, result);
 
       if (!reviewStaysValid) {
-        clearReview(true, { hash: '', sync: true });
+        clearReview(true, { hash: '' });
         return;
       }
 
       setReviewSnapshot({ ...currentSnapshot, status: 'ready' });
       if (isStatusRequestedRef.current && typeof enterReview === 'function') {
-        enterReview({ replace: true, sync: true });
+        enterReview({ replace: true });
       }
     });
   };
@@ -2354,7 +2354,7 @@ export default function useBridgeController({
 
       flushSync(() => {
         sendFlow.stopSend(flowId, notice);
-        clearReview(true, { hash: '', sync: true });
+        clearReview(true, { hash: '' });
       });
     };
 
@@ -2584,7 +2584,7 @@ export default function useBridgeController({
       flushSync(() => {
         setReviewSnapshot(nextReviewSnapshot);
         onOpen?.();
-        enterReview({ replace, sync: true });
+        enterReview({ replace });
       });
       return true;
     }
@@ -2640,6 +2640,21 @@ export default function useBridgeController({
 
     return hasEnoughNativeEth ? 'Confirm' : 'Not enough ETH';
   }, [chainId, hasEnoughNativeEth, sendFlow.isPreparing]);
+
+  // An edit of the inputs, the account, or the network ends the notice of the
+  // last stop. Notices about a changed session stay until the next review.
+  const noticeEditSignatureRef = useRef(editSignature);
+  useEffect(() => {
+    if (noticeEditSignatureRef.current === editSignature) {
+      return;
+    }
+
+    noticeEditSignatureRef.current = editSignature;
+    const currentNotice = getSendScreenState().notice;
+    if (currentNotice && !SESSION_NOTICE_IDS.includes(currentNotice.id)) {
+      clearSendNotice();
+    }
+  }, [editSignature]);
 
   // The blocking record of this account (G6). It keeps Review not sendable
   // and shows N9.
@@ -2704,7 +2719,7 @@ export default function useBridgeController({
       beforeClose?.();
       setReviewSnapshot(null);
       if (typeof exitReview === 'function') {
-        exitReview({ hash: '', sync: true });
+        exitReview({ hash: '' });
       }
     });
   }, [exitReview]);
@@ -2828,7 +2843,14 @@ export default function useBridgeController({
         : null;
     }
 
-    const { action, disabled, label } = notice.mainAction;
+    let { action, label } = notice.mainAction;
+    const { disabled } = notice.mainAction;
+    // On the form there is no review to confirm: the main button reviews.
+    if (!isReviewing && (action === 'confirm' || (!action && notice.id !== 'N6'))) {
+      action = action ? 'openReview' : null;
+      label = 'Review';
+    }
+
     const formInputsValid = !submitDisabledReason && !isRefundSignaturePending;
     const enabledByAction = {
       checkAgain: true,

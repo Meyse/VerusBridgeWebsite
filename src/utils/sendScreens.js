@@ -462,6 +462,10 @@ const NOTICE_ACTIONS = {
 };
 const BLOCKING_NOTICES = ['X2', 'X3', 'X4', 'X5', 'X7', 'X8', 'X9', 'X18'];
 
+// Notices about a changed wallet session. They end when the user reviews
+// again, not when an input changes.
+export const SESSION_NOTICE_IDS = Object.freeze(['N3', 'X1', 'X17']);
+
 const DISCARD_NOTICE_IDS = {
   chain: 'X10', earlier: 'X12', fields: 'X11', held: 'N9', latch: 'X17', nonce: 'X13'
 };

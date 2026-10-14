@@ -77,48 +77,55 @@ const BridgeHomePage = () => {
   const navigationType = useNavigationType();
   const [scrollIndicatorOpacity, setScrollIndicatorOpacity] = useState(getScrollIndicatorOpacity);
   const homeStep = useMemo(() => getHomeStep(location.search), [location.search]);
-  const isReviewRequested = homeStep === HOME_REVIEW_STEP;
-  const isStatusRequested = homeStep === HOME_STATUS_STEP;
   const hasInvalidHomeStep = useMemo(() => hasNonCanonicalHomeStep(location.search), [location.search]);
   const normalizedHash = useMemo(() => normalizeHomeHash(location.hash), [location.hash]);
   const locationRef = useRef(location);
-  // The key of the location that the page navigated away from. Route
-  // decisions wait until the router renders the new location, so the page
-  // never acts on a route that is about to change.
-  const pendingFromKeyRef = useRef(null);
+  // React Router finishes a navigation asynchronously. Until it does, the
+  // page renders the step that it navigates to, so the card never shows the
+  // old step with the new send state. A newer location ends the pending step.
+  const [pendingStep, setPendingStep] = useState(null);
+  const pendingStepRef = useRef(null);
+  const isNavigationPending = Boolean(pendingStep && pendingStep.fromKey === location.key);
+  const effectiveStep = isNavigationPending ? pendingStep.step : homeStep;
+  const isReviewRequested = effectiveStep === HOME_REVIEW_STEP;
+  const isStatusRequested = effectiveStep === HOME_STATUS_STEP;
   const previousStepRef = useRef(homeStep);
 
   useEffect(() => {
     locationRef.current = location;
   }, [location]);
 
-  // Every navigation of this page. `sync` renders the route change together
-  // with the state changes of the same step (React Router otherwise renders
-  // it later, in a transition).
-  const goTo = useCallback((step, { hash = '', replace = false, sync = false } = {}) => {
-    pendingFromKeyRef.current = locationRef.current.key;
-    navigate(
-      buildHomeLocation({ hash, search: locationRef.current.search, step }),
-      { replace, ...(sync ? { flushSync: true } : {}) }
-    );
+  // Every navigation of this page.
+  const goTo = useCallback((step, { hash = '', replace = false } = {}) => {
+    const pending = { fromKey: locationRef.current.key, step };
+    pendingStepRef.current = pending;
+    setPendingStep(pending);
+    navigate(buildHomeLocation({ hash, search: locationRef.current.search, step }), { replace });
   }, [navigate]);
 
-  const enterReview = useCallback(({ replace = false, sync = false } = {}) => {
-    goTo(HOME_REVIEW_STEP, { replace, sync });
+  const getCurrentStep = () => {
+    const pending = pendingStepRef.current;
+    return pending && pending.fromKey === locationRef.current.key
+      ? pending.step
+      : getHomeStep(locationRef.current.search);
+  };
+
+  const enterReview = useCallback(({ replace = false } = {}) => {
+    goTo(HOME_REVIEW_STEP, { replace });
   }, [goTo]);
 
-  const exitReview = useCallback(({ hash = '', sync = false } = {}) => {
-    goTo(null, { hash, replace: true, sync });
+  const exitReview = useCallback(({ hash = '' } = {}) => {
+    goTo(null, { hash, replace: true });
   }, [goTo]);
 
   // W1 or W2 appears: Review is replaced; from the form, the step is pushed.
-  const enterStatus = useCallback(({ sync = false } = {}) => {
-    const step = getHomeStep(locationRef.current.search);
+  const enterStatus = useCallback(() => {
+    const step = getCurrentStep();
     if (step === HOME_STATUS_STEP) {
       return;
     }
 
-    goTo(HOME_STATUS_STEP, { replace: step === HOME_REVIEW_STEP, sync });
+    goTo(HOME_STATUS_STEP, { replace: step === HOME_REVIEW_STEP });
   }, [goTo]);
 
   const controller = useBridgeController({
@@ -146,21 +153,15 @@ const BridgeHomePage = () => {
   // records store has read storage (`ready`), so a reload never flashes the
   // form before it reopens a screen.
   useEffect(() => {
-    if (pendingFromKeyRef.current !== null) {
-      if (pendingFromKeyRef.current === location.key) {
-        return;
-      }
-
-      pendingFromKeyRef.current = null;
-    }
-
-    if (!isSendStoreReady) {
+    // Read the pending step from the ref: a decision earlier in this commit
+    // (or a repeated effect run) may have navigated already.
+    const pending = pendingStepRef.current;
+    if ((pending && pending.fromKey === location.key) || !isSendStoreReady) {
       return;
     }
 
     const replaceWith = (step, hash = normalizedHash) => {
-      pendingFromKeyRef.current = location.key;
-      navigate(buildHomeLocation({ hash, search: location.search, step }), { replace: true });
+      goTo(step, { hash, replace: true });
     };
 
     // D22: once per load, the newest unresolved bridge send reopens its screen.
@@ -188,15 +189,15 @@ const BridgeHomePage = () => {
       replaceWith(null);
     }
   }, [
+    goTo,
     hasInvalidHomeStep,
     hasReviewSnapshot,
     hasSendScreen,
+    isNavigationPending,
     isReviewRequested,
+    location.key,
     isSendStoreReady,
     isStatusRequested,
-    location.key,
-    location.search,
-    navigate,
     normalizedHash,
     selectSendRecord,
     sendFlowRecords
@@ -219,7 +220,7 @@ const BridgeHomePage = () => {
         flow: isLiveSendFlow(flow) ? { ...flow, isLive: true } : null,
         isDismissed: isSendRecordDismissed,
         record: getSendRecord?.(event.recordId),
-        step: getHomeStep(locationRef.current.search)
+        step: getCurrentStep()
       });
 
       if (shouldOpen) {

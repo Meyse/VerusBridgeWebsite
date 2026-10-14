@@ -275,8 +275,9 @@ const getRefundAddressFromSignature = (signature) => {
   );
 };
 
-const HookProbe = ({ controllerOptions = {} }) => {
+const HookProbe = ({ controllerOptions = {}, onRender }) => {
   const controller = useBridgeController(controllerOptions);
+  onRender?.(controller);
 
   return (
     <div>
@@ -1276,6 +1277,59 @@ describe('useBridgeController disconnected source bootstrap', () => {
     const [rejected, second] = sendRuntime.runtime.store.getSnapshot().records;
     expect(rejected).toMatchObject({ outcome: 'rejected', outcomeReason: 'user' });
     expect(second.state).not.toBe('resolved');
+  });
+
+  test('a rejection goes from W1 to N1 with no render that shows neither', async () => {
+    mockVerusd.getIdentity.mockResolvedValue(identityResult('iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX'));
+    const answer = createDeferred();
+    connectSigningWallet(SIGNER, {
+      beforeSend: () => answer.promise,
+      reject: () => Object.assign(new Error('User rejected the request.'), { code: 4001 })
+    });
+    const states = [];
+    useWeb3React.mockReturnValue({
+      account: SIGNER.address,
+      chainId: EXPECTED_ETHEREUM_CHAIN_ID,
+      library: createLibrary({ getBalance: vi.fn().mockResolvedValue(utils.parseEther('10')) })
+    });
+    useContract.mockReturnValue(createDelegatorContract());
+
+    render(<HookProbe onRender={(controller) => states.push(`${controller.sendScreen?.id || ''}|${controller.notice?.id || ''}`)} />);
+    await waitFor(() => expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready'));
+    fireEvent.click(screen.getByRole('button', { name: 'Configure VerusID Direct' }));
+    await waitFor(() => expect(screen.getByTestId('address-resolution')).toHaveTextContent('Max.VRSC@'));
+    fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
+    await waitFor(() => expect(screen.getByTestId('can-submit')).toHaveTextContent('yes'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Review' }));
+    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+    await waitFor(() => expect(screen.getByTestId('send-screen-id')).toHaveTextContent('W1'));
+    answer.resolve();
+    await waitFor(() => expect(screen.getByTestId('notice-id')).toHaveTextContent('N1'));
+
+    const afterW1 = states.slice(states.indexOf('W1|'));
+    const untilN1 = afterW1.slice(0, afterW1.indexOf('|N1') + 1);
+    expect(untilN1).not.toContain('|');
+  });
+
+  test('an edit ends the notice of the last stop, and on the form the main button reviews', async () => {
+    mockVerusd.getIdentity.mockResolvedValue(identityResult('iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX'));
+    connectSigningWallet(SIGNER, { reject: () => Object.assign(new Error('User rejected the request.'), { code: 4001 }) });
+
+    await openVerusIdReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+    await waitFor(() => expect(screen.getByTestId('notice-id')).toHaveTextContent('N1'));
+
+    // Edit details closes the review. N1 stays, but the form has no review to
+    // confirm, so its main button reviews.
+    fireEvent.click(screen.getByRole('button', { name: 'Close Review' }));
+    await waitFor(() => expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('no'));
+    expect(screen.getByTestId('notice-id')).toHaveTextContent('N1');
+    expect(screen.getByTestId('main-action-label')).toHaveTextContent('Review');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change Amount' }));
+    await waitFor(() => expect(screen.getByTestId('notice-id')).toBeEmptyDOMElement());
   });
 
   test('two quick Confirm clicks reach the wallet once', async () => {

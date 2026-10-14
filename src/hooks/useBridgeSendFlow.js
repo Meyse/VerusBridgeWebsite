@@ -95,12 +95,19 @@ export default function useBridgeSendFlow({ enterStatus, wallet }) {
     }
 
     const flowOfRecord = flow && flow.recordId === selectedRecord.id ? flow : {};
+    // The store resolves a rejected or discarded request a moment before the
+    // flow ends with its notice. Until then, this tab still holds the request,
+    // so the wallet screen stays and the form does not flash.
+    const heldRequest = flowOfRecord.liveRequestRecordId === selectedRecord.id
+      && ['rejected', 'discarded'].includes(selectedRecord.outcome);
     return getSendScreen({
       approvalConfirmed,
       documentRecordIds,
       flow: { ...flowOfRecord, possibleMatches: memoryPatches[selectedRecord.id]?.possibleMatches },
       now,
-      record: selectedRecord,
+      record: heldRequest
+        ? { ...selectedRecord, outcome: undefined, outcomeReason: undefined, state: 'awaiting-wallet' }
+        : selectedRecord,
       restoredUnresolvedIds: operations.restoredUnresolvedIds,
       wallet: screenWallet
     });
@@ -173,7 +180,7 @@ export default function useBridgeSendFlow({ enterStatus, wallet }) {
             dispatched = true;
             onFirstDispatch?.();
           }
-          enterStatus?.({ sync: true });
+          enterStatus?.();
         });
       },
       onHash: ({ recordId }) => updateSendFlow(flowId, {
@@ -214,7 +221,7 @@ export default function useBridgeSendFlow({ enterStatus, wallet }) {
             phase: 'ended',
             ...(stop.recordId ? { recordId: stop.recordId } : {})
           });
-          enterStatus?.({ sync: true });
+          enterStatus?.();
         });
         return { status: 'screen' };
       }
