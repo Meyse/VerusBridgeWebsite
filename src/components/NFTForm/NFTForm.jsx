@@ -22,6 +22,7 @@ import {
 import useContract from 'hooks/useContract';
 import { useVerusDestinationResolution } from 'hooks/useVerusDestinationResolution';
 import { getContract } from 'utils/contract';
+import { assertTransactionSucceeded, estimateGasLimit } from 'utils/transactions';
 import { BN, padLeft, toWei } from 'utils/ethereumUnits';
 import { convertVerusAddressToEthAddress } from 'utils/convert';
 import { NFTAddressType } from 'utils/rules';
@@ -96,8 +97,12 @@ export default function NFTForm() {
 
 
     // await NFTInstContract.approve(bridgeStorageAddress, tokenID, { from: account, gasLimit: maxGas2 })
+    const approveGasLimit = await estimateGasLimit(
+      () => NFTInstContract.estimateGas.approve(DELEGATOR_ADD, tokenID, { from: account }),
+      maxGas2
+    );
     await assertBridgeTransactionContext(library);
-    const approve = await NFTInstContract.approve(DELEGATOR_ADD, tokenID, { from: account, gasLimit: maxGas2 })
+    const approve = await NFTInstContract.approve(DELEGATOR_ADD, tokenID, { from: account, gasLimit: approveGasLimit })
     setAlert(`Authorising, please wait... (${nft.name})`);
     const reply = await approve.wait();
 
@@ -131,8 +136,12 @@ export default function NFTForm() {
     // await NFTInstContract.approve(bridgeStorageAddress, tokenID, { from: account, gasLimit: maxGas2 })
 
     if (!checkApproved) {
+      const approveGasLimit = await estimateGasLimit(
+        () => NFTInstContract.estimateGas.setApprovalForAll(nftcontract, true, { from: account }),
+        maxGas2
+      );
       await assertBridgeTransactionContext(library);
-      const approve = await NFTInstContract.setApprovalForAll(nftcontract, true, { from: account, gasLimit: maxGas2 })
+      const approve = await NFTInstContract.setApprovalForAll(nftcontract, true, { from: account, gasLimit: approveGasLimit })
       setAlert(`Authorising, please wait... (${nft.name})`);
       const reply = await approve.wait();
 
@@ -181,12 +190,22 @@ export default function NFTForm() {
 
       const MetaMaskFee = new BN(toWei(ETH_FEES.ETH, 'ether'));
 
+      const transferGasLimit = await estimateGasLimit(
+        () => delegatorContract.estimateGas.sendTransfer(
+          CReserveTransfer,
+          { from: account, value: MetaMaskFee.toString() }
+        ),
+        maxGas
+      );
       await assertBridgeTransactionContext(library);
       const txResult = await delegatorContract.sendTransfer(
         CReserveTransfer,
-        { from: account, gasLimit: maxGas, value: MetaMaskFee.toString() }
+        { from: account, gasLimit: transferGasLimit, value: MetaMaskFee.toString() }
       );
-      await txResult.wait();
+      assertTransactionSucceeded(
+        await txResult.wait(),
+        `The transaction failed on ${ETHEREUM_BLOCKCHAIN_NAME}. Your NFT was not bridged.`
+      );
 
       addToast({ type: "success", description: 'Transaction Success!' });
       setAlert(null);

@@ -7,6 +7,7 @@ import { useToast } from 'components/Toast/ToastProvider';
 import {
   BLOCKCHAIN_NAME,
   DELEGATOR_ADD,
+  ETHEREUM_BLOCKCHAIN_NAME,
   GLOBAL_IADDRESS,
   TESTNET,
   VERUS_RPC_URL
@@ -17,6 +18,7 @@ import { fromBase58Check } from 'utils/verusAddress';
 import { padLeft } from 'utils/ethereumUnits';
 import { getTokenOptions } from 'utils/options';
 import { requestRefundAddressData } from 'utils/refundAddress';
+import { assertTransactionSucceeded, estimateGasLimit } from 'utils/transactions';
 import {
   uint64ToVerusFloat,
   validateClaimAddress
@@ -30,6 +32,7 @@ import { VerusdRpcInterface } from 'utils/verusdRpc';
 
 const maxGas = 800000;
 const maxGasClaim = 80000;
+const CLAIM_FAILED_MESSAGE = `The transaction failed on ${ETHEREUM_BLOCKCHAIN_NAME}. Nothing was claimed.`;
 const TYPE_FEE = 1;
 const TYPE_REFUND = 2;
 const TYPE_REFUND_CHECK = 3;
@@ -593,14 +596,22 @@ export default function useClaimController() {
           `0x${nextDetails.publicKey.slice(68, 132)}`
         );
 
-        await assertBridgeTransactionContext(library);
-        const txResult = await delegatorContract.sendfees(
+        const walletFeeArgs = [
           `0x${nextDetails.publicKey.slice(4, 68)}`,
-          `0x${nextDetails.publicKey.slice(68, 132)}`,
-          { from: account, gasLimit: maxGasClaim }
+          `0x${nextDetails.publicKey.slice(68, 132)}`
+        ];
+        const walletFeeGasLimit = await estimateGasLimit(
+          () => delegatorContract.estimateGas.sendfees(...walletFeeArgs, { from: account }),
+          maxGasClaim
         );
 
-        await txResult.wait();
+        await assertBridgeTransactionContext(library);
+        const txResult = await delegatorContract.sendfees(
+          ...walletFeeArgs,
+          { from: account, gasLimit: walletFeeGasLimit }
+        );
+
+        assertTransactionSucceeded(await txResult.wait(), CLAIM_FAILED_MESSAGE);
         addToast({ type: 'success', description: 'Wallet-linked earnings transaction submitted successfully.' });
         setEarningsStatus({
           severity: 'success',
@@ -612,14 +623,22 @@ export default function useClaimController() {
 
       const feeAddress = formatHexAddress(transactionAddress, TYPE_FEE);
       await delegatorContract.callStatic.sendfees(feeAddress, `0x${Buffer.alloc(32).toString('hex')}`);
+      const feeGasLimit = await estimateGasLimit(
+        () => delegatorContract.estimateGas.sendfees(
+          feeAddress,
+          `0x${Buffer.alloc(32).toString('hex')}`,
+          { from: account }
+        ),
+        maxGas
+      );
       await assertBridgeTransactionContext(library);
       const txResult = await delegatorContract.sendfees(
         feeAddress,
         `0x${Buffer.alloc(32).toString('hex')}`,
-        { from: account, gasLimit: maxGas }
+        { from: account, gasLimit: feeGasLimit }
       );
 
-      await txResult.wait();
+      assertTransactionSucceeded(await txResult.wait(), CLAIM_FAILED_MESSAGE);
       addToast({ type: 'success', description: 'Earnings claim transaction submitted successfully.' });
       setEarningsStatus({
         severity: 'success',
@@ -691,13 +710,17 @@ export default function useClaimController() {
         return;
       }
 
+      const refundGasLimit = await estimateGasLimit(
+        () => delegatorContract.estimateGas.claimRefund(refundAddress, currency, { from: account }),
+        maxGas
+      );
       await assertBridgeTransactionContext(library);
       const txResult = await delegatorContract.claimRefund(refundAddress, currency, {
         from: account,
-        gasLimit: maxGas
+        gasLimit: refundGasLimit
       });
 
-      await txResult.wait();
+      assertTransactionSucceeded(await txResult.wait(), CLAIM_FAILED_MESSAGE);
       addToast({ type: 'success', description: `${selectedEntry.name} refund transaction submitted successfully.` });
       setRefundStatus({
         severity: 'success',
