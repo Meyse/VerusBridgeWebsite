@@ -24,7 +24,8 @@ const sourceAliases = [
   'pages',
   'providers',
   'styles',
-  'utils'
+  'utils',
+  'wallets'
 ];
 const legacyEnvironmentKeys = [
   'REACT_APP_DELEGATOR_CONTRACT',
