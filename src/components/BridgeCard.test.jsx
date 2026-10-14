@@ -740,21 +740,21 @@ describe('BridgeCard currency selectors', () => {
     expect(screen.getByText(/use caution before confirming/i)).toBeInTheDocument();
   });
 
-  test('shows a spinner on the review confirmation button while submitting', () => {
+  test('shows a spinner on the review confirmation button while the checks run', () => {
     render(
       <BridgeCard
         controller={createController({
           canConfirmReview: false,
           isReviewing: true,
-          isTxPending: true,
-          reviewConfirmLabel: 'Submitting...',
+          isSendPreparing: true,
+          reviewConfirmLabel: 'Checking…',
           selectedDestination: { value: 'swaptoETH' }
         })}
       />
     );
 
-    const submitButton = screen.getByRole('button', { name: /submitting/i });
-    expect(within(submitButton).getByText(/submitting/i)).toBeInTheDocument();
+    const submitButton = screen.getByRole('button', { name: 'Checking…' });
+    expect(submitButton).toBeDisabled();
     expect(submitButton.querySelector(`.${styles.buttonSpinner}`)).toBeInTheDocument();
   });
 

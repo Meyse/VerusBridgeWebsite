@@ -16,6 +16,7 @@ import BridgeHomePage from './pages/BridgeHomePage';
 import Claim from './pages/Claim';
 import NFT from './pages/NFT';
 import { ThemeModeProvider, useThemeMode } from './providers/ThemeModeProvider';
+import WalletProvider from './providers/WalletProvider';
 import Web3ConnectionProvider from './providers/Web3ConnectionProvider';
 import WrappedWeb3ReactProvider from './providers/WrappedWeb3ReactProvider';
 
@@ -247,11 +248,13 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <WrappedWeb3ReactProvider>
-        <Web3ConnectionProvider>
-          <ToastProvider>
-            <RouterProvider router={router} />
-          </ToastProvider>
-        </Web3ConnectionProvider>
+        <WalletProvider>
+          <Web3ConnectionProvider>
+            <ToastProvider>
+              <RouterProvider router={router} />
+            </ToastProvider>
+          </Web3ConnectionProvider>
+        </WalletProvider>
       </WrappedWeb3ReactProvider>
     </ThemeProvider>
   );

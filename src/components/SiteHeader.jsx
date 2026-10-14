@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { UnsupportedChainIdError, useWeb3React } from '@web3-react/core';
-import { NoEthereumProviderError, UserRejectedRequestError } from '@web3-react/injected-connector';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getExplorerBaseUrl } from 'config/explorerLinks';
-import { injectedConnector } from 'connectors/injectedConnector';
+import {
+  NoWalletError,
+  UserRejectedRequestError,
+  WalletEventsUnavailableError,
+  getConnectorForWallet
+} from 'connectors/eip1193Connector';
 import {
   ALTERNATE_BRIDGE_SITE_URL,
   ETHEREUM_BLOCKCHAIN_NAME,
@@ -30,14 +34,12 @@ import {
   requestAndCacheRefundAddressData,
   setRefundAddressSignatureStatus
 } from 'utils/refundAddress';
-import {
-  clearInjectedWalletAutoConnectSuppression,
-  suppressInjectedWalletAutoConnect
-} from 'utils/walletConnection';
+import { clearInjectedWalletAutoConnectSuppression } from 'utils/walletConnection';
 import { requestExpectedWalletChain } from 'utils/walletNetwork';
+import { useWalletContext } from 'providers/WalletProvider';
+import { walletName, walletNameAtStart } from 'wallets/walletNames';
 
 import { useToast } from './Toast/ToastProvider';
-import MetaMaskIcon from '../images/icons/metamask-icon.svg?react';
 import styles from '../styles/ReferenceBridge.module.css';
 
 const NAV_ITEMS = [
@@ -141,13 +143,16 @@ const AlertIcon = () => (
   </svg>
 );
 
-const WALLET_OPTIONS = [
-  {
-    id: 'metamask',
-    title: 'MetaMask',
-    icon: <MetaMaskIcon />
-  }
-];
+const SUPPORTED_WALLETS_LINE = 'Works with MetaMask and Brave Wallet.';
+const NO_SUPPORTED_WALLET_LINE = 'The bridge works with MetaMask and Brave Wallet. Install one of them, then reload this page.';
+
+// The wallet's announced icon in a tile. A wallet without a usable icon shows a
+// plain gray tile, with no glyph (plan 3.1, D11).
+const WalletIcon = ({ className, wallet }) => (
+  <span aria-hidden="true" className={wallet?.icon ? className : `${className} ${styles.walletIconFallback}`}>
+    {wallet?.icon ? <img alt="" src={wallet.icon} /> : null}
+  </span>
+);
 
 const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
   const [copied, setCopied] = useState(false);
@@ -156,20 +161,33 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [refundSignatureStatus, setRefundSignatureStatus] = useState('');
-  const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
   const headerRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { account, activate, deactivate, error } = useWeb3React();
+  const { account, activate, error, library } = useWeb3React();
+  const {
+    attemptedWallet,
+    connect,
+    connectedWallet,
+    disconnect,
+    getActiveProvider,
+    pendingWalletId,
+    pickerOpen: showDropdown,
+    setPickerOpen: setShowDropdown,
+    settled,
+    wallets
+  } = useWalletContext();
   const { addToast } = useToast();
   const isWrongNetwork = error instanceof UnsupportedChainIdError;
 
   useEffect(() => {
-    if (error instanceof NoEthereumProviderError) {
-      addToast({ type: 'error', description: 'Ethereum provider not found.' });
+    if (error instanceof NoWalletError) {
+      addToast({ type: 'error', description: error.message });
     } else if (error instanceof UserRejectedRequestError) {
       addToast({ type: 'error', description: 'Wallet connection request rejected.' });
+    } else if (error instanceof WalletEventsUnavailableError) {
+      addToast({ type: 'error', description: error.message });
     }
   }, [addToast, error]);
 
@@ -219,6 +237,11 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
 
   useEffect(() => {
     const handleClickOutside = (event) => {
+      // The menu stays open while a wallet prompt is waiting (plan 3.1).
+      if (pendingWalletId) {
+        return;
+      }
+
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowDropdown(false);
       }
@@ -228,12 +251,12 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, []);
+  }, [pendingWalletId, setShowDropdown]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
     setShowDropdown(false);
-  }, [location.hash, location.pathname, location.search]);
+  }, [location.hash, location.pathname, location.search, setShowDropdown]);
 
   const walletLabel = useMemo(() => formatCompactAddress(account), [account]);
   const homeStep = useMemo(() => getHomeStep(location.search), [location.search]);
@@ -271,31 +294,30 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
     };
   }, [account]);
 
-  const handleConfirmWallet = async () => {
-    try {
-      await activate(injectedConnector);
-      clearInjectedWalletAutoConnectSuppression();
-    } catch (connectError) {
-      // The connector error is surfaced through the web3-react context.
-    } finally {
-      setShowDropdown(false);
-    }
+  const handleConfirmWallet = (walletId) => {
+    // D14: the context remembers the wallet only after web3-react reports it
+    // active. A failed connection is surfaced through the web3-react error.
+    connect(walletId);
   };
+
+  const switchWallet = connectedWallet || attemptedWallet;
 
   const handleSwitchNetwork = async () => {
     setIsSwitchingNetwork(true);
 
     try {
-      await requestExpectedWalletChain(window.ethereum);
-      await activate(injectedConnector, undefined, true);
+      await requestExpectedWalletChain(getActiveProvider());
+      if (switchWallet) {
+        await activate(getConnectorForWallet(switchWallet), undefined, true);
+      }
       clearInjectedWalletAutoConnectSuppression();
-      addToast({ type: 'success', description: `MetaMask switched to ${ETHEREUM_BLOCKCHAIN_NAME}.` });
+      addToast({ type: 'success', description: `${walletNameAtStart(switchWallet)} switched to ${ETHEREUM_BLOCKCHAIN_NAME}.` });
     } catch (switchError) {
       addToast({
         type: 'error',
         description: switchError?.code === 4001
           ? 'Network switch request rejected.'
-          : switchError?.message || `Could not switch MetaMask to ${ETHEREUM_BLOCKCHAIN_NAME}.`
+          : `Could not switch ${walletName(switchWallet)} to ${ETHEREUM_BLOCKCHAIN_NAME}.`
       });
     } finally {
       setIsSwitchingNetwork(false);
@@ -333,7 +355,7 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
     setIsRetryingRefundSignature(true);
 
     try {
-      await requestAndCacheRefundAddressData(account);
+      await requestAndCacheRefundAddressData(account, library);
       setRefundSignatureStatus('');
       addToast({ type: 'success', description: 'Public key signature confirmed.' });
     } catch (signingError) {
@@ -490,19 +512,44 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
 
                   {showDropdown ? (
                     <div aria-label="Wallet connection options" className={styles.dropdown}>
-                      <div className={styles.walletOptionList}>
-                        {WALLET_OPTIONS.map((walletOption) => (
-                          <button
-                            className={styles.walletOption}
-                            key={walletOption.id}
-                            onClick={handleConfirmWallet}
-                            type="button"
-                          >
-                            <span className={styles.walletOptionIconWrap}>{walletOption.icon}</span>
-                            <span className={styles.walletOptionTitle}>{walletOption.title}</span>
-                          </button>
-                        ))}
-                      </div>
+                      {wallets.length > 0 ? (
+                        <>
+                          <div className={styles.walletOptionList}>
+                            {wallets.map((wallet) => {
+                              const isPending = pendingWalletId === wallet.id;
+                              const isDimmed = Boolean(pendingWalletId) && !isPending;
+
+                              return (
+                                <button
+                                  aria-busy={isPending || undefined}
+                                  className={isDimmed ? `${styles.walletOption} ${styles.walletOptionDimmed}` : styles.walletOption}
+                                  disabled={Boolean(pendingWalletId)}
+                                  key={wallet.id}
+                                  onClick={() => handleConfirmWallet(wallet.id)}
+                                  type="button"
+                                >
+                                  <WalletIcon className={styles.walletOptionIconWrap} wallet={wallet} />
+                                  <span className={styles.walletOptionText}>
+                                    <span className={styles.walletOptionTitle}>{wallet.name}</span>
+                                    {isPending ? (
+                                      <span className={styles.walletOptionStatus}>{`Confirm in ${wallet.name}`}</span>
+                                    ) : null}
+                                  </span>
+                                  {isPending ? <span aria-hidden="true" className={styles.walletOptionSpinner} /> : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className={styles.walletOptionNote}>{SUPPORTED_WALLETS_LINE}</p>
+                        </>
+                      ) : null}
+
+                      {wallets.length === 0 && settled ? (
+                        <div className={styles.walletEmptyState} role="status">
+                          <div className={styles.walletEmptyTitle}>No supported wallet found</div>
+                          <p className={styles.walletOptionNote}>{NO_SUPPORTED_WALLET_LINE}</p>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </>
@@ -516,6 +563,7 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
                     onClick={() => setShowDropdown((currentValue) => !currentValue)}
                     type="button"
                   >
+                    {connectedWallet ? <WalletIcon className={styles.connectedWalletIcon} wallet={connectedWallet} /> : null}
                     <span className={styles.connectedLabel}>{walletLabel}</span>
                     {needsRefundSignatureAction ? (
                       <span
@@ -532,7 +580,14 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
                   {showDropdown ? (
                     <div className={styles.dropdown}>
                       <div className={styles.dropdownHeader}>
-                        <div className={styles.dropdownKicker}>Connected wallet</div>
+                        <div className={styles.dropdownKicker}>
+                          {connectedWallet ? (
+                            <>
+                              <WalletIcon className={styles.dropdownKickerIcon} wallet={connectedWallet} />
+                              <span>{`Connected with ${connectedWallet.name}`}</span>
+                            </>
+                          ) : 'Connected wallet'}
+                        </div>
                         <div className={styles.dropdownAddressRow}>
                           <div className={styles.dropdownAddress}>{account}</div>
                           <button
@@ -571,8 +626,7 @@ const SiteHeader = ({ alternateBridge = ALTERNATE_BRIDGE }) => {
                         <button
                           className={`${styles.dropdownAction} ${styles.dropdownActionDanger}`}
                           onClick={() => {
-                            suppressInjectedWalletAutoConnect();
-                            deactivate();
+                            disconnect();
                             setShowDropdown(false);
                           }}
                           type="button"

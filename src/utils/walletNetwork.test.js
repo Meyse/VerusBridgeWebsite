@@ -30,13 +30,14 @@ describe('wallet transaction network checks', () => {
     expect(library.send).toHaveBeenCalledWith('eth_chainId', []);
   });
 
-  test('rejects a live provider on a different chain', async () => {
-    await expect(assertExpectedWalletChain({
-      send: vi.fn().mockResolvedValue('0x5')
-    })).rejects.toThrow(/Switch MetaMask/);
+  test('rejects a live provider on a different chain, naming the wallet', async () => {
+    const library = { send: vi.fn().mockResolvedValue('0x5') };
+
+    await expect(assertExpectedWalletChain(library, { name: 'Brave Wallet' })).rejects.toThrow(/^Switch Brave Wallet to /);
+    await expect(assertExpectedWalletChain(library)).rejects.toThrow(/^Switch your wallet to /);
   });
 
-  test('asks MetaMask to switch to the exact chain selected for this build', async () => {
+  test('asks the wallet to switch to the exact chain selected for this build', async () => {
     const provider = {
       request: vi.fn().mockResolvedValue(null)
     };
@@ -49,7 +50,7 @@ describe('wallet transaction network checks', () => {
   });
 
   test('fails clearly when no injected wallet can switch networks', async () => {
-    await expect(requestExpectedWalletChain(null)).rejects.toThrow(/MetaMask is not available/);
+    await expect(requestExpectedWalletChain(null)).rejects.toThrow('No supported wallet found in this browser.');
   });
 
   test('requires deployed code at the configured bridge address', async () => {

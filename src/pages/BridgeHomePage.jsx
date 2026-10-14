@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback, useEffect, useMemo, useRef, useState
+} from 'react';
 
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 
 import BridgeCard from 'components/BridgeCard';
 import ReferenceInfoBar from 'components/ReferenceInfoBar';
@@ -9,6 +11,7 @@ import SiteFooter from 'components/SiteFooter';
 import SiteHeader from 'components/SiteHeader';
 import {
   ETHEREUM_NATIVE_ASSET_NAME,
+  EXPECTED_ETHEREUM_CHAIN_ID,
   VERUS_NATIVE_ASSET_NAME
 } from 'constants/contractAddress';
 import useBridgeController from 'hooks/useBridgeController';
@@ -17,12 +20,22 @@ import {
   HOME_INFO_SECTION_ID,
   HOME_INFO_HASH,
   HOME_REVIEW_STEP,
+  HOME_STATUS_STEP,
   buildHomeLocation,
   getHomeStep,
   hasNonCanonicalHomeStep,
   normalizeHomeHash,
   scrollToHomeSection
 } from 'utils/homeNavigation';
+import {
+  dismissSendRecord,
+  getSendScreenState,
+  hasReopenedThisLoad,
+  isLiveSendFlow,
+  isSendRecordDismissed,
+  markReopenedThisLoad
+} from 'utils/sendScreenState';
+import { pickReopenRecord, shouldOpenLateResult } from 'utils/sendScreens';
 
 import styles from '../styles/ReferenceBridge.module.css';
 
@@ -61,67 +74,164 @@ const getScrollIndicatorOpacity = () => {
 const BridgeHomePage = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const navigationType = useNavigationType();
   const [scrollIndicatorOpacity, setScrollIndicatorOpacity] = useState(getScrollIndicatorOpacity);
   const homeStep = useMemo(() => getHomeStep(location.search), [location.search]);
-  const isReviewRequested = homeStep === HOME_REVIEW_STEP;
   const hasInvalidHomeStep = useMemo(() => hasNonCanonicalHomeStep(location.search), [location.search]);
   const normalizedHash = useMemo(() => normalizeHomeHash(location.hash), [location.hash]);
+  const locationRef = useRef(location);
+  // React Router finishes a navigation asynchronously. Until it does, the
+  // page renders the step that it navigates to, so the card never shows the
+  // old step with the new send state. A newer location ends the pending step.
+  const [pendingStep, setPendingStep] = useState(null);
+  const pendingStepRef = useRef(null);
+  const isNavigationPending = Boolean(pendingStep && pendingStep.fromKey === location.key);
+  const effectiveStep = isNavigationPending ? pendingStep.step : homeStep;
+  const isReviewRequested = effectiveStep === HOME_REVIEW_STEP;
+  const isStatusRequested = effectiveStep === HOME_STATUS_STEP;
+  const previousStepRef = useRef(homeStep);
 
-  const enterReview = useCallback(() => {
-    navigate(
-      buildHomeLocation({
-        search: location.search,
-        step: HOME_REVIEW_STEP
-      })
-    );
-  }, [location.search, navigate]);
+  useEffect(() => {
+    locationRef.current = location;
+  }, [location]);
+
+  // Every navigation of this page.
+  const goTo = useCallback((step, { hash = '', replace = false } = {}) => {
+    const pending = { fromKey: locationRef.current.key, step };
+    pendingStepRef.current = pending;
+    setPendingStep(pending);
+    navigate(buildHomeLocation({ hash, search: locationRef.current.search, step }), { replace });
+  }, [navigate]);
+
+  const getCurrentStep = () => {
+    const pending = pendingStepRef.current;
+    return pending && pending.fromKey === locationRef.current.key
+      ? pending.step
+      : getHomeStep(locationRef.current.search);
+  };
+
+  const enterReview = useCallback(({ replace = false } = {}) => {
+    goTo(HOME_REVIEW_STEP, { replace });
+  }, [goTo]);
 
   const exitReview = useCallback(({ hash = '' } = {}) => {
-    navigate(
-      buildHomeLocation({
-        hash,
-        search: location.search
-      }),
-      { replace: true }
-    );
-  }, [location.search, navigate]);
+    goTo(null, { hash, replace: true });
+  }, [goTo]);
+
+  // W1 or W2 appears: Review is replaced; from the form, the step is pushed.
+  const enterStatus = useCallback(() => {
+    const step = getCurrentStep();
+    if (step === HOME_STATUS_STEP) {
+      return;
+    }
+
+    goTo(HOME_STATUS_STEP, { replace: step === HOME_REVIEW_STEP });
+  }, [goTo]);
 
   const controller = useBridgeController({
     enterReview,
+    enterStatus,
     exitReview,
-    isReviewRequested
+    isReviewRequested,
+    isStatusRequested
   });
+  const isSendStoreReady = controller.isSendStoreReady !== false;
+  const { hasReviewSnapshot, hasSendScreen, selectSendRecord, sendFlowRecords } = controller;
 
+  // Leaving the status step with the browser Back button hides its record
+  // until the next load (D22). Forward still shows it.
   useEffect(() => {
-    if (!hasInvalidHomeStep) {
+    const previousStep = previousStepRef.current;
+    previousStepRef.current = homeStep;
+
+    if (previousStep === HOME_STATUS_STEP && homeStep !== HOME_STATUS_STEP && navigationType === 'POP') {
+      dismissSendRecord(getSendScreenState().selectedRecordId);
+    }
+  }, [homeStep, location.key, navigationType]);
+
+  // Route decisions, in order, one navigation at a time. They wait until the
+  // records store has read storage (`ready`), so a reload never flashes the
+  // form before it reopens a screen.
+  useEffect(() => {
+    // Read the pending step from the ref: a decision earlier in this commit
+    // (or a repeated effect run) may have navigated already.
+    const pending = pendingStepRef.current;
+    if ((pending && pending.fromKey === location.key) || !isSendStoreReady) {
       return;
     }
 
-    navigate(
-      buildHomeLocation({
-        hash: normalizedHash,
-        search: location.search
-      }),
-      { replace: true }
-    );
-  }, [hasInvalidHomeStep, location.search, navigate, normalizedHash]);
+    const replaceWith = (step, hash = normalizedHash) => {
+      goTo(step, { hash, replace: true });
+    };
 
-  useEffect(() => {
-    if (!isReviewRequested || controller.hasReviewSnapshot) {
+    // D22: once per load, the newest unresolved bridge send reopens its screen.
+    if (!hasReopenedThisLoad()) {
+      markReopenedThisLoad();
+      const record = pickReopenRecord({
+        chainId: EXPECTED_ETHEREUM_CHAIN_ID,
+        isDismissed: isSendRecordDismissed,
+        records: sendFlowRecords || []
+      });
+
+      if (record && !getSendScreenState().flow) {
+        selectSendRecord?.(record.id);
+        replaceWith(HOME_STATUS_STEP, '');
+        return;
+      }
+    }
+
+    if (hasInvalidHomeStep) {
+      replaceWith(null);
       return;
     }
 
-    navigate(
-      buildHomeLocation({
-        hash: normalizedHash,
-        search: location.search
-      }),
-      { replace: true }
-    );
-  }, [controller.hasReviewSnapshot, isReviewRequested, location.search, navigate, normalizedHash]);
+    if ((isReviewRequested && !hasReviewSnapshot) || (isStatusRequested && !hasSendScreen)) {
+      replaceWith(null);
+    }
+  }, [
+    goTo,
+    hasInvalidHomeStep,
+    hasReviewSnapshot,
+    hasSendScreen,
+    isNavigationPending,
+    isReviewRequested,
+    location.key,
+    isSendStoreReady,
+    isStatusRequested,
+    normalizedHash,
+    selectSendRecord,
+    sendFlowRecords
+  ]);
+
+  // Late results: a bridge send that resolves while the user is on the form
+  // opens its result once.
+  const { getSendRecord, onSendTransition } = controller;
 
   useEffect(() => {
-    if (!location.hash || hasInvalidHomeStep || (isReviewRequested && !controller.hasReviewSnapshot)) {
+    if (typeof onSendTransition !== 'function') {
+      return undefined;
+    }
+
+    return onSendTransition((event) => {
+      const { flow } = getSendScreenState();
+      const shouldOpen = shouldOpenLateResult({
+        chainId: EXPECTED_ETHEREUM_CHAIN_ID,
+        event,
+        flow: isLiveSendFlow(flow) ? { ...flow, isLive: true } : null,
+        isDismissed: isSendRecordDismissed,
+        record: getSendRecord?.(event.recordId),
+        step: getCurrentStep()
+      });
+
+      if (shouldOpen) {
+        selectSendRecord?.(event.recordId);
+        goTo(HOME_STATUS_STEP);
+      }
+    });
+  }, [getSendRecord, goTo, onSendTransition, selectSendRecord]);
+
+  useEffect(() => {
+    if (!location.hash || hasInvalidHomeStep || (isReviewRequested && !hasReviewSnapshot)) {
       return;
     }
 
@@ -130,7 +240,7 @@ const BridgeHomePage = () => {
     }
 
     scrollToHomeSection(location.hash.replace('#', ''));
-  }, [controller.hasReviewSnapshot, hasInvalidHomeStep, isReviewRequested, location.hash]);
+  }, [hasReviewSnapshot, hasInvalidHomeStep, isReviewRequested, location.hash]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -162,7 +272,8 @@ const BridgeHomePage = () => {
     };
   }, []);
 
-  const isReviewing = Boolean(controller.isReviewing);
+  // The hero and the page sections hide while Review or a send screen shows.
+  const isReviewing = Boolean(controller.isReviewing || controller.isShowingStatus);
 
   return (
     <div className={styles.page}>

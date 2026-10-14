@@ -1,73 +1,89 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { useWeb3React } from '@web3-react/core';
 
 import { useToast } from 'components/Toast/ToastProvider';
+import { getConnectorForWallet } from 'connectors/eip1193Connector';
+import { useWalletContext } from 'providers/WalletProvider';
+import { isInjectedWalletAutoConnectSuppressed } from 'utils/walletConnection';
 
-import { injectedConnector } from '../connectors/injectedConnector';
-import { isInjectedWalletAutoConnectSuppressed } from '../utils/walletConnection';
-
-// Brave 1.94+ with a Brave Wallet throws when a page reads `on` from
-// window.ethereum (brave/brave-browser#58890). Skip the listeners there so the
-// error does not unmount the app.
-const canListenToProviderEvents = (ethereum) => {
+// Some wallets block reading or calling `on` (Brave 1.94+ does this on
+// window.ethereum, brave/brave-browser#58890). Never let that unmount the app.
+const canListenToProviderEvents = (provider) => {
   try {
-    return Boolean(ethereum?.on);
+    return typeof provider?.on === 'function';
   } catch (error) {
     return false;
   }
 };
 
+// While no wallet is connected, listen to the remembered wallet's provider, and
+// reconnect it when it reports a connection, a network, or an account (plan B5).
 const useInactiveListener = (suppress = false) => {
   const { active, error, activate } = useWeb3React();
+  const { rememberedRdns, wallets } = useWalletContext();
   const { addToast } = useToast();
 
-  // eslint-disable-next-line consistent-return
+  const rememberedWallet = useMemo(() => {
+    const matches = wallets.filter((wallet) => wallet.rdns === rememberedRdns);
+    return matches.length === 1 ? matches[0] : null;
+  }, [rememberedRdns, wallets]);
+
   useEffect(() => {
-    const { ethereum } = window;
-    const autoConnectSuppressed = isInjectedWalletAutoConnectSuppressed();
+    const provider = rememberedWallet?.provider;
 
-    if (canListenToProviderEvents(ethereum) && !active && !error && !suppress && !autoConnectSuppressed) {
-      const handleConnect = () => {
-        addToast({ type: 'info', description: 'connected to wallet'});
-        activate(injectedConnector);
-      };
-      const handleChainChanged = (chainId) => {
-        // eslint-disable-next-line no-console
-        console.log("Handling 'chainChanged' event with payload", chainId);
-        addToast({ type: 'info', description: 'Chain changed!'})
-        activate(injectedConnector);
-      };
-      const handleAccountsChanged = (accounts) => {
-        // eslint-disable-next-line no-console
-        console.log("Handling 'accountsChanged' event with payload", accounts);
-        addToast({ type: 'info', description: 'Account changed!'})
-        if (accounts.length > 0) {
-          activate(injectedConnector);
-        }
-      };
-      const handleNetworkChanged = (networkId) => {
-        // eslint-disable-next-line no-console
-        console.log("Handling 'networkChanged' event with payload", networkId);
-        addToast({ type: 'info', description: 'Chain changed!'})
-        activate(injectedConnector);
-      };
-
-      ethereum.on('connect', handleConnect);
-      ethereum.on('chainChanged', handleChainChanged);
-      ethereum.on('accountsChanged', handleAccountsChanged);
-      ethereum.on('networkChanged', handleNetworkChanged);
-
-      return () => {
-        if (ethereum.removeListener) {
-          ethereum.removeListener('connect', handleConnect);
-          ethereum.removeListener('chainChanged', handleChainChanged);
-          ethereum.removeListener('accountsChanged', handleAccountsChanged);
-          ethereum.removeListener('networkChanged', handleNetworkChanged);
-        }
-      };
+    if (
+      !rememberedWallet
+      || active
+      || error
+      || suppress
+      || isInjectedWalletAutoConnectSuppressed()
+      || !canListenToProviderEvents(provider)
+    ) {
+      return undefined;
     }
-  }, [active, error, suppress, activate, addToast]);
+
+    const connector = getConnectorForWallet(rememberedWallet);
+    const handleConnect = () => {
+      addToast({ type: 'info', description: 'connected to wallet' });
+      activate(connector);
+    };
+    const handleChainChanged = () => {
+      addToast({ type: 'info', description: 'Chain changed!' });
+      activate(connector);
+    };
+    const handleAccountsChanged = (accounts) => {
+      addToast({ type: 'info', description: 'Account changed!' });
+      if (Array.isArray(accounts) && accounts.length > 0) {
+        activate(connector);
+      }
+    };
+    const subscriptions = [
+      ['connect', handleConnect],
+      ['chainChanged', handleChainChanged],
+      ['accountsChanged', handleAccountsChanged]
+    ];
+    const added = [];
+
+    try {
+      subscriptions.forEach(([event, handler]) => {
+        provider.on(event, handler);
+        added.push([event, handler]);
+      });
+    } catch (subscribeError) {
+      // Fall through to the cleanup below with the listeners that were added.
+    }
+
+    return () => {
+      added.forEach(([event, handler]) => {
+        try {
+          provider.removeListener(event, handler);
+        } catch (removeError) {
+          // A wallet can block removeListener. Nothing else to do.
+        }
+      });
+    };
+  }, [active, activate, addToast, error, rememberedWallet, suppress]);
 
   return null;
 };

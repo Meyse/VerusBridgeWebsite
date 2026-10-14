@@ -3,11 +3,13 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Box, Button, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import { useWeb3React } from '@web3-react/core';
+import { Contract } from 'ethers';
 import { useForm } from 'react-hook-form';
 
 import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
 import ERC1155_ABI from 'abis/ERC1155.json';
 import ERC721_ABI from 'abis/ERC721Abi.json';
+import { getEthereumTransactionUrl } from 'config/explorerLinks';
 import {
   BLOCKCHAIN_NAME,
   DELEGATOR_ADD,
@@ -21,24 +23,32 @@ import {
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import { useVerusDestinationResolution } from 'hooks/useVerusDestinationResolution';
+import { useOptionalWalletContext } from 'providers/WalletProvider';
 import { getContract } from 'utils/contract';
 import { BN, padLeft, toWei } from 'utils/ethereumUnits';
 import { convertVerusAddressToEthAddress } from 'utils/convert';
+import { describeOperationError, runGuardedOperation } from 'utils/guardedOperation';
 import { NFTAddressType } from 'utils/rules';
+import { MESSAGES } from 'utils/sendScreens';
 import { resolveVerusDestination } from 'utils/verusDestination';
 import { VerusdRpcInterface } from 'utils/verusdRpc';
 import {
   assertBridgeTransactionContext,
   isExpectedWalletChain
 } from 'utils/walletNetwork';
+import { getSendRuntime } from 'wallets/sendRuntime';
+import { walletNameAtStart } from 'wallets/walletNames';
+import { getWalletSession } from 'wallets/walletSession';
 
 import AddressField from './NFTAddressField';
 import NFTAmountField from './NFTAmountField';
 import NFTField from './NFTField';
-import { useToast } from '../Toast/ToastProvider';
 
 const maxGas = 6000000;
 const maxGas2 = 100000;
+const NFT_FAILED_MESSAGE = `The transaction failed on ${ETHEREUM_BLOCKCHAIN_NAME}. Your NFT was not bridged.`;
+// A4: the approval did not give the bridge access to this NFT.
+const NFT_NOT_APPROVED_MESSAGE = 'The bridge is not approved for this NFT. Approve it in your wallet, then try again.';
 const verusd = new VerusdRpcInterface(GLOBAL_IADDRESS.VRSC, VERUS_RPC_URL);
 
 export default function NFTForm() {
@@ -46,8 +56,8 @@ export default function NFTForm() {
   const [isTxPending, setIsTxPending] = useState(false);
   const [alert, setAlert] = useState(null);
   const [verusChainHeight, setverusChainHeight] = useState(null);
-  const { addToast } = useToast();
   const { account, chainId, library } = useWeb3React();
+  const connectedWallet = useOptionalWalletContext()?.connectedWallet || null;
   const delegatorContract = useContract(DELEGATOR_ADD, DELEGATOR_ABI);
 
   const { handleSubmit, control, watch } = useForm({
@@ -85,86 +95,74 @@ export default function NFTForm() {
   }, [delegatorContract, account])
 
 
-  const authorise721NFT = async (nft) => {
-    await assertBridgeTransactionContext(library);
-    setAlert(`Metamask will now pop up to allow the Verus Bridge Contract to transfer (${nft.name}) from your wallet.`);
-
-    const tokenERC = nft.erc20address // await verusBridgeStorageContract.getERCMapping(GLOBAL_ADDRESS[token])
-    const NFTInstContract = getContract(tokenERC, ERC721_ABI, library, account)
-
-    const tokenID = `0x${padLeft(nft.value.toHexString().slice(2), 64)}`
-
-
-    // await NFTInstContract.approve(bridgeStorageAddress, tokenID, { from: account, gasLimit: maxGas2 })
-    await assertBridgeTransactionContext(library);
-    const approve = await NFTInstContract.approve(DELEGATOR_ADD, tokenID, { from: account, gasLimit: maxGas2 })
-    setAlert(`Authorising, please wait... (${nft.name})`);
-    const reply = await approve.wait();
-
-    if (reply.status === 0) {
-      throw new Error("Authorising NFT spend Failed, Do you own the NFT?")
-    }
-    setAlert(`
-      Your ${ETHEREUM_BLOCKCHAIN_NAME} account has authorised the bridge to transfer your NFT.`
-    );
-    return tokenID;
-  }
-
-  const authorise1155NFT = async (nft, amount) => {
-    await assertBridgeTransactionContext(library);
-    setAlert(`Metamask will now pop up to allow the Verus Bridge Contract to transfer (${nft.name}) from your wallet.`);
-
-    const tokenERC = nft.erc20address
-    const NFTInstContract = getContract(tokenERC, ERC1155_ABI, library, account)
-
-    const nftcontract = DELEGATOR_ADD;
-
-    const tokenID = `0x${padLeft(nft.value.toHexString().slice(2), 64)}`
-
-    const checkApproved = await NFTInstContract.callStatic.isApprovedForAll(account, nftcontract);
-    const amountOfNFTs = await NFTInstContract.callStatic.balanceOf(account, tokenID);
-
-    if (amountOfNFTs < amount) {
-      throw new Error(`You do not have enough NFT's to send. You have ${amountOfNFTs} and you are trying to send ${amount}.`)
-
-    }
-    // await NFTInstContract.approve(bridgeStorageAddress, tokenID, { from: account, gasLimit: maxGas2 })
-
-    if (!checkApproved) {
-      await assertBridgeTransactionContext(library);
-      const approve = await NFTInstContract.setApprovalForAll(nftcontract, true, { from: account, gasLimit: maxGas2 })
-      setAlert(`Authorising, please wait... (${nft.name})`);
-      const reply = await approve.wait();
-
-      if (reply.status === 0) {
-        throw new Error("Authorising NFT spend Failed, Do you own the NFT?")
-      }
-      setAlert(`
-        Your ${ETHEREUM_BLOCKCHAIN_NAME} account has authorised the bridge to transfer your NFT.`
-      );
-    }
-    return tokenID;
-  }
-
+  // The NFT send runs through the guards (A2 to A5): an approval step when the
+  // bridge is not approved yet, the A4 read-back of that approval through the
+  // site RPC, then the transfer. Each state shows in the alert above the form.
   const onSubmit = async (values) => {
     const { nft, amount, address } = values;
     setAlert(null);
     setIsTxPending(true);
 
-    let amountToSend;
-
     try {
       const transactionDestination = await resolveVerusDestination(address, verusd, BLOCKCHAIN_NAME);
       const transactionAddress = transactionDestination.address;
-      await assertBridgeTransactionContext(library);
+      await assertBridgeTransactionContext(library, connectedWallet);
+
+      const runtime = getSendRuntime();
+      const tokenERC = nft.erc20address;
+      const tokenID = `0x${padLeft(nft.value.toHexString().slice(2), 64)}`;
       // eslint-disable-next-line
-      if (parseInt(nft.flags & FLAGS.MAPPING_ERC721_NFT_DEFINITION) == FLAGS.MAPPING_ERC721_NFT_DEFINITION) {
-        await authorise721NFT(nft)
+      const is721 = parseInt(nft.flags & FLAGS.MAPPING_ERC721_NFT_DEFINITION) == FLAGS.MAPPING_ERC721_NFT_DEFINITION;
+      const steps = [];
+      let amountToSend;
+
+      if (is721) {
         amountToSend = 1;
+        steps.push({
+          abi: ERC721_ABI,
+          address: tokenERC,
+          afterSuccess: async () => {
+            const approved = await new Contract(tokenERC, ERC721_ABI, runtime.siteProvider).getApproved(tokenID);
+            if (String(approved).toLowerCase() !== DELEGATOR_ADD.toLowerCase()) {
+              throw new Error(NFT_NOT_APPROVED_MESSAGE);
+            }
+          },
+          args: [DELEGATOR_ADD, tokenID],
+          gasLimitFloor: maxGas2,
+          method: 'approve',
+          type: 'erc721-approval'
+        });
       } else {
-        await authorise1155NFT(nft, amount);
         amountToSend = amount || 1;
+        const NFTInstContract = getContract(tokenERC, ERC1155_ABI, library, account);
+        const [isApproved, amountOfNFTs] = await Promise.all([
+          NFTInstContract.callStatic.isApprovedForAll(account, DELEGATOR_ADD),
+          NFTInstContract.callStatic.balanceOf(account, tokenID)
+        ]);
+
+        if (amountOfNFTs < amount) {
+          throw new Error(`You do not have enough NFT's to send. You have ${amountOfNFTs} and you are trying to send ${amount}.`);
+        }
+
+        if (!isApproved) {
+          steps.push({
+            abi: ERC1155_ABI,
+            address: tokenERC,
+            afterSuccess: async () => {
+              const approved = await new Contract(tokenERC, ERC1155_ABI, runtime.siteProvider)
+                .isApprovedForAll(account, DELEGATOR_ADD);
+              if (!approved) {
+                throw new Error(NFT_NOT_APPROVED_MESSAGE);
+              }
+            },
+            args: [DELEGATOR_ADD, true],
+            gasLimitFloor: maxGas2,
+            method: 'setApprovalForAll',
+            type: 'erc1155-approval'
+          });
+        }
       }
+
       const addressType = NFTAddressType(transactionAddress);
       const hexID = convertVerusAddressToEthAddress(transactionAddress);
       const CReserveTransfer = {
@@ -175,29 +173,43 @@ export default function NFTForm() {
         fees: poolAvailable ? ETH_FEES.SATS : ETH_FEES.VRSC_SATS_FEE,
         destination: { destinationtype: addressType, destinationaddress: hexID }, // destination address currecny is going to
         destcurrencyid: poolAvailable ? GLOBAL_ADDRESS.BETH : GLOBAL_ADDRESS.VRSC,   // destination currency is vrsc on direct. bridge.veth on bounceback
-        destsystemid: "0x0000000000000000000000000000000000000000",     // destination system not used 
+        destsystemid: "0x0000000000000000000000000000000000000000",     // destination system not used
         secondreserveid: "0x0000000000000000000000000000000000000000"    // used as return currency type on bounce back
       }
 
-      const MetaMaskFee = new BN(toWei(ETH_FEES.ETH, 'ether'));
+      steps.push({
+        abi: DELEGATOR_ABI,
+        address: DELEGATOR_ADD,
+        args: [CReserveTransfer],
+        gasLimitFloor: maxGas,
+        method: 'sendTransfer',
+        overrides: { value: new BN(toWei(ETH_FEES.ETH, 'ether')).toString() },
+        type: 'nft'
+      });
 
-      await assertBridgeTransactionContext(library);
-      const txResult = await delegatorContract.sendTransfer(
-        CReserveTransfer,
-        { from: account, gasLimit: maxGas, value: MetaMaskFee.toString() }
-      );
-      await txResult.wait();
-
-      addToast({ type: "success", description: 'Transaction Success!' });
-      setAlert(null);
-      setIsTxPending(false);
-    } catch (error) {
-      if (error.message) {
-        addToast({ type: "error", description: error.message })
-      } else {
-        addToast({ type: "error", description: 'Transaction Failed!' })
+      if (steps.length > 1) {
+        setAlert({
+          message: `${walletNameAtStart(connectedWallet)} will now pop up to allow the Verus Bridge Contract to transfer (${nft.name}) from your wallet.`,
+          severity: 'warning'
+        });
       }
-      setAlert(null);
+
+      await runGuardedOperation({
+        onPending: ({ hash }) => setAlert({
+          href: getEthereumTransactionUrl(hash), message: MESSAGES.waitingForConfirmation, severity: 'info'
+        }),
+        onSlow: ({ hash }) => setAlert({
+          href: getEthereumTransactionUrl(hash), message: MESSAGES.notConfirmed, severity: 'warning'
+        }),
+        runtime,
+        session: getWalletSession(),
+        steps
+      });
+
+      setAlert({ message: `Your NFT transfer is confirmed on ${ETHEREUM_BLOCKCHAIN_NAME}.`, severity: 'success' });
+    } catch (error) {
+      setAlert(describeOperationError(error, { failureMessage: NFT_FAILED_MESSAGE }));
+    } finally {
       setIsTxPending(false);
     }
   }
@@ -206,9 +218,15 @@ export default function NFTForm() {
     <>
       <form onSubmit={handleSubmit(onSubmit)}>
         {alert &&
-          <Alert severity="warning" sx={{ mb: 3 }}>
+          <Alert severity={alert.severity} sx={{ mb: 3 }}>
             <Typography>
-              {alert}
+              {alert.message}
+              {alert.href ? (
+                <>
+                  {' '}
+                  <a href={alert.href} rel="noopener noreferrer" target="_blank">View on Etherscan</a>
+                </>
+              ) : null}
             </Typography>
           </Alert>
         }

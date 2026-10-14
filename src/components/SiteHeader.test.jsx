@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { UnsupportedChainIdError, useWeb3React } from '@web3-react/core';
@@ -14,11 +14,20 @@ import {
   TESTNET
 } from 'constants/contractAddress';
 import {
+  UserRejectedRequestError,
+  getConnectorForWallet,
+  resetConnectorsForTests
+} from 'connectors/eip1193Connector';
+import WalletProvider, { useWalletContext } from 'providers/WalletProvider';
+import { announceWallet, createEip1193Provider } from 'testUtils/walletFixtures';
+import {
   REFUND_ADDRESS_STATUS_FAILED,
   requestAndCacheRefundAddressData,
   setRefundAddressSignatureStatus
 } from 'utils/refundAddress';
-import { INJECTED_WALLET_AUTO_CONNECT_DISABLED_KEY } from 'utils/walletConnection';
+import { INJECTED_WALLET_AUTO_CONNECT_DISABLED_KEY, REMEMBERED_WALLET_RDNS_KEY } from 'utils/walletConnection';
+import { resetWalletDiscoveryForTests } from 'wallets/useWalletDiscovery';
+import { resetWalletSessionForTests } from 'wallets/walletSession';
 
 import SiteHeader from './SiteHeader';
 import styles from '../styles/ReferenceBridge.module.css';
@@ -42,31 +51,8 @@ vi.mock('@web3-react/core', () => {
   };
 });
 
-vi.mock('@web3-react/injected-connector', () => {
-  const createMockErrorType = (name) => {
-    function MockError(message) {
-      this.message = message;
-      this.name = name;
-    }
-
-    MockError.prototype = Object.create(Error.prototype);
-    MockError.prototype.constructor = MockError;
-
-    return MockError;
-  };
-
-  return {
-    NoEthereumProviderError: createMockErrorType('NoEthereumProviderError'),
-    UserRejectedRequestError: createMockErrorType('UserRejectedRequestError')
-  };
-});
-
 vi.mock('config/explorerLinks', () => ({
   getExplorerBaseUrl: () => 'https://etherscan.io'
-}));
-
-vi.mock('connectors/injectedConnector', () => ({
-  injectedConnector: { id: 'injected' }
 }));
 
 vi.mock('utils/refundAddress', async () => {
@@ -96,32 +82,69 @@ const TEST_ALTERNATE_BRIDGE = {
   target: TESTNET ? 'Mainnet' : 'Testnet'
 };
 
-const renderHeader = (initialEntries = ['/'], headerProps = {}) => {
+// Sets the attempted wallet, as a failed eager connect does (plan D10).
+const AttemptedWallet = ({ walletId }) => {
+  const { setAttemptedWallet, wallets } = useWalletContext();
+
+  useEffect(() => {
+    const wallet = wallets.find((entry) => entry.id === walletId);
+    if (wallet) {
+      setAttemptedWallet(wallet);
+    }
+  }, [setAttemptedWallet, walletId, wallets]);
+
+  return null;
+};
+
+const renderHeader = (initialEntries = ['/'], headerProps = {}, { attemptedWalletId } = {}) => {
   const router = createMemoryRouter(
     [{
       element: (
         <>
           <SiteHeader {...headerProps} />
           <LocationProbe />
+          {attemptedWalletId ? <AttemptedWallet walletId={attemptedWalletId} /> : null}
         </>
       ),
       path: '*'
     }],
     { initialEntries }
   );
+  const element = (
+    <WalletProvider>
+      <RouterProvider router={router} />
+    </WalletProvider>
+  );
+  const result = render(element);
 
   return {
     router,
-    ...render(<RouterProvider router={router} />)
+    ...result,
+    rerenderHeader: () => result.rerender(element)
   };
+};
+
+const installedWallets = [];
+
+const installWallet = (name, rdns, uuid, provider = createEip1193Provider()) => {
+  const entry = announceWallet({ name, provider, rdns, uuid });
+  installedWallets.push(entry);
+  return { ...entry.info, id: uuid, provider };
 };
 
 describe('SiteHeader wallet interactions', () => {
   let offsetHeightGetter;
 
+  afterEach(() => {
+    installedWallets.splice(0).forEach((entry) => entry.remove());
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    resetWalletDiscoveryForTests();
+    resetConnectorsForTests();
+    resetWalletSessionForTests();
     window.scrollTo = vi.fn();
     Object.defineProperty(window, 'ethereum', {
       configurable: true,
@@ -300,11 +323,11 @@ describe('SiteHeader wallet interactions', () => {
     expect(screen.queryByRole('link', { name: /switch to (mainnet|testnet)/i })).not.toBeInTheDocument();
   });
 
-  test('keeps a wrong-network action visible and switches MetaMask before reconnecting', async () => {
+  test('keeps a wrong-network action visible and switches the attempted wallet, not window.ethereum', async () => {
     const activate = vi.fn().mockResolvedValue(undefined);
-    const request = vi.fn().mockResolvedValue(null);
-
-    window.ethereum = { request };
+    const braveProvider = createEip1193Provider();
+    const brave = installWallet('Brave Wallet', 'com.brave.wallet', 'brave-1', braveProvider);
+    window.ethereum = { request: vi.fn() };
     useWeb3React.mockReturnValue({
       account: null,
       activate,
@@ -312,7 +335,7 @@ describe('SiteHeader wallet interactions', () => {
       error: new UnsupportedChainIdError('Unsupported chain')
     });
 
-    renderHeader();
+    renderHeader(['/'], {}, { attemptedWalletId: 'brave-1' });
 
     const networkAlert = screen.getByRole('alert');
     const switchButton = screen.getByRole('button', { name: `Switch to ${ETHEREUM_BLOCKCHAIN_NAME}` });
@@ -323,23 +346,20 @@ describe('SiteHeader wallet interactions', () => {
     expect(networkAlert).not.toContainElement(switchButton);
     expect(networkAlert.nextElementSibling).toContainElement(switchButton);
     expect(screen.queryByRole('button', { name: /connect wallet/i })).not.toBeInTheDocument();
-    expect(mockAddToast).not.toHaveBeenCalledWith({
-      type: 'error',
-      description: `Switch MetaMask to ${ETHEREUM_BLOCKCHAIN_NAME}.`
-    });
 
     fireEvent.click(switchButton);
 
     await waitFor(() => {
-      expect(request).toHaveBeenCalledWith({
+      expect(braveProvider.request).toHaveBeenCalledWith({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: `0x${EXPECTED_ETHEREUM_CHAIN_ID.toString(16)}` }]
       });
     });
-    expect(activate).toHaveBeenCalledWith({ id: 'injected' }, undefined, true);
+    expect(window.ethereum.request).not.toHaveBeenCalled();
+    expect(activate).toHaveBeenCalledWith(getConnectorForWallet(brave), undefined, true);
     expect(mockAddToast).toHaveBeenCalledWith({
       type: 'success',
-      description: `MetaMask switched to ${ETHEREUM_BLOCKCHAIN_NAME}.`
+      description: `Brave Wallet switched to ${ETHEREUM_BLOCKCHAIN_NAME}.`
     });
   });
 
@@ -483,6 +503,7 @@ describe('SiteHeader wallet interactions', () => {
 
   test('shows a public key signing alert on the wallet button and retries from the menu', async () => {
     const account = '0x1234567890123456789012345678901234567890';
+    const library = { send: vi.fn() };
 
     requestAndCacheRefundAddressData.mockResolvedValue({
       publicKey: `0x04${'11'.repeat(64)}`,
@@ -492,7 +513,8 @@ describe('SiteHeader wallet interactions', () => {
       account,
       activate: vi.fn(),
       deactivate: vi.fn(),
-      error: null
+      error: null,
+      library
     });
 
     renderHeader();
@@ -506,7 +528,7 @@ describe('SiteHeader wallet interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: /retry signing/i }));
 
     await waitFor(() => {
-      expect(requestAndCacheRefundAddressData).toHaveBeenCalledWith(account);
+      expect(requestAndCacheRefundAddressData).toHaveBeenCalledWith(account, library);
     });
 
     expect(mockAddToast).toHaveBeenCalledWith({
@@ -515,7 +537,10 @@ describe('SiteHeader wallet interactions', () => {
     });
   });
 
-  test('shows only supported wallet choices in the header menu before connecting', () => {
+  test('lists only MetaMask and Brave Wallet, in name order, with the supported-wallets line', () => {
+    installWallet('MetaMask', 'io.metamask', 'metamask-1');
+    installWallet('Coinbase Wallet', 'com.coinbase.wallet', 'coinbase-1');
+    installWallet('Brave Wallet', 'com.brave.wallet', 'brave-1');
     useWeb3React.mockReturnValue({
       account: null,
       activate: vi.fn(),
@@ -524,16 +549,36 @@ describe('SiteHeader wallet interactions', () => {
     });
 
     renderHeader();
-
     fireEvent.click(screen.getByRole('button', { name: /connect wallet/i }));
 
-    expect(screen.getByRole('button', { name: /metamask/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /walletconnect/i })).not.toBeInTheDocument();
+    const menu = screen.getByLabelText('Wallet connection options');
+    expect(within(menu).getAllByRole('button').map((button) => button.textContent)).toEqual(['Brave Wallet', 'MetaMask']);
+    expect(within(menu).getByText('Works with MetaMask and Brave Wallet.')).toBeInTheDocument();
+    expect(within(menu).queryByText(/coinbase/i)).not.toBeInTheDocument();
   });
 
-  test('clears the disconnect preference after a successful manual connect', async () => {
-    const activate = vi.fn().mockResolvedValue(undefined);
+  test('shows "No supported wallet found" after discovery settles, without naming other wallets', async () => {
+    installWallet('Coinbase Wallet', 'com.coinbase.wallet', 'coinbase-1');
+    useWeb3React.mockReturnValue({
+      account: null,
+      activate: vi.fn(),
+      deactivate: vi.fn(),
+      error: null
+    });
 
+    renderHeader();
+    fireEvent.click(screen.getByRole('button', { name: /connect wallet/i }));
+
+    expect(await screen.findByText('No supported wallet found', {}, { timeout: 2000 })).toBeInTheDocument();
+    expect(screen.getByText('The bridge works with MetaMask and Brave Wallet. Install one of them, then reload this page.'))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/coinbase/i)).not.toBeInTheDocument();
+  });
+
+  test('waits for the chosen wallet, and remembers it only after web3-react reports it active', async () => {
+    const activate = vi.fn().mockResolvedValue(undefined);
+    const metaMask = installWallet('MetaMask', 'io.metamask', 'metamask-1');
+    installWallet('Brave Wallet', 'com.brave.wallet', 'brave-1');
     window.localStorage.setItem(INJECTED_WALLET_AUTO_CONNECT_DISABLED_KEY, 'true');
     useWeb3React.mockReturnValue({
       account: null,
@@ -542,22 +587,37 @@ describe('SiteHeader wallet interactions', () => {
       error: null
     });
 
-    renderHeader();
-
+    const { rerenderHeader } = renderHeader();
     fireEvent.click(screen.getByRole('button', { name: /connect wallet/i }));
-    fireEvent.click(screen.getByRole('button', { name: /metamask/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^metamask$/i }));
+
+    expect(activate).toHaveBeenCalledWith(getConnectorForWallet(metaMask));
+    expect(await screen.findByText('Confirm in MetaMask')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /brave wallet/i })).toBeDisabled();
+    expect(window.localStorage.getItem(REMEMBERED_WALLET_RDNS_KEY)).toBeNull();
+    expect(window.localStorage.getItem(INJECTED_WALLET_AUTO_CONNECT_DISABLED_KEY)).toBe('true');
+
+    useWeb3React.mockReturnValue({
+      account: '0x1234567890123456789012345678901234567890',
+      activate,
+      active: true,
+      chainId: EXPECTED_ETHEREUM_CHAIN_ID,
+      connector: getConnectorForWallet(metaMask),
+      deactivate: vi.fn(),
+      error: null
+    });
+    rerenderHeader();
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /metamask/i })).not.toBeInTheDocument();
+      expect(window.localStorage.getItem(REMEMBERED_WALLET_RDNS_KEY)).toBe('io.metamask');
     });
-
-    expect(activate).toHaveBeenCalledTimes(1);
     expect(window.localStorage.getItem(INJECTED_WALLET_AUTO_CONNECT_DISABLED_KEY)).toBeNull();
+    expect(screen.queryByText('Confirm in MetaMask')).not.toBeInTheDocument();
   });
 
-  test('closes the wallet menu when connector activation fails', async () => {
-    const activate = vi.fn().mockRejectedValue(new Error('Connection rejected'));
-
+  test('a rejected connection ends the waiting row and does not remember the wallet', async () => {
+    const activate = vi.fn().mockResolvedValue(undefined);
+    installWallet('MetaMask', 'io.metamask', 'metamask-1');
     useWeb3React.mockReturnValue({
       account: null,
       activate,
@@ -565,15 +625,41 @@ describe('SiteHeader wallet interactions', () => {
       error: null
     });
 
-    renderHeader();
-
+    const { rerenderHeader } = renderHeader();
     fireEvent.click(screen.getByRole('button', { name: /connect wallet/i }));
-    fireEvent.click(screen.getByRole('button', { name: /metamask/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^metamask$/i }));
+    expect(await screen.findByText('Confirm in MetaMask')).toBeInTheDocument();
+
+    useWeb3React.mockReturnValue({
+      account: null,
+      activate,
+      deactivate: vi.fn(),
+      error: new UserRejectedRequestError()
+    });
+    rerenderHeader();
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /metamask/i })).not.toBeInTheDocument();
+      expect(screen.queryByText('Confirm in MetaMask')).not.toBeInTheDocument();
+    });
+    expect(window.localStorage.getItem(REMEMBERED_WALLET_RDNS_KEY)).toBeNull();
+    expect(mockAddToast).toHaveBeenCalledWith({ type: 'error', description: 'Wallet connection request rejected.' });
+  });
+
+  test('shows the connected wallet name in the menu', () => {
+    const metaMask = installWallet('MetaMask', 'io.metamask', 'metamask-1');
+    useWeb3React.mockReturnValue({
+      account: '0x1234567890123456789012345678901234567890',
+      activate: vi.fn(),
+      active: true,
+      chainId: EXPECTED_ETHEREUM_CHAIN_ID,
+      connector: getConnectorForWallet(metaMask),
+      deactivate: vi.fn(),
+      error: null
     });
 
-    expect(activate).toHaveBeenCalledTimes(1);
+    renderHeader();
+    fireEvent.click(screen.getByRole('button', { name: /0x1234/i }));
+
+    expect(screen.getByText('Connected with MetaMask')).toBeInTheDocument();
   });
 });

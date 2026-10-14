@@ -3,16 +3,19 @@ import { useCallback, useEffect, useState } from 'react';
 import { useWeb3React } from '@web3-react/core';
 
 import DELEGATOR_ABI from 'abis/DelegatorAbi.json';
-import { useToast } from 'components/Toast/ToastProvider';
+import { getEthereumTransactionUrl } from 'config/explorerLinks';
 import {
   BLOCKCHAIN_NAME,
   DELEGATOR_ADD,
+  ETHEREUM_BLOCKCHAIN_NAME,
   GLOBAL_IADDRESS,
   TESTNET,
   VERUS_RPC_URL
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import { useVerusDestinationResolution } from 'hooks/useVerusDestinationResolution';
+import { useOptionalWalletContext } from 'providers/WalletProvider';
+import { describeOperationError, runGuardedOperation } from 'utils/guardedOperation';
 import { fromBase58Check } from 'utils/verusAddress';
 import { padLeft } from 'utils/ethereumUnits';
 import { getTokenOptions } from 'utils/options';
@@ -25,11 +28,15 @@ import {
   assertBridgeTransactionContext,
   isExpectedWalletChain
 } from 'utils/walletNetwork';
+import { MESSAGES } from 'utils/sendScreens';
 import { resolveVerusDestination } from 'utils/verusDestination';
 import { VerusdRpcInterface } from 'utils/verusdRpc';
+import { getSendRuntime } from 'wallets/sendRuntime';
+import { getWalletSession } from 'wallets/walletSession';
 
 const maxGas = 800000;
 const maxGasClaim = 80000;
+const CLAIM_FAILED_MESSAGE = `The transaction failed on ${ETHEREUM_BLOCKCHAIN_NAME}. Nothing was claimed.`;
 const TYPE_FEE = 1;
 const TYPE_REFUND = 2;
 const TYPE_REFUND_CHECK = 3;
@@ -188,7 +195,7 @@ export default function useClaimController() {
   const [isWalletAddressPending, setIsWalletAddressPending] = useState(false);
   const [lookupRevision, setLookupRevision] = useState(0);
   const { account, chainId, library } = useWeb3React();
-  const { addToast } = useToast();
+  const connectedWallet = useOptionalWalletContext()?.connectedWallet || null;
   const delegatorContract = useContract(DELEGATOR_ADD, DELEGATOR_ABI);
 
   const inputAddress = address.trim();
@@ -497,10 +504,10 @@ export default function useClaimController() {
       return walletAddressDetails;
     }
 
-    const nextDetails = await requestRefundAddressData(account);
+    const nextDetails = await requestRefundAddressData(account, library);
     setWalletAddressDetails(nextDetails);
     return nextDetails;
-  }, [account, walletAddressDetails]);
+  }, [account, library, walletAddressDetails]);
 
   const handleWalletAddressAction = useCallback(async () => {
     if (!account) {
@@ -575,7 +582,23 @@ export default function useClaimController() {
     try {
       const transactionDestination = await resolveVerusDestination(inputAddress, verusd, BLOCKCHAIN_NAME);
       const transactionAddress = transactionDestination.address;
-      await assertBridgeTransactionContext(library);
+      await assertBridgeTransactionContext(library, connectedWallet);
+
+      // The send itself runs through the guards (A2 to A5). Its states show
+      // in this status line.
+      const sendClaim = (args, gasLimitFloor) => runGuardedOperation({
+        onPending: ({ hash }) => setEarningsStatus({
+          href: getEthereumTransactionUrl(hash), message: MESSAGES.waitingForConfirmation, severity: 'info'
+        }),
+        onSlow: ({ hash }) => setEarningsStatus({
+          href: getEthereumTransactionUrl(hash), message: MESSAGES.notConfirmed, severity: 'warning'
+        }),
+        runtime: getSendRuntime(),
+        session: getWalletSession(),
+        steps: [{
+          abi: DELEGATOR_ABI, address: DELEGATOR_ADD, args, gasLimitFloor, method: 'sendfees', type: 'claim'
+        }]
+      });
 
       if (isWalletVerificationRequired) {
         const nextDetails = await loadWalletAddressDetails();
@@ -593,15 +616,11 @@ export default function useClaimController() {
           `0x${nextDetails.publicKey.slice(68, 132)}`
         );
 
-        await assertBridgeTransactionContext(library);
-        const txResult = await delegatorContract.sendfees(
+        const walletFeeArgs = [
           `0x${nextDetails.publicKey.slice(4, 68)}`,
-          `0x${nextDetails.publicKey.slice(68, 132)}`,
-          { from: account, gasLimit: maxGasClaim }
-        );
-
-        await txResult.wait();
-        addToast({ type: 'success', description: 'Wallet-linked earnings transaction submitted successfully.' });
+          `0x${nextDetails.publicKey.slice(68, 132)}`
+        ];
+        await sendClaim(walletFeeArgs, maxGasClaim);
         setEarningsStatus({
           severity: 'success',
           message: 'Bridgekeeper earnings claimed successfully to the connected Ethereum wallet.'
@@ -612,33 +631,21 @@ export default function useClaimController() {
 
       const feeAddress = formatHexAddress(transactionAddress, TYPE_FEE);
       await delegatorContract.callStatic.sendfees(feeAddress, `0x${Buffer.alloc(32).toString('hex')}`);
-      await assertBridgeTransactionContext(library);
-      const txResult = await delegatorContract.sendfees(
-        feeAddress,
-        `0x${Buffer.alloc(32).toString('hex')}`,
-        { from: account, gasLimit: maxGas }
-      );
-
-      await txResult.wait();
-      addToast({ type: 'success', description: 'Earnings claim transaction submitted successfully.' });
+      await sendClaim([feeAddress, `0x${Buffer.alloc(32).toString('hex')}`], maxGas);
       setEarningsStatus({
         severity: 'success',
         message: 'Bridgekeeper earnings claimed successfully.'
       });
       refreshLookup();
     } catch (error) {
-      addToast({ type: 'error', description: error.message || 'Earnings claim transaction failed.' });
-      setEarningsStatus({
-        severity: 'error',
-        message: error.message || 'Unable to claim earnings right now.'
-      });
+      setEarningsStatus(describeOperationError(error, { failureMessage: CLAIM_FAILED_MESSAGE }));
     } finally {
       setActionTarget('');
     }
   }, [
     account,
     addressError,
-    addToast,
+    connectedWallet,
     delegatorContract,
     inputAddress,
     isAddressResolving,
@@ -679,7 +686,7 @@ export default function useClaimController() {
 
     try {
       const transactionDestination = await resolveVerusDestination(inputAddress, verusd, BLOCKCHAIN_NAME);
-      await assertBridgeTransactionContext(library);
+      await assertBridgeTransactionContext(library, connectedWallet);
       const refundAddress = formatHexAddress(transactionDestination.address, TYPE_REFUND);
       const previewClaim = await delegatorContract.callStatic.claimRefund(refundAddress, currency);
 
@@ -691,32 +698,38 @@ export default function useClaimController() {
         return;
       }
 
-      await assertBridgeTransactionContext(library);
-      const txResult = await delegatorContract.claimRefund(refundAddress, currency, {
-        from: account,
-        gasLimit: maxGas
+      await runGuardedOperation({
+        onPending: ({ hash }) => setRefundStatus({
+          href: getEthereumTransactionUrl(hash), message: MESSAGES.waitingForConfirmation, severity: 'info'
+        }),
+        onSlow: ({ hash }) => setRefundStatus({
+          href: getEthereumTransactionUrl(hash), message: MESSAGES.notConfirmed, severity: 'warning'
+        }),
+        runtime: getSendRuntime(),
+        session: getWalletSession(),
+        steps: [{
+          abi: DELEGATOR_ABI,
+          address: DELEGATOR_ADD,
+          args: [refundAddress, currency],
+          gasLimitFloor: maxGas,
+          method: 'claimRefund',
+          type: 'claim'
+        }]
       });
-
-      await txResult.wait();
-      addToast({ type: 'success', description: `${selectedEntry.name} refund transaction submitted successfully.` });
       setRefundStatus({
         severity: 'success',
         message: `${selectedEntry.name} refunded successfully.`
       });
       refreshLookup();
     } catch (error) {
-      addToast({ type: 'error', description: error.message || 'Refund transaction failed.' });
-      setRefundStatus({
-        severity: 'error',
-        message: error.message || 'Unable to claim the selected refund right now.'
-      });
+      setRefundStatus(describeOperationError(error, { failureMessage: CLAIM_FAILED_MESSAGE }));
     } finally {
       setActionTarget('');
     }
   }, [
     account,
     addressError,
-    addToast,
+    connectedWallet,
     delegatorContract,
     inputAddress,
     isAddressResolving,

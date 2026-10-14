@@ -37,3 +37,31 @@ export const clearInjectedWalletAutoConnectSuppression = () => {
     // Ignore storage failures and fall back to connector authorization state.
   }
 };
+
+// The rdns of the wallet the user chose last (plan D6). It is only a reconnect
+// preference: eager connect uses it when exactly one wallet entry has it.
+export const REMEMBERED_WALLET_RDNS_KEY = 'verus-bridge.wallet-rdns';
+
+export const getRememberedWalletRdns = () => {
+  if (!hasLocalStorage()) {
+    return '';
+  }
+
+  try {
+    return window.localStorage.getItem(REMEMBERED_WALLET_RDNS_KEY) || '';
+  } catch (error) {
+    return '';
+  }
+};
+
+export const setRememberedWalletRdns = (rdns) => {
+  if (!hasLocalStorage()) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(REMEMBERED_WALLET_RDNS_KEY, rdns);
+  } catch (error) {
+    // Ignore storage failures. The user picks from the menu next time.
+  }
+};

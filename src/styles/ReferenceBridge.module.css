@@ -414,6 +414,106 @@
   line-height: 1.25;
 }
 
+/* Wallet picker (Brave Wallet plan, section 3.1) */
+.walletOptionIconWrap img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.walletIconFallback {
+  background: var(--theme-hover-surface);
+}
+
+.walletOption:disabled {
+  cursor: default;
+}
+
+.walletOption:disabled:hover {
+  background: var(--theme-surface-overlay-strong);
+  border-color: transparent;
+}
+
+.walletOptionDimmed {
+  opacity: 0.5;
+}
+
+.walletOptionText {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.walletOptionStatus {
+  color: var(--theme-text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.walletOptionSpinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border: 2px solid var(--theme-border-strong);
+  border-top-color: var(--theme-accent);
+  border-radius: 999px;
+  animation: buttonSpinner 800ms linear infinite;
+}
+
+.walletOptionNote {
+  margin: 0;
+  padding: 4px 16px 12px;
+  color: var(--theme-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.walletEmptyState {
+  padding: 14px 0 0;
+}
+
+.walletEmptyTitle {
+  padding: 0 16px 4px;
+  color: var(--theme-text-strong);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.connectedWalletIcon {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  display: inline-flex;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.connectedWalletIcon img,
+.dropdownKickerIcon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.dropdownKickerIcon {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  display: inline-flex;
+  flex-shrink: 0;
+  overflow: hidden;
+  vertical-align: -2px;
+  margin-right: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .walletOptionSpinner {
+    animation: none;
+  }
+}
+
 .dropdownActions {
   padding: 8px 0;
 }
