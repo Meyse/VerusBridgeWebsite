@@ -5,6 +5,8 @@
 // the page keeps it.
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
+import { flushSync } from 'react-dom';
+
 import { EXPECTED_ETHEREUM_CHAIN_ID } from 'constants/contractAddress';
 import { describeSendStop, runBridgeSend } from 'utils/bridgeSendFlow';
 import {
@@ -128,8 +130,8 @@ export default function useBridgeSendFlow({ enterStatus, wallet }) {
   }, []);
 
   // Runs the bridge send. Returns { status: 'sent' }, { status: 'screen' }
-  // when a record screen shows the stop, or { status: 'notice', surface } when
-  // a notice shows it.
+  // when a record screen shows the stop, or { status: 'notice', notice,
+  // surface } when a notice shows it.
   const runSend = useCallback(async (flowId, {
     allowSendAnyway,
     approval,
@@ -156,20 +158,23 @@ export default function useBridgeSendFlow({ enterStatus, wallet }) {
         if (type === 'erc20-approval') {
           approvalRecordId = recordId;
         }
-        addDocumentRecord(recordId);
-        updateSendFlow(flowId, {
-          broadcastFailed: false,
-          continuing: type === 'erc20-approval',
-          latchReason: null,
-          liveRequestRecordId: recordId,
-          phase: 'wallet',
-          recordId
+        // The record, the review, and the route change in one render.
+        flushSync(() => {
+          addDocumentRecord(recordId);
+          updateSendFlow(flowId, {
+            broadcastFailed: false,
+            continuing: type === 'erc20-approval',
+            latchReason: null,
+            liveRequestRecordId: recordId,
+            phase: 'wallet',
+            recordId
+          });
+          if (!dispatched) {
+            dispatched = true;
+            onFirstDispatch?.();
+          }
+          enterStatus?.({ sync: true });
         });
-        if (!dispatched) {
-          dispatched = true;
-          onFirstDispatch?.();
-        }
-        enterStatus?.();
       },
       onHash: ({ recordId }) => updateSendFlow(flowId, {
         liveRequestRecordId: null,
@@ -202,26 +207,39 @@ export default function useBridgeSendFlow({ enterStatus, wallet }) {
       const stoppedAfterApproval = runtime.store.getRecord(approvalRecordId)?.outcome === 'success';
 
       if (stop.kind === 'screen') {
-        updateSendFlow(flowId, {
-          continuing: false,
-          liveRequestRecordId: null,
-          phase: 'ended',
-          ...(stop.recordId ? { recordId: stop.recordId } : {})
+        flushSync(() => {
+          updateSendFlow(flowId, {
+            continuing: false,
+            liveRequestRecordId: null,
+            phase: 'ended',
+            ...(stop.recordId ? { recordId: stop.recordId } : {})
+          });
+          enterStatus?.({ sync: true });
         });
-        enterStatus?.();
         return { status: 'screen' };
       }
 
-      updateSendFlow(flowId, {
-        continuing: false,
-        liveRequestRecordId: null,
-        phase: 'ended',
-        stoppedAfterApproval
-      });
-      setSendNotice({ ...stop.notice, approvalConfirmed: stoppedAfterApproval });
-      return { status: 'notice', surface: stop.surface };
+      // The caller applies the notice with endWithNotice, in the same
+      // synchronous step as its review and route changes. So no render shows
+      // the status step without a screen.
+      return {
+        notice: { ...stop.notice, approvalConfirmed: stoppedAfterApproval },
+        status: 'notice',
+        stoppedAfterApproval,
+        surface: stop.surface
+      };
     }
   }, [enterStatus, runtime]);
+
+  const endWithNotice = useCallback((flowId, { notice, stoppedAfterApproval }) => {
+    updateSendFlow(flowId, {
+      continuing: false,
+      liveRequestRecordId: null,
+      phase: 'ended',
+      stoppedAfterApproval
+    });
+    setSendNotice(notice);
+  }, []);
 
   // "Check again" (3.2, Actions; G6 step 5).
   const checkAgain = useCallback(async (recordId) => {
@@ -273,9 +291,6 @@ export default function useBridgeSendFlow({ enterStatus, wallet }) {
         { account: record.account, chainId: record.chainId },
         () => store.transition(recordId, { from: ['awaiting-wallet'], patch: { outcome: 'user-cleared' }, to: 'resolved' })
       ).catch(() => null);
-      if (cleared) {
-        closeSendScreen();
-      }
       return Boolean(cleared);
     } finally {
       setBusyAction(null);
@@ -303,10 +318,13 @@ export default function useBridgeSendFlow({ enterStatus, wallet }) {
     closeScreen: closeSendScreen,
     copyDetailsText,
     dismissScreen,
+    endWithNotice,
     flow,
     isFlowLive,
     isPreparing: flow?.phase === 'preparing',
+    getRecord: runtime.store.getRecord,
     isReady: operations.ready,
+    onTransition: runtime.store.onTransition,
     records: operations.records,
     runSend,
     selectRecord: selectSendRecord,

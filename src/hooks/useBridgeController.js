@@ -2296,24 +2296,29 @@ export default function useBridgeController({
 
   // A notice ends the flow (3.2, history table). Review shows it when the
   // review is still valid in an unchanged session. Otherwise the form shows it.
-  const showNoticeSurface = (surface) => {
+  // The flow state, the review, and the route change in one synchronous step.
+  const showNoticeSurface = (flowId, result) => {
     const currentSnapshot = reviewSnapshotRef.current;
     const reviewStaysValid = Boolean(
-      surface === 'review'
+      result.surface === 'review'
       && currentSnapshot
       && currentSnapshot.sessionId === getWalletSessionId()
       && currentSnapshot.editSignature === editSignatureRef.current
     );
 
-    if (!reviewStaysValid) {
-      clearReview(true, { hash: '' });
-      return;
-    }
+    flushSync(() => {
+      sendFlow.endWithNotice(flowId, result);
 
-    setReviewSnapshot({ ...currentSnapshot, status: 'ready' });
-    if (isStatusRequestedRef.current && typeof enterReview === 'function') {
-      enterReview({ replace: true });
-    }
+      if (!reviewStaysValid) {
+        clearReview(true, { hash: '', sync: true });
+        return;
+      }
+
+      setReviewSnapshot({ ...currentSnapshot, status: 'ready' });
+      if (isStatusRequestedRef.current && typeof enterReview === 'function') {
+        enterReview({ replace: true, sync: true });
+      }
+    });
   };
 
   const submitLockRef = useRef(false);
@@ -2342,10 +2347,15 @@ export default function useBridgeController({
     setAlert(null);
 
     const stopBeforeSend = (notice = null, surface = 'review') => {
-      sendFlow.stopSend(flowId, notice);
-      if (surface === 'form') {
-        clearReview(true, { hash: '' });
+      if (surface !== 'form') {
+        sendFlow.stopSend(flowId, notice);
+        return;
       }
+
+      flushSync(() => {
+        sendFlow.stopSend(flowId, notice);
+        clearReview(true, { hash: '', sync: true });
+      });
     };
 
     try {
@@ -2409,7 +2419,7 @@ export default function useBridgeController({
       });
 
       if (result.status === 'notice') {
-        showNoticeSurface(result.surface);
+        showNoticeSurface(flowId, result);
       }
     } catch (error) {
       // A check before the wallet request failed (N8). Nothing was sent.
@@ -2518,8 +2528,9 @@ export default function useBridgeController({
   }, [clearReview, editSignature, isReviewRequested, reviewSnapshot, submitDisabledReason, walletSessionId]);
 
   // Opens a fresh review. Returns true when the review opened. `replace`
-  // replaces the current entry (a retry from the status step).
-  const openReview = useCallback(async ({ replace = false } = {}) => {
+  // replaces the current entry (a retry from the status step), and
+  // `onOpen` runs in the same render as the new review.
+  const openReview = useCallback(async ({ onOpen, replace = false } = {}) => {
     const requestedEditSignature = editSignature;
 
     if (isBridgePaused) {
@@ -2568,16 +2579,18 @@ export default function useBridgeController({
     setAlert(null);
 
     if (typeof enterReview === 'function') {
-      // Commit the snapshot before entering the review URL so the page does not
-      // normalize a transient ?step=review render back to edit mode.
+      // Commit the snapshot and the review URL in one render, so the page
+      // never normalizes a transient ?step=review render back to edit mode.
       flushSync(() => {
         setReviewSnapshot(nextReviewSnapshot);
+        onOpen?.();
+        enterReview({ replace, sync: true });
       });
-      enterReview({ replace });
       return true;
     }
 
     setReviewSnapshot(nextReviewSnapshot);
+    onOpen?.();
     return true;
   }, [
     account,
@@ -2684,11 +2697,16 @@ export default function useBridgeController({
     sendFlow
   ]);
 
-  const closeStatus = useCallback(() => {
-    setReviewSnapshot(null);
-    if (typeof exitReview === 'function') {
-      exitReview({ hash: '' });
-    }
+  // Leaves the status step for the form. `beforeClose` runs in the same
+  // render as the route change.
+  const closeStatus = useCallback((beforeClose) => {
+    flushSync(() => {
+      beforeClose?.();
+      setReviewSnapshot(null);
+      if (typeof exitReview === 'function') {
+        exitReview({ hash: '', sync: true });
+      }
+    });
   }, [exitReview]);
 
   // Try again and Review again (3.2, Actions). A ready review in the same
@@ -2700,11 +2718,11 @@ export default function useBridgeController({
       return;
     }
 
+    // From the status step, the screen stays until the new review shows.
     const leavingStatus = isStatusRequested;
-    sendFlow.closeScreen();
-    const opened = await openReview({ replace: leavingStatus });
+    const opened = await openReview({ onOpen: sendFlow.closeScreen, replace: leavingStatus });
     if (!opened && leavingStatus) {
-      closeStatus();
+      closeStatus(sendFlow.closeScreen);
     }
   }, [canConfirmReview, closeStatus, handleSubmit, isStatusRequested, openReview, sendFlow]);
 
@@ -2716,23 +2734,25 @@ export default function useBridgeController({
     }
   }, [walletContext]);
 
+  // New transfer keeps the chosen currencies and clears the amount and the
+  // destination address (3.2, Actions).
   const newTransfer = useCallback(() => {
-    sendFlow.closeScreen();
-    clearSendNotice();
-    setAmount('');
-    setAddress('');
-    closeStatus();
+    closeStatus(() => {
+      sendFlow.closeScreen();
+      clearSendNotice();
+      setAmount('');
+      setAddress('');
+    });
   }, [closeStatus, sendFlow]);
 
   const backToBridge = useCallback(() => {
-    sendFlow.dismissScreen();
-    closeStatus();
+    closeStatus(sendFlow.dismissScreen);
   }, [closeStatus, sendFlow]);
 
   const clearRecord = useCallback(async () => {
     const recordId = sendFlow.selectedRecord?.id;
     if (recordId && await sendFlow.clearRecord(recordId)) {
-      closeStatus();
+      closeStatus(sendFlow.closeScreen);
     }
   }, [closeStatus, sendFlow]);
 
@@ -2895,6 +2915,8 @@ export default function useBridgeController({
     canMutateRecords: sendFlow.canMutateRecords,
     copyDetailsText: sendFlow.copyDetailsText,
     sendBusyAction: sendFlow.busyAction,
+    getSendRecord: sendFlow.getRecord,
+    onSendTransition: sendFlow.onTransition,
     sendFlowRecords: sendFlow.records,
     sendScreen: sendFlow.sendScreen,
     selectSendRecord: sendFlow.selectRecord,

@@ -17,7 +17,12 @@ import {
 } from 'constants/contractAddress';
 import useContract from 'hooks/useContract';
 import { createScriptedChain } from 'testUtils/scriptedChain';
-import { connectTestWallet, createSigningMetaMask, installSendRuntime } from 'testUtils/sendFixtures';
+import {
+  connectTestWallet,
+  createSigningMetaMask,
+  installSendRuntime,
+  isApprovalRequest
+} from 'testUtils/sendFixtures';
 import { getContract, getMaxAmount } from 'utils/contract';
 import { convertVerusAddressToEthAddress } from 'utils/convert';
 import {
@@ -64,6 +69,7 @@ vi.mock('utils/contract', () => ({
 
 const ETH_ADDRESS = GLOBAL_ADDRESS.ETH;
 const DAI_ADDRESS = GLOBAL_ADDRESS.DAI;
+const DAI_ADDRESS_ON_ETHEREUM = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const LINK_ADDRESS = '0x514910771AF9Ca656af840dff83E8264EcF986CA';
 const EURC_ADDRESS = '0x1AbAAE1F7c830bD89Acc67ec4af516284b1bC33c';
@@ -1107,6 +1113,7 @@ describe('useBridgeController disconnected source bootstrap', () => {
     useContract.mockReturnValue(createDelegatorContract());
 
     render(<HookProbe />);
+    await waitFor(() => expect(screen.getByTestId('catalog-loading')).toHaveTextContent('ready'));
     fireEvent.click(screen.getByRole('button', { name: configure }));
     await waitFor(() => expect(screen.getByTestId('address-resolution')).toHaveTextContent('Max.VRSC@'));
     fireEvent.click(screen.getByRole('button', { name: 'Select Verus Destination' }));
@@ -1183,6 +1190,105 @@ describe('useBridgeController disconnected source bootstrap', () => {
       .toHaveTextContent('The network fee could not be estimated, so nothing was sent.');
     expect(wallet.sentRequests).toHaveLength(0);
     expect(screen.getByTestId('send-screen-id')).toBeEmptyDOMElement();
+  });
+
+  test('a token send shows W2, T1, C1, W1, T1, and T2, and sends one approval and one transfer', async () => {
+    const approvalAnswer = createDeferred();
+    const transferAnswer = createDeferred();
+    const allowanceRead = createDeferred();
+    mockVerusd.getIdentity.mockResolvedValue(identityResult('iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX'));
+    sendChain.setAllowance(DAI_ADDRESS_ON_ETHEREUM, allowanceRead.promise);
+    const wallet = connectSigningWallet(SIGNER, {
+      beforeSend: (request) => (isApprovalRequest(request) ? approvalAnswer.promise : transferAnswer.promise)
+    });
+    const expectScreen = async (id, title, body) => {
+      await waitFor(() => expect(screen.getByTestId('send-screen-id')).toHaveTextContent(id));
+      expect(screen.getByTestId('send-screen-title')).toHaveTextContent(title);
+      expect(screen.getByTestId('send-screen-body')).toHaveTextContent(body);
+    };
+
+    await openVerusIdReview({ configure: 'Configure VerusID ERC20 Direct' });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    await expectScreen('W2', 'Allow DAI', 'Step 1 of 2. Let the bridge spend your DAI.');
+    approvalAnswer.resolve();
+    await expectScreen('T1', 'Confirming…', `Step 1 of 2. Waiting for ${ETHEREUM_BLOCKCHAIN_NAME}`);
+    act(() => {
+      sendChain.minePending(1);
+    });
+    await expectScreen('C1', 'Checking…', 'Step 2 of 2. Checking the transfer.');
+    allowanceRead.resolve(utils.parseEther('1'));
+    await expectScreen('W1', 'Confirm in your wallet', 'Step 2 of 2. Check your wallet and confirm the transaction.');
+    transferAnswer.resolve();
+    await expectScreen('T1', 'Confirming…', `Waiting for ${ETHEREUM_BLOCKCHAIN_NAME}`);
+    act(() => {
+      sendChain.minePending(1);
+    });
+    await expectScreen('T2', 'Sent', '1 DAI');
+
+    expect(wallet.sentRequests.filter(isApprovalRequest)).toHaveLength(1);
+    expect(getSentTransfers(wallet)).toHaveLength(1);
+  });
+
+  test('stops after a confirmed approval when the allowance is too low, and keeps the approval', async () => {
+    mockVerusd.getIdentity.mockResolvedValue(identityResult('iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX'));
+    sendChain.setAllowance(DAI_ADDRESS_ON_ETHEREUM, utils.parseEther('0.5'));
+    const wallet = connectSigningWallet(SIGNER, { mineStatus: (request) => (isApprovalRequest(request) ? 1 : null) });
+
+    await openVerusIdReview({ configure: 'Configure VerusID ERC20 Direct' });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    // X6 with rule 8: the approval was sent, so the notice never says that
+    // nothing was sent. The review is ready again.
+    await waitFor(() => expect(screen.getByTestId('notice-id')).toHaveTextContent('X6'));
+    expect(screen.getByTestId('notice-body')).toHaveTextContent('Approve the full amount to continue. The approval stays in place.');
+    expect(screen.getByTestId('notice-body')).not.toHaveTextContent('Nothing was sent.');
+    expect(screen.getByTestId('send-screen-id')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes');
+    expect(getSentTransfers(wallet)).toHaveLength(0);
+  });
+
+  test('a rejection keeps the review ready, and Confirm then sends once more', async () => {
+    mockVerusd.getIdentity.mockResolvedValue(identityResult('iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX'));
+    let rejectNext = true;
+    const wallet = connectSigningWallet(SIGNER, {
+      reject: () => {
+        if (!rejectNext) {
+          return null;
+        }
+        rejectNext = false;
+        return Object.assign(new Error('User rejected the request.'), { code: 4001 });
+      }
+    });
+
+    await openVerusIdReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    await waitFor(() => expect(screen.getByTestId('notice-id')).toHaveTextContent('N1'));
+    expect(screen.getByTestId('notice-title')).toHaveTextContent('Cancelled in your wallet');
+    expect(screen.getByTestId('notice-body')).toHaveTextContent('Nothing was sent.');
+    expect(screen.getByTestId('has-review-snapshot')).toHaveTextContent('yes');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    await waitFor(() => expect(screen.getByTestId('send-screen-id')).toHaveTextContent('T1'));
+    expect(getSentTransfers(wallet)).toHaveLength(2);
+    const [rejected, second] = sendRuntime.runtime.store.getSnapshot().records;
+    expect(rejected).toMatchObject({ outcome: 'rejected', outcomeReason: 'user' });
+    expect(second.state).not.toBe('resolved');
+  });
+
+  test('two quick Confirm clicks reach the wallet once', async () => {
+    mockVerusd.getIdentity.mockResolvedValue(identityResult('iEqZ9A9bbsPkP7yJMSqJdqa2BdpxxngzKX'));
+    const wallet = connectSigningWallet();
+
+    await openVerusIdReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Transfer' }));
+
+    await waitFor(() => expect(screen.getByTestId('send-screen-id')).toHaveTextContent('T1'));
+    expect(getSentTransfers(wallet)).toHaveLength(1);
+    expect(sendRuntime.runtime.store.getSnapshot().records).toHaveLength(1);
   });
 
   test('requires a fresh review when a VerusID resolves to a different address before submission', async () => {

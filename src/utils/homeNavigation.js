@@ -1,5 +1,8 @@
 export const HOME_ROUTE_PATH = '/';
 export const HOME_REVIEW_STEP = 'review';
+// The send screens (plan S4).
+export const HOME_STATUS_STEP = 'status';
+const HOME_STEPS = [HOME_REVIEW_STEP, HOME_STATUS_STEP];
 export const HOME_INFO_SECTION_ID = 'info';
 export const HOME_INFO_HASH = `#${HOME_INFO_SECTION_ID}`;
 export const HOME_BRIDGE_INTERFACE_ID = 'bridge-interface';
@@ -9,14 +12,14 @@ export const getHomeStep = (search = '') => {
   const searchParams = new URLSearchParams(search);
   const step = searchParams.get('step');
 
-  return step === HOME_REVIEW_STEP ? HOME_REVIEW_STEP : null;
+  return HOME_STEPS.includes(step) ? step : null;
 };
 
 export const hasNonCanonicalHomeStep = (search = '') => {
   const searchParams = new URLSearchParams(search);
   const step = searchParams.get('step');
 
-  return step !== null && step !== HOME_REVIEW_STEP;
+  return step !== null && !HOME_STEPS.includes(step);
 };
 
 export const normalizeHomeHash = (hash = '') => {

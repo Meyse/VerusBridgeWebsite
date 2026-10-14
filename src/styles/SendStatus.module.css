@@ -1,0 +1,569 @@
+/* Send screens (plan 3.2, design A). The card shell, the details panel, and
+   the main button reuse the classes of ReferenceBridge.module.css. */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 34px 16px 30px;
+  border-radius: 20px;
+  background: var(--theme-surface-strong);
+  border: 1px solid var(--theme-border);
+  text-align: center;
+}
+
+.titleFocus:focus {
+  outline: none;
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+/* Old and new text share one grid cell, so a swap does not move the card. */
+.swap {
+  display: grid;
+  justify-items: center;
+  width: 100%;
+}
+
+.swap > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--theme-text-strong);
+  text-wrap: balance;
+}
+
+.body {
+  margin: 0;
+  max-width: 40ch;
+  font-size: 15px;
+  color: var(--theme-text-muted);
+  font-variant-numeric: tabular-nums;
+  text-wrap: balance;
+}
+
+.leaving {
+  animation: textLeave 160ms ease forwards;
+}
+
+.entering {
+  animation: textEnter 220ms ease 240ms both;
+}
+
+@keyframes textLeave {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+    visibility: hidden;
+  }
+}
+
+@keyframes textEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.steps {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.step {
+  display: block;
+  width: 28px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--theme-track);
+}
+
+.stepOn {
+  background: var(--theme-accent-bright);
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--theme-surface-muted);
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.rowLabel {
+  color: var(--theme-text-muted);
+  font-size: 14px;
+}
+
+.rowValue {
+  min-width: 0;
+  color: var(--theme-text-strong);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.rowLinks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 6px;
+  color: var(--theme-link);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.link svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+.hint {
+  margin: 4px 0 0;
+  padding: 0 16px 6px;
+  color: var(--theme-text-muted);
+  font-size: 13px;
+  text-align: center;
+  text-wrap: balance;
+  animation: fadeIn 500ms ease both;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The action area appears once the mark has settled. */
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.actionsLive {
+  animation: actionsEnter 320ms ease 720ms both;
+}
+
+@keyframes actionsEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    visibility: hidden;
+  }
+
+  to {
+    visibility: visible;
+  }
+}
+
+.primary {
+  margin-top: 0;
+  text-decoration: none;
+}
+
+.quiet {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+.quiet:hover:not(:disabled) {
+  color: var(--theme-text-strong);
+  background: var(--theme-surface-muted);
+}
+
+.quiet:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.primary:focus-visible,
+.quiet:focus-visible,
+.link:focus-visible,
+.noticeAction:focus-visible,
+.confirmButton:focus-visible {
+  outline: 2px solid var(--theme-accent-bright);
+  outline-offset: 2px;
+}
+
+.copyFallback {
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--theme-surface-muted);
+  color: var(--theme-text);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* Status mark: a spinner that settles into a ring, a disc, and a glyph. */
+.mark {
+  --tone: var(--theme-success-solid);
+  position: relative;
+  flex: none;
+  width: 72px;
+  height: 72px;
+}
+
+.toneWarning {
+  --tone: var(--theme-warning-solid);
+}
+
+.toneDanger {
+  --tone: var(--theme-danger-solid);
+}
+
+.mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.mark circle,
+.mark path {
+  fill: none;
+  stroke-width: 4;
+}
+
+.track {
+  stroke: var(--theme-track);
+}
+
+.spin {
+  stroke: var(--theme-accent-bright);
+  stroke-linecap: round;
+  stroke-dasharray: 50 151.06;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: spin 1s linear infinite;
+}
+
+.ring {
+  stroke: var(--tone);
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transform: rotate(-90deg);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.mark .fill {
+  fill: var(--tone);
+  stroke: none;
+  transform: scale(0);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.mark .glyph {
+  stroke: #ffffff;
+  stroke-width: 5.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0;
+}
+
+.ripple {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--tone);
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-phase='done'] .spin,
+[data-phase='done'] .track {
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+[data-phase='done'] .ring {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 450ms cubic-bezier(0.4, 0, 0.2, 1) 80ms;
+}
+
+[data-phase='done'] .mark .fill {
+  transform: scale(1);
+  transition: transform 340ms cubic-bezier(0.34, 1.56, 0.64, 1) 400ms;
+}
+
+[data-phase='done'] .mark .glyph {
+  opacity: 1;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 320ms ease-out 560ms, opacity 0s 560ms;
+}
+
+[data-phase='done'] .rippleLive {
+  animation: ripple 900ms ease-out 420ms forwards;
+}
+
+/* Wallet mark: the wallet's icon on a plain tile, with a calm pulse. */
+.walletTile {
+  fill: var(--theme-track) !important;
+  stroke: none !important;
+}
+
+.walletIcon {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 40px;
+  height: 40px;
+}
+
+.pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--theme-accent-bright);
+  opacity: 0;
+  animation: pulse 2.4s ease-out infinite;
+}
+
+.pulseLate {
+  animation-delay: 1.2s;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ripple {
+  from {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+
+  to {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+
+  to {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+/* Notices above the main button. */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.notice:focus {
+  outline: none;
+}
+
+.notice + button,
+.notice + a {
+  margin-top: 8px;
+}
+
+.noticeIcon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+}
+
+.noticeText {
+  min-width: 0;
+}
+
+.noticeTitle {
+  display: block;
+  font-weight: 650;
+}
+
+.noticeBody {
+  display: block;
+}
+
+.noticeInfo {
+  background: var(--theme-accent-soft);
+  color: var(--theme-accent-text);
+}
+
+.noticeWarning {
+  background: var(--theme-warning-bg);
+  color: var(--theme-warning-text);
+}
+
+.noticeDanger {
+  background: var(--theme-danger-bg);
+  color: var(--theme-danger-text);
+}
+
+.noticeDetails {
+  margin-top: 6px;
+}
+
+.noticeDetails summary {
+  width: fit-content;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.noticeDetails code {
+  display: block;
+  margin-top: 6px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.noticeAction {
+  display: block;
+  margin: 4px auto 0;
+}
+
+/* The inline confirmation that replaces the actions. */
+.inlineConfirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--theme-warning-bg);
+  color: var(--theme-warning-text);
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.inlineConfirm p {
+  margin: 0;
+  text-wrap: balance;
+}
+
+.inlineConfirm p:focus {
+  outline: none;
+}
+
+.inlineActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.confirmButton {
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--theme-warning-solid);
+  color: #ffffff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.confirmButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin,
+  .pulse {
+    animation: none;
+  }
+
+  .pulse {
+    opacity: 0;
+  }
+
+  .mark *,
+  .leaving,
+  .entering,
+  .actionsLive,
+  .hint {
+    transition: none !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+  }
+}

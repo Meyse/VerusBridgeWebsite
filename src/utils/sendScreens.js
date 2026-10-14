@@ -627,6 +627,25 @@ export const pickReopenRecord = ({ chainId, isDismissed = () => false, records }
 // The outcomes that have a result screen. The others end in a notice.
 export const RESULT_SCREEN_OUTCOMES = Object.freeze(['success', 'reverted', 'cancelled', 'replaced', 'confirmed-unexpected']);
 
+// The late-result decision (3.2, "Selection, route, and history"): one
+// decision for each transition event of the records store. Only a result that
+// has a screen, of a bridge send that nothing else shows, opens the status
+// step, and only from the form.
+export const shouldOpenLateResult = ({
+  chainId, event, flow, isDismissed = () => false, record, step
+}) => {
+  if (event?.to !== 'resolved' || !isBridgeSendRecord(record, chainId)) {
+    return false;
+  }
+
+  if (isDismissed(record.id) || !RESULT_SCREEN_OUTCOMES.includes(record.outcome)) {
+    return false;
+  }
+
+  const ownedByLiveFlow = Boolean(flow?.isLive && (flow.recordId === record.id || flow.approvalRecordId === record.id));
+  return !ownedByLiveFlow && !step;
+};
+
 // The text that "Copy details" puts on the clipboard (3.2, "Actions"). No
 // account address and no key.
 export const getCopyDetails = ({ chainId, record, wallet }) => [

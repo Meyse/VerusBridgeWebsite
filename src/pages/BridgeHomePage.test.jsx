@@ -11,8 +11,15 @@ import {
 import useBridgeController from 'hooks/useBridgeController';
 import {
   ETHEREUM_NATIVE_ASSET_NAME,
+  EXPECTED_ETHEREUM_CHAIN_ID,
   VERUS_NATIVE_ASSET_NAME
 } from 'constants/contractAddress';
+import {
+  getSendScreenState,
+  isSendRecordDismissed,
+  resetSendScreenStateForTests,
+  selectSendRecord
+} from 'utils/sendScreenState';
 
 import BridgeHomePage from './BridgeHomePage';
 
@@ -104,6 +111,7 @@ describe('BridgeHomePage', () => {
     }
     scrollIntoViewSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(vi.fn());
 
+    resetSendScreenStateForTests();
     useBridgeController.mockImplementation((options = {}) => {
       capturedControllerOptions = options;
       return createController({
@@ -294,4 +302,152 @@ describe('BridgeHomePage', () => {
       expect(scrollIntoViewSpy).toHaveBeenCalled();
     });
   });
+
+  describe('send screens routing (plan S4)', () => {
+    const record = (fields = {}) => ({
+      chainId: EXPECTED_ETHEREUM_CHAIN_ID,
+      id: 'record-1',
+      startedAt: 1,
+      state: 'submitted',
+      type: 'transfer',
+      ...fields
+    });
+
+    // A controller whose send screen follows the module-level selection, as
+    // the real controller does.
+    const mockSendController = ({
+      hasReviewSnapshot = false, isSendStoreReady = true, records = [], transitions = null
+    } = {}) => {
+      useBridgeController.mockImplementation((options = {}) => {
+        capturedControllerOptions = options;
+        const selected = getSendScreenState().selectedRecordId;
+        return createController({
+          getSendRecord: (id) => records.find((entry) => entry.id === id) || null,
+          hasReviewSnapshot,
+          hasSendScreen: Boolean(selected),
+          isReviewing: false,
+          isSendStoreReady,
+          onSendTransition: transitions ? (listener) => {
+            transitions.listener = listener;
+            return () => {};
+          } : undefined,
+          selectSendRecord,
+          sendFlowRecords: records
+        });
+      });
+    };
+
+    test('before the records store is ready, the route waits', async () => {
+      mockSendController({ isSendStoreReady: false, records: [record()] });
+      renderRoute(['/?step=review']);
+
+      await act(async () => {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 20);
+        });
+      });
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/?step=review');
+      expect(getSendScreenState().reopened).toBe(false);
+    });
+
+    test('a reload at ?step=review with an unresolved record opens the newest one at ?step=status', async () => {
+      mockSendController({ records: [record({ id: 'old', startedAt: 1 }), record({ id: 'new', startedAt: 2 })] });
+      const { router } = renderRoute(['/?step=review']);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('location-display')).toHaveTextContent('/?step=status');
+      });
+      expect(router.state.historyAction).toBe('REPLACE');
+      expect(getSendScreenState().selectedRecordId).toBe('new');
+    });
+
+    test('a resolved record does not reopen, and an empty status step goes to the form', async () => {
+      mockSendController({ records: [record({ outcome: 'success', state: 'resolved' })] });
+      renderRoute(['/?step=status']);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('location-display')).toHaveTextContent(/^\/$/);
+      });
+      expect(getSendScreenState().selectedRecordId).toBeNull();
+    });
+
+    test('a claim record or a record of another chain never opens the screen', async () => {
+      mockSendController({ records: [record({ type: 'claim' }), record({ chainId: 5, id: 'other' })] });
+      renderRoute(['/']);
+
+      await waitFor(() => expect(getSendScreenState().reopened).toBe(true));
+      expect(screen.getByTestId('location-display')).toHaveTextContent(/^\/$/);
+    });
+
+    test('W1 replaces Review with the status step, and pushes it from the form', async () => {
+      mockSendController({ hasReviewSnapshot: true });
+      const { router } = renderRoute(['/?step=review']);
+
+      act(() => {
+        selectSendRecord('record-1');
+        capturedControllerOptions.enterStatus();
+      });
+      await waitFor(() => expect(screen.getByTestId('location-display')).toHaveTextContent('/?step=status'));
+      expect(router.state.historyAction).toBe('REPLACE');
+
+      act(() => {
+        capturedControllerOptions.exitReview();
+      });
+      await waitFor(() => expect(screen.getByTestId('location-display')).toHaveTextContent(/^\/$/));
+      act(() => {
+        selectSendRecord('record-1');
+        capturedControllerOptions.enterStatus();
+      });
+      await waitFor(() => expect(screen.getByTestId('location-display')).toHaveTextContent('/?step=status'));
+      expect(router.state.historyAction).toBe('PUSH');
+    });
+
+    test('Back from the status step hides that record from later results', async () => {
+      const transitions = {};
+      const resolved = record({ outcome: 'success', state: 'resolved' });
+      mockSendController({ records: [resolved], transitions });
+      const { router } = renderRoute(['/']);
+
+      act(() => {
+        selectSendRecord('record-1');
+        capturedControllerOptions.enterStatus();
+      });
+      await waitFor(() => expect(screen.getByTestId('location-display')).toHaveTextContent('/?step=status'));
+
+      await act(async () => {
+        await router.navigate(-1);
+      });
+      await waitFor(() => expect(screen.getByTestId('location-display')).toHaveTextContent(/^\/$/));
+      expect(isSendRecordDismissed('record-1')).toBe(true);
+
+      act(() => {
+        transitions.listener({ outcome: 'success', recordId: 'record-1', to: 'resolved' });
+      });
+      expect(screen.getByTestId('location-display')).toHaveTextContent(/^\/$/);
+    });
+
+    test('a result that arrives on the form opens once; Review and rejections stay put', async () => {
+      const transitions = {};
+      const records = [
+        record({ id: 'rejected', outcome: 'rejected', state: 'resolved' }),
+        record({ id: 'done', outcome: 'reverted', state: 'resolved' })
+      ];
+      mockSendController({ records, transitions });
+      const { router } = renderRoute(['/']);
+      await waitFor(() => expect(transitions.listener).toBeTypeOf('function'));
+
+      act(() => {
+        transitions.listener({ outcome: 'rejected', recordId: 'rejected', to: 'resolved' });
+      });
+      expect(screen.getByTestId('location-display')).toHaveTextContent(/^\/$/);
+
+      act(() => {
+        transitions.listener({ outcome: 'reverted', recordId: 'done', to: 'resolved' });
+      });
+      await waitFor(() => expect(screen.getByTestId('location-display')).toHaveTextContent('/?step=status'));
+      expect(router.state.historyAction).toBe('PUSH');
+      expect(getSendScreenState().selectedRecordId).toBe('done');
+    });
+  });
 });
+

@@ -20,7 +20,9 @@ export const isApprovalRequest = (request) => String(request?.data || '').starts
 // A MetaMask-like EIP-1193 provider (path E). `mineStatus(request)` returns
 // null to leave the transaction pending, or the receipt status to mine it at
 // once. `reject(request)` returns an error to reject the request with.
+// `beforeSend(request)` can hold the answer until the test releases it.
 export const createSigningMetaMask = ({
+  beforeSend = async () => {},
   chain,
   mineStatus = () => null,
   reject = () => null,
@@ -47,6 +49,8 @@ export const createSigningMetaMask = ({
       if (method === 'eth_sendTransaction') {
         const request = params[0];
         sentRequests.push(request);
+        // A test can hold the wallet answer, as a user who has not decided yet.
+        await beforeSend(request);
 
         const rejection = reject(request);
         if (rejection) {

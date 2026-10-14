@@ -5,7 +5,9 @@ import {
   getCopyDetails,
   getNotice,
   getOutcomeNotice,
-  getSendScreen
+  getSendScreen,
+  pickReopenRecord,
+  shouldOpenLateResult
 } from './sendScreens';
 
 // Expected strings come from plan section 3.2, never from the model.
@@ -387,5 +389,62 @@ describe('copy details', () => {
       'Time: 2026-10-14T12:00:00.000Z'
     ].join('\n'));
     expect(text).not.toContain('0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf');
+  });
+});
+
+describe('reopen and late results (3.2, "Selection, route, and history")', () => {
+  const CHAIN_ID = 11155111;
+
+  test('a load reopens the newest unresolved bridge send of the build chain only', () => {
+    const records = [
+      transfer({ id: 'old', startedAt: 1 }),
+      transfer({ id: 'new', startedAt: 3 }),
+      transfer({ id: 'done', outcome: 'success', startedAt: 5, state: 'resolved' }),
+      transfer({ id: 'claim', startedAt: 6, type: 'claim' }),
+      transfer({ chainId: 1, id: 'other-chain', startedAt: 7 }),
+      approval({ id: 'dismissed', startedAt: 8 })
+    ];
+
+    expect(pickReopenRecord({ chainId: CHAIN_ID, isDismissed: (id) => id === 'dismissed', records })?.id).toBe('new');
+    expect(pickReopenRecord({ chainId: CHAIN_ID, records: [records[2], records[3]] })).toBeNull();
+  });
+
+  const resolved = (fields) => transfer({ state: 'resolved', ...fields });
+  const decide = (fields = {}) => shouldOpenLateResult({
+    chainId: CHAIN_ID,
+    event: { recordId: 'record-1', to: 'resolved' },
+    flow: null,
+    record: resolved({ outcome: 'success' }),
+    step: null,
+    ...fields
+  });
+
+  test('a result with a screen opens from the form once the record resolves', () => {
+    expect(decide()).toBe(true);
+    expect(decide({ record: resolved({ outcome: 'reverted' }) })).toBe(true);
+  });
+
+  test.each(['rejected', 'discarded', 'user-cleared'])('a %s record opens nothing', (outcome) => {
+    expect(decide({ record: resolved({ outcome }) })).toBe(false);
+  });
+
+  test('nothing opens for a dismissed record, on Review or the status step, or before resolution', () => {
+    expect(decide({ isDismissed: () => true })).toBe(false);
+    expect(decide({ step: 'review' })).toBe(false);
+    expect(decide({ step: 'status' })).toBe(false);
+    expect(decide({ event: { recordId: 'record-1', to: 'observed' } })).toBe(false);
+  });
+
+  test('an approval success that a live flow continues opens nothing', () => {
+    const record = approval({ outcome: 'success', state: 'resolved' });
+
+    expect(decide({ flow: { approvalRecordId: record.id, isLive: true, recordId: record.id }, record })).toBe(false);
+    expect(decide({ record })).toBe(true);
+  });
+
+  test('claim, NFT, and other-chain records never open the send screens', () => {
+    expect(decide({ record: resolved({ outcome: 'success', type: 'claim' }) })).toBe(false);
+    expect(decide({ record: resolved({ outcome: 'success', type: 'nft' }) })).toBe(false);
+    expect(decide({ record: resolved({ chainId: 1, outcome: 'success' }) })).toBe(false);
   });
 });

@@ -1,4 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  forwardRef, useCallback, useEffect, useMemo, useRef, useState
+} from 'react';
 
 import { Alert } from '@mui/material';
 import { createPortal } from 'react-dom';
@@ -15,6 +17,10 @@ import {
 import { isETHAddress, isRAddress, isiAddress } from 'utils/rules';
 
 import styles from '../styles/ReferenceBridge.module.css';
+import sendStyles from '../styles/SendStatus.module.css';
+import InlineConfirm from './SendStatus/InlineConfirm';
+import ReviewNotice from './SendStatus/ReviewNotice';
+import SendStatusCard from './SendStatus/SendStatusCard';
 
 const joinClassNames = (...classNames) => classNames.filter(Boolean).join(' ');
 
@@ -617,6 +623,68 @@ const ReviewRouteValue = ({ routeLabel }) => {
   );
 };
 
+// The main button of the form or Review. It follows the notice lifecycle
+// (plan 3.2): only `confirm` submits the form.
+const MainActionButton = forwardRef(({ action, onRun }, ref) => (
+  <button
+    className={joinClassNames(
+      styles.submitButton,
+      action.disabled ? styles.submitButtonDisabled : ''
+    )}
+    disabled={action.disabled}
+    onClick={action.isSubmit ? undefined : () => onRun?.(action.action)}
+    ref={ref}
+    type={action.isSubmit ? 'submit' : 'button'}
+  >
+    {action.isLoading ? <ButtonSpinner /> : null}
+    <span>{action.label}</span>
+  </button>
+));
+
+MainActionButton.displayName = 'MainActionButton';
+
+// N9 offers "Send another transfer anyway" under the main button, behind the
+// duplicate warning.
+const NoticeQuietAction = ({ action, onRun }) => {
+  const [isConfirming, setIsConfirming] = useState(false);
+  const openerRef = useRef(null);
+  const restoreFocusRef = useRef(false);
+
+  useEffect(() => {
+    if (!isConfirming && restoreFocusRef.current) {
+      restoreFocusRef.current = false;
+      openerRef.current?.focus();
+    }
+  }, [isConfirming]);
+
+  if (isConfirming) {
+    return (
+      <InlineConfirm
+        confirmLabel="Send anyway"
+        onCancel={() => {
+          restoreFocusRef.current = true;
+          setIsConfirming(false);
+        }}
+        onConfirm={() => {
+          setIsConfirming(false);
+          onRun?.(action.action);
+        }}
+      />
+    );
+  }
+
+  return (
+    <button
+      className={joinClassNames(sendStyles.quiet, sendStyles.noticeAction)}
+      onClick={() => setIsConfirming(true)}
+      ref={openerRef}
+      type="button"
+    >
+      {action.label}
+    </button>
+  );
+};
+
 const BridgeCard = ({ controller }) => {
   const [destinationSearch, setDestinationSearch] = useState('');
   const [destinationSelectorOpen, setDestinationSelectorOpen] = useState(false);
@@ -954,6 +1022,21 @@ const BridgeCard = ({ controller }) => {
     </span>
   );
 
+  const isShowingStatus = Boolean(controller.isShowingStatus && controller.sendScreen);
+  const noticeRef = useRef(null);
+  const mainButtonRef = useRef(null);
+  const wasShowingStatusRef = useRef(isShowingStatus);
+
+  // When a screen returns to Review or the form, focus the notice, or the main
+  // button when there is no notice (plan 3.2, Accessibility).
+  useEffect(() => {
+    if (wasShowingStatusRef.current && !isShowingStatus) {
+      (noticeRef.current || mainButtonRef.current)?.focus();
+    }
+
+    wasShowingStatusRef.current = isShowingStatus;
+  }, [isShowingStatus]);
+
   const submitState = useMemo(() => {
     if (controller.isBridgePaused) {
       return { disabled: true, label: 'Bridge paused' };
@@ -1007,16 +1090,14 @@ const BridgeCard = ({ controller }) => {
     }
 
     return {
-      disabled: !controller.canSubmit || controller.isTxPending,
-      isLoading: controller.isTxPending,
-      label: controller.isTxPending ? 'Submitting...' : 'Review'
+      disabled: !controller.canSubmit,
+      label: 'Review'
     };
   }, [
     controller.canSubmit,
     controller.hasFreshReceiveQuote,
     controller.isBridgePaused,
     controller.isRefundSignaturePending,
-    controller.isTxPending,
     controller.isWalletConnected,
     controller.requiresReceiveQuote,
     controller.selectedDestination,
@@ -1026,6 +1107,29 @@ const BridgeCard = ({ controller }) => {
     isAwaitingReceiveQuote,
     isInsufficientBalance
   ]);
+
+  const reviewMainAction = controller.mainAction || {
+    action: 'confirm',
+    disabled: !controller.canConfirmReview,
+    isLoading: Boolean(controller.isSendPreparing),
+    isSubmit: true,
+    label: controller.reviewConfirmLabel || 'Confirm'
+  };
+  const formMainAction = controller.notice && controller.mainAction ? controller.mainAction : null;
+  const noticeQuietAction = controller.notice?.quietAction || null;
+
+  if (isShowingStatus) {
+    return (
+      <SendStatusCard
+        busyAction={controller.sendBusyAction}
+        canMutateRecords={controller.canMutateRecords}
+        copyDetailsText={controller.copyDetailsText}
+        onAction={controller.runAction}
+        screen={controller.sendScreen}
+        walletIcon={controller.walletIcon}
+      />
+    );
+  }
 
   return (
     <>
@@ -1054,7 +1158,9 @@ const BridgeCard = ({ controller }) => {
           }
 
           if (isReviewing) {
-            controller.handleSubmit();
+            if (reviewMainAction.isSubmit && !reviewMainAction.disabled) {
+              controller.handleSubmit();
+            }
             return;
           }
 
@@ -1175,17 +1281,9 @@ const BridgeCard = ({ controller }) => {
               ))}
             </div>
 
-            <button
-              className={joinClassNames(
-                styles.submitButton,
-                !controller.canConfirmReview ? styles.submitButtonDisabled : ''
-              )}
-              disabled={!controller.canConfirmReview}
-              type="submit"
-            >
-              {controller.isTxPending ? <ButtonSpinner /> : null}
-              <span>{controller.reviewConfirmLabel || 'Confirm'}</span>
-            </button>
+            {controller.notice ? <ReviewNotice notice={controller.notice} ref={noticeRef} /> : null}
+            <MainActionButton action={reviewMainAction} onRun={controller.runAction} ref={mainButtonRef} />
+            {noticeQuietAction ? <NoticeQuietAction action={noticeQuietAction} onRun={controller.runAction} /> : null}
           </>
         ) : (
           <>
@@ -1417,17 +1515,23 @@ const BridgeCard = ({ controller }) => {
               </p>
             </div>
 
-            <button
-              className={joinClassNames(
-                styles.submitButton,
-                submitState.disabled ? styles.submitButtonDisabled : ''
-              )}
-              disabled={submitState.disabled}
-              type="submit"
-            >
-              {submitState.isLoading ? <ButtonSpinner /> : null}
-              <span>{submitState.label}</span>
-            </button>
+            {controller.notice ? <ReviewNotice notice={controller.notice} ref={noticeRef} /> : null}
+            {formMainAction ? (
+              <MainActionButton action={formMainAction} onRun={controller.runAction} ref={mainButtonRef} />
+            ) : (
+              <button
+                className={joinClassNames(
+                  styles.submitButton,
+                  submitState.disabled ? styles.submitButtonDisabled : ''
+                )}
+                disabled={submitState.disabled}
+                ref={mainButtonRef}
+                type="submit"
+              >
+                {submitState.isLoading ? <ButtonSpinner /> : null}
+                <span>{submitState.label}</span>
+              </button>
+            )}
           </>
         )}
       </form>
